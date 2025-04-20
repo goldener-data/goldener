@@ -42,6 +42,16 @@ be fast and efficient. All the proposed tools are based on 2 main building block
   - All the tools are designed to be used in a distributed way.
 
 
+## Current focus
+
+Goldener is a work in progress and is currently in the early stages of development.
+The main focus is on building a robust and efficient framework for image data. However, every design choice
+is made to be as much as possible multimodal. The goal is to make Goldener a versatile tool
+that can be adapted to various data types in the future.
+
+## Main features
+
+- In progress: [Illustrate the class from samples](https://github.com/goldener-data/goldener/wiki/Help-humans-refining-your-gold-(data)#illustrate-the-class-from-samples)
 
 ## Installation
 
