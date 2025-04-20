@@ -1,0 +1,28 @@
+[project]
+name = "goldener"
+version = "0.1.0"
+description = "Goldener - Make your data even more valuable"
+authors = [
+    { name = "Yann-CV", email = "yann.chene.tni@gmail.com"}
+]
+
+requires-python = "==3.13.*"
+dependencies = [
+    "torch",
+    "numpy",
+    "scikit-learn",
+    "pillow",
+    "tqdm",
+    "pandas",
+    "opencv-python",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest",
+  "pre-commit",
+  "ruff",
+  "mypy",
+  "types-pillow",
+  "types-tqdm",
+]
