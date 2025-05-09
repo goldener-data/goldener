@@ -51,7 +51,7 @@ that can be adapted to various data types in the future.
 
 ## Main features
 
-- In progress: [Illustrate the class from samples](https://github.com/goldener-data/goldener/wiki/Help-humans-refining-your-gold-(data)#illustrate-the-class-from-samples)
+We are still working on the 1st one !
 
 ## Installation
 
@@ -74,7 +74,7 @@ source .venv/bin/activate  # On Unix/macOS
 
 4. Install the package and its dependencies:
 ```bash
-uv sync --all-extras  # Install all dependencies including development dependencies
+uv sync
 ```
 
 ## Configuration
@@ -111,7 +111,7 @@ To set up the development environment:
 
 1. Install development dependencies:
 ```bash
-uv pip install -e ".[dev]"
+uv sync --all-extras  # Install all dependencies including development dependencies
 ```
 
 2. Run tests:
