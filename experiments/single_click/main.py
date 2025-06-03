@@ -89,4 +89,4 @@ def run_experiment(cfg: DictConfig) -> None:
 
 
 if __name__ == "__main__":
-    pxt_table = run_experiment()
+    run_experiment()
