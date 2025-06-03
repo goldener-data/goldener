@@ -32,7 +32,7 @@ def get_pxt_run_name(cfg: DictConfig) -> str:
     Generate a unique name for the PixelTable based on the configuration.
     """
     if cfg.pixeltable.run_name is not None:
-        return f"{cfg.pixeltable.dir_name}.{cfg.run_name}"
+        return f"{cfg.pixeltable.dir_name}.{cfg.pixeltable.run_name}"
 
     dataset = cfg.dataset.args._target_.split(".")[-1]
     model = cfg.model.name
