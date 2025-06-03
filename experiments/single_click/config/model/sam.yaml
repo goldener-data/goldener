@@ -1,0 +1,5 @@
+defaults:
+  - sam@config: sam2.1_hiera_l
+
+name: sam
+hf_id: "facebook/sam2.1-hiera-large"

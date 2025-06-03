@@ -1,0 +1,28 @@
+label: null # fill out the label column in pixeltable
+label_col: null # fill out the label column in pixeltable from another existing column
+
+args:
+  _target_: any_gold.image.mvtec_ad.MVTecADDataset
+  root: /storage/ml/
+  category: hazelnut
+  split: test
+
+categories: [bottle, cable, capsule, hazelnut, metal_nut, pill, screw, toothbrush, transistor, zipper]
+
+# some classes are not fitting with the segmentation task so they are excluded
+excluded_classes:
+  carpet: []
+  grid: []
+  leather: []
+  tile: []
+  wood: []
+  bottle: []
+  cable: []
+  capsule: []
+  hazelnut: []
+  metal_nut: []
+  pill: []
+  screw: []
+  toothbrush: []
+  transistor: []
+  zipper: []

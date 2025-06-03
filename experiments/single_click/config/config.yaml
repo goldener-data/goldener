@@ -1,0 +1,20 @@
+defaults:
+  - _self_
+  - dataset: mvtec_ad
+  - model: sam
+
+root: /storage/ml/
+
+load:
+  batch_size: 16
+  num_workers: 2
+
+pipeline:
+  seed: 42
+  k_shots: 5
+
+pixeltable:
+  dir_name: single_click
+  run_name: null
+  table_name: null
+  if_exists: ignore
