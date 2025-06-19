@@ -4,6 +4,7 @@ defaults:
   - model: sam
 
 root: /storage/ml/
+device: cpu
 
 load:
   batch_size: 16
@@ -11,7 +12,9 @@ load:
 
 pipeline:
   seed: 42
-  k_shots: 5
+  k_shots: 5 # how much sample to draw randomly in the dataset
+  min_area: 10 # the minimum area of the segmentation mask to be considered valid in ground truth
+  num_points: 5 # number of single click points to segment from
 
 pixeltable:
   dir_name: single_click

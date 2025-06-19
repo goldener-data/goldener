@@ -9,8 +9,8 @@ from sam2.sam2_image_predictor import SAM2ImagePredictor
 
 def load_sam2_image_predictor_from_huggingface(
     model_cfg: DictConfig,
-    device="cuda",
-    mode="eval",
+    device: str = "cuda",
+    mode: str = "eval",
 ) -> SAM2ImagePredictor:
     hf_id = model_cfg.hf_id
 
@@ -30,3 +30,6 @@ def load_sam2_image_predictor_from_huggingface(
         model.eval()
 
     return SAM2ImagePredictor(sam_model=model)
+
+
+sam_cache: dict[str, SAM2ImagePredictor] = {}

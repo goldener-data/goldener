@@ -16,7 +16,7 @@ from pixeltable import catalog
 SEED = int(os.environ.get("SEED", 42))
 
 
-def force_seed(seed: int = SEED):
+def force_seed(seed: int = SEED) -> None:
     """
     Force the random seed for reproducibility.
     """
@@ -55,7 +55,7 @@ def get_pxt_table_name(
     view_name = (
         cfg.pixeltable.table_name
         if cfg.pixeltable.table_name is not None
-        else f"seed_{cfg.pipeline.seed}_k_{cfg.pipeline.k_shots}"
+        else f"seed_{cfg.pipeline.seed}_k_{cfg.pipeline.k_shots}_n_{cfg.pipeline.num_points}_amin_{cfg.pipeline.min_area}"
     )
 
     return f"{run_name}.{view_name}"
@@ -71,12 +71,15 @@ def get_pxt_table_path(
     return get_pxt_table_name(cfg, run_name)
 
 
-def format_for_pixeltable(value: Any) -> Any:
+def format_for_pixeltable(value: Any, is_image: bool) -> Any:
     if isinstance(value, torch.Tensor):
-        if value.ndim == 0 or (value.ndim == 1 and len(value) == 1):
-            return value.item()
-        else:
+        if is_image:
             return F.to_pil_image(value.cpu())
+        else:
+            if value.dim() == 0:
+                return value.item()
+
+            return value.numpy().astype(np.int64)
     else:
         return value
 
@@ -86,8 +89,8 @@ def import_any_dataset_to_pixeltable(
     pxt_table: catalog.Table,
     label: str | None = None,
     num_samples: int | None = None,
-    batch_size=16,
-    num_workers=0,
+    batch_size: int = 16,
+    num_workers: int = 0,
 ) -> None:
     """Load a PyTorch dataset into a PixelTable.
 
@@ -112,23 +115,23 @@ def import_any_dataset_to_pixeltable(
         for sample in batch:
             to_insert = {}
             for key, value in sample.items():
-                value = format_for_pixeltable(value)
+                value_for_pxt = format_for_pixeltable(value, key == "image")
                 # if the label is a column name, rename this column `label`
                 if key == label:
                     key = "label"
 
                 # add missing column from table definition
-                if key not in pxt_table.columns:
+                if key not in pxt_table.columns():
                     pxt_table.add_columns(
                         {
                             key: ColumnType.from_python_type(
-                                type(value),
+                                type(value_for_pxt),
                                 nullable_default=True,
                                 allow_builtin_types=True,
                             )
                         }
                     )
-                to_insert[key] = value
+                to_insert[key] = value_for_pxt
 
             # missing label column mean the label should have the specified value
             if "label" not in to_insert:
