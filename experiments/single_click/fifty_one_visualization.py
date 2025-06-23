@@ -1,4 +1,5 @@
 from logging import getLogger
+from tempfile import TemporaryDirectory
 
 import hydra
 from omegaconf import DictConfig
@@ -13,6 +14,8 @@ logger = getLogger(__name__)
 
 @hydra.main(version_base=None, config_path="config/", config_name="config")
 def show_in_fiftyone(cfg: DictConfig) -> None:
+    from experiments.single_click.load import PxtSAMDatasetImporter
+
     pxt_run_name = get_pxt_run_name(
         cfg,
     )
@@ -27,14 +30,20 @@ def show_in_fiftyone(cfg: DictConfig) -> None:
     logger.info(f"Loading PixelTable: {pxt_table_name}")
     pxt_table = pxt.get_table(pxt_table_name)
 
-    fo_dataset = pxt.io.export_images_as_fo_dataset(
-        tbl=pxt_table,
-        images=pxt_table.image,
-    )
+    with TemporaryDirectory() as tmp_dir:
+        importer = PxtSAMDatasetImporter(
+            pxt_table=pxt_table,
+            image=pxt_table.image,
+            masks=pxt_table.connected_components,
+            boxes=pxt_table.bounding_boxes,
+            points=pxt_table.random_points,
+            predictions=pxt_table.sam_logits,
+            tmp_dir=tmp_dir,
+        )
 
-    # Launch the FiftyOne App to explore
-    session = fo.launch_app(fo_dataset)
-    session.wait()
+        fo_dataset = fo.Dataset.from_importer(importer)
+        session = fo.launch_app(fo_dataset)
+        session.wait()
 
 
 if __name__ == "__main__":

@@ -43,17 +43,20 @@ def bounding_boxes(masks: pxt.Array) -> pxt.Array:
         num_labels, _, stats, _ = cv2.connectedComponentsWithStats(
             mask.astype(np.uint8)
         )
-        boxes.append(
-            [
-                (
-                    stats[label_idx, 1],
-                    stats[label_idx, 0],
-                    stats[label_idx, 1] + stats[label_idx, 3],
-                    stats[label_idx, 0] + stats[label_idx, 2],
-                )  # x, y, width, height
-                for label_idx in range(1, num_labels)  # Exclude background label (0)
-            ]
-        )
+        if num_labels > 1:
+            boxes.append(
+                [
+                    (
+                        stats[label_idx, 1],
+                        stats[label_idx, 0],
+                        stats[label_idx, 1] + stats[label_idx, 3],
+                        stats[label_idx, 0] + stats[label_idx, 2],
+                    )  # x, y, width, height
+                    for label_idx in range(
+                        1, num_labels
+                    )  # Exclude background label (0)
+                ]
+            )
 
     return (
         np.array(boxes, dtype=np.int64)
@@ -65,10 +68,14 @@ def bounding_boxes(masks: pxt.Array) -> pxt.Array:
 @pxt.udf
 def random_points(
     masks: pxt.Array,
-    boxes: pxt.Array[pxt.Int],
+    boxes: Optional[pxt.Array],
     num_points: int = 1,
 ) -> pxt.Array:
-    points: list[pxt.Array] = []
+    points: list[Optional[pxt.Array]] = []
+
+    if boxes.size == 0:
+        return np.empty((0, 0, 2), dtype=np.int64)
+
     for mask_idx, mask in enumerate(masks):
         for box in boxes[mask_idx]:
             # Ensure the box is within the mask bounds
@@ -118,12 +125,14 @@ def predict_with_sam(
 
     masks = []
     assert boxes is not None and points is not None
+
+    model.set_image(image)
+
     for box in boxes:
+        box_masks = []
         for point_box in points:
             labels = np.ones((point_box.shape[0], 1), dtype=np.int64)
             for point, label in zip(point_box, labels):
-                model.set_image(image)
-
                 sam_masks, iou_predictions, _ = model.predict(
                     box=box,
                     point_coords=point[np.newaxis, ...],
@@ -131,7 +140,7 @@ def predict_with_sam(
                     return_logits=True,
                 )
 
-                masks.append(
+                box_masks.append(
                     np.concatenate(
                         [
                             sam_masks,
@@ -140,12 +149,15 @@ def predict_with_sam(
                                 + iou_predictions.reshape(*iou_predictions.shape, 1, 1)
                             ),
                         ],
-                        axis=1,
+                        axis=0,
                     )  # Concatenate masks and iou predictions in the same array
                 )
+            masks.append(np.stack(box_masks, axis=0))
 
-    return (
-        np.concatenate(masks, axis=0)
+    stacked = (
+        np.stack(masks, axis=0)
         if masks
         else np.zeros((0, *image.size, 3), dtype=np.float32)
     )
+
+    return stacked if stacked.ndim > 4 else stacked[np.newaxis, ...]
