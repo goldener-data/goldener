@@ -6,6 +6,7 @@ import numpy as np
 import puremagic
 import torch
 from PIL.Image import Image
+from bson import ObjectId
 from hydra.utils import instantiate
 from omegaconf import DictConfig
 
@@ -60,7 +61,8 @@ class PxtSAMDatasetImporter(foud.LabeledImageDatasetImporter):
         masks: exprs.Expr,
         boxes: exprs.Expr,
         points: exprs.Expr,
-        predictions: exprs.Expr,
+        sam_logits: exprs.Expr | None,
+        sam_masks: exprs.Expr | None,
         tmp_dir: str,
         dataset_dir: Optional[os.PathLike] = None,
     ):
@@ -68,11 +70,16 @@ class PxtSAMDatasetImporter(foud.LabeledImageDatasetImporter):
             dataset_dir=dataset_dir, shuffle=None, seed=None, max_samples=None
         )
         self._labels = {
-            "masks": (masks, fo.Segmentation),
+            "ground_truth": (masks, fo.Segmentation),
             "boxes": (boxes, fo.Detection),
             "points": (points, fo.Keypoint),
-            "predictions": (predictions, fo.Heatmap),
         }
+        if sam_logits is not None:
+            self._labels["sam_logits"] = (sam_logits, fo.Heatmap)
+
+        if sam_masks is not None:
+            self._labels["sam_masks"] = (sam_masks, fo.Segmentation)
+
         self.tmp_dir = tmp_dir
 
         selection = [image] + [expr for expr, _ in self._labels.values()]
@@ -104,7 +111,7 @@ class PxtSAMDatasetImporter(foud.LabeledImageDatasetImporter):
         for idx, (label_name, (_, label_cls)) in enumerate(self._labels.items()):
             label_data = row[idx + 1]  # +1 because the first column is the image
             if label_cls is fo.Segmentation:
-                label_list = self._as_fo_segmentation(label_data)
+                label_list = self._as_fo_segmentation(label_data, prefix=label_name)
             elif label_cls is fo.Detection:
                 label_list = self._as_fo_detection(label_data, img.size)
             elif label_cls is fo.Keypoint:
@@ -120,7 +127,7 @@ class PxtSAMDatasetImporter(foud.LabeledImageDatasetImporter):
                     heamtap_list = []
                     for heatmap, classification in label_list:
                         classification_list.append(classification)
-                        map_path = f"{self.tmp_dir}/{heatmap.label}.png"
+                        map_path = f"{self.tmp_dir}/{heatmap.label}_{ObjectId()}.png"
 
                         cv2.imwrite(map_path, heatmap.map)  # Save the heatmap to a file
                         heamtap_list.append(
@@ -143,17 +150,30 @@ class PxtSAMDatasetImporter(foud.LabeledImageDatasetImporter):
             },
         )
 
-    def _as_fo_segmentation(self, data: pxt.Array) -> list[fo.Segmentation] | None:
+    def _as_fo_segmentation(
+        self, data: pxt.Array, prefix: str = "ground_truth"
+    ) -> list[fo.Segmentation] | None:
         if (data == 0).all():
             return None
 
-        return [
-            fo.Segmentation(
-                mask=mask,
-                label="ground_truth",
-            )
-            for mask in data
-        ]
+        if data.ndim == 3:
+            # ground truth masks are in the shape (num_masks, height, width)
+            return [
+                fo.Segmentation(
+                    mask=mask,
+                    label=f"{prefix}_{idx_mask}",
+                )
+                for idx_mask, mask in enumerate(data)
+            ]
+        else:
+            return [
+                fo.Segmentation(
+                    mask=point_mask,
+                    label=f"{prefix}_{idx_box}_{idx_point}",
+                )
+                for idx_box, box_mask in enumerate(data)
+                for idx_point, point_mask in enumerate(box_mask)
+            ]
 
     def _as_fo_detection(
         self, data: pxt.Array, img_size: tuple[int, int]
@@ -166,10 +186,10 @@ class PxtSAMDatasetImporter(foud.LabeledImageDatasetImporter):
             fo.Detection(
                 label=f"bounding_box_{idx_boxes}_{idx_box}",
                 bounding_box=[
-                    box[1] / w,
-                    box[0] / h,
-                    (box[3] - box[1]) / w,
-                    (box[2] - box[0]) / h,
+                    box[0] / w,
+                    box[1] / h,
+                    (box[2] - box[0]) / w,
+                    (box[3] - box[1]) / h,
                 ],
             )
             for idx_boxes, boxes in enumerate(data)
@@ -185,7 +205,7 @@ class PxtSAMDatasetImporter(foud.LabeledImageDatasetImporter):
         w, h = img_size
         return [
             fo.Keypoint(
-                points=[(point[1] / w, point[0] / h)],  # x, y
+                points=[(point[0] / w, point[1] / h)],  # x, y
                 label=f"random_point_{idx_box}_{idx_point}",
             )
             for idx_box, box_points in enumerate(data)

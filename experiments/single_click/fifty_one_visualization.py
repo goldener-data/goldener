@@ -37,7 +37,8 @@ def show_in_fiftyone(cfg: DictConfig) -> None:
             masks=pxt_table.connected_components,
             boxes=pxt_table.bounding_boxes,
             points=pxt_table.random_points,
-            predictions=pxt_table.sam_logits,
+            sam_logits=pxt_table.sam_logits if cfg.visualization.show_logits else None,
+            sam_masks=pxt_table.sam_masks if cfg.visualization.show_mask else None,
             tmp_dir=tmp_dir,
         )
 

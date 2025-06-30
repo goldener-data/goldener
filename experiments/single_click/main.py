@@ -6,7 +6,6 @@ from omegaconf import DictConfig
 
 import pixeltable as pxt
 
-
 from experiments.utils import (
     force_seed,
     get_pxt_table_name,
@@ -26,6 +25,7 @@ def run_experiment(cfg: DictConfig) -> None:
         random_points,
         bounding_boxes,
         predict_with_sam,
+        mask_prediction_from_sam_logits,
     )
     from experiments.single_click.load import sam_cache
 
@@ -137,6 +137,12 @@ def run_experiment(cfg: DictConfig) -> None:
                     boxes=pxt_table.bounding_boxes,
                     points=pxt_table.random_points,
                 )
+            )
+
+        if "sam_masks" not in pxt_columns:
+            logger.info("Adding masks from the prediction to the pixeltable table")
+            pxt_table.add_computed_column(
+                sam_masks=mask_prediction_from_sam_logits(pxt_table.sam_logits)
             )
 
 

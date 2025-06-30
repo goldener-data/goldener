@@ -47,10 +47,12 @@ def bounding_boxes(masks: pxt.Array) -> pxt.Array:
             boxes.append(
                 [
                     (
-                        stats[label_idx, 1],
-                        stats[label_idx, 0],
-                        stats[label_idx, 1] + stats[label_idx, 3],
-                        stats[label_idx, 0] + stats[label_idx, 2],
+                        stats[label_idx, cv2.CC_STAT_LEFT],
+                        stats[label_idx, cv2.CC_STAT_TOP],
+                        stats[label_idx, cv2.CC_STAT_LEFT]
+                        + stats[label_idx, cv2.CC_STAT_WIDTH],
+                        stats[label_idx, cv2.CC_STAT_TOP]
+                        + stats[label_idx, cv2.CC_STAT_HEIGHT],
                     )  # x, y, width, height
                     for label_idx in range(
                         1, num_labels
@@ -79,7 +81,7 @@ def random_points(
     for mask_idx, mask in enumerate(masks):
         for box in boxes[mask_idx]:
             # Ensure the box is within the mask bounds
-            y1, x1, y2, x2 = box
+            x1, y1, x2, y2 = box
             x1 = max(0, x1)
             y1 = max(0, y1)
             x2 = min(mask.shape[1], x2)
@@ -97,7 +99,11 @@ def random_points(
                 selected_indices = np.random.choice(
                     indices.shape[0], size=num_points, replace=False
                 )
-                points.append(indices[selected_indices])
+                points.append(
+                    np.array(
+                        [[point[1], point[0]] for point in indices[selected_indices]]
+                    )
+                )
 
     return (
         np.array(points, dtype=np.int64)
@@ -121,43 +127,68 @@ def predict_with_sam(
     model = sam_cache[model_id]
 
     if boxes.size == 0:
-        return np.zeros(image.size, dtype=np.float32)
+        return np.zeros((0, 5, 6, *image.size), dtype=np.float32)
 
     masks = []
     assert boxes is not None and points is not None
 
     model.set_image(image)
 
-    for box in boxes:
+    for box, point_box in zip(boxes, points, strict=True):
         box_masks = []
-        for point_box in points:
-            labels = np.ones((point_box.shape[0], 1), dtype=np.int64)
-            for point, label in zip(point_box, labels):
-                sam_masks, iou_predictions, _ = model.predict(
-                    box=box,
-                    point_coords=point[np.newaxis, ...],
-                    point_labels=label,
-                    return_logits=True,
-                )
+        labels = np.ones((point_box.shape[0], 1), dtype=np.int64)
+        for point, label in zip(point_box, labels):
+            sam_masks, iou_predictions, _ = model.predict(
+                box=box,
+                point_coords=point[np.newaxis, ...],
+                point_labels=label,
+                return_logits=True,
+            )
 
-                box_masks.append(
-                    np.concatenate(
-                        [
-                            sam_masks,
-                            (
-                                np.zeros_like(sam_masks)
-                                + iou_predictions.reshape(*iou_predictions.shape, 1, 1)
-                            ),
-                        ],
-                        axis=0,
-                    )  # Concatenate masks and iou predictions in the same array
-                )
-            masks.append(np.stack(box_masks, axis=0))
+            box_masks.append(
+                np.concatenate(
+                    [
+                        sam_masks,
+                        (
+                            np.zeros_like(sam_masks)
+                            + iou_predictions.reshape(*iou_predictions.shape, 1, 1)
+                        ),
+                    ],
+                    axis=0,
+                )  # Concatenate masks and iou predictions in the same array
+            )
+        masks.append(np.stack(box_masks, axis=0))
+
+    stacked = np.stack(masks, axis=0)
+
+    return stacked if stacked.ndim > 4 else stacked[np.newaxis, ...]
+
+
+@pxt.udf
+def mask_prediction_from_sam_logits(
+    sam_logits: pxt.Array,
+    threshold: float = 0.0,
+) -> pxt.Array:
+    """
+    Threshold the SAM logits to create binary masks.
+    """
+    sam_masks = []
+    for box_logits in sam_logits:
+        for point_logits in box_logits:
+            ious = point_logits[
+                -3:, 0, 0
+            ]  # ious are the 3 last channels filled with all the same value (IOU prediction for the corresponding mask)
+            best_iou_index = np.argmax(ious)  # Get the index of the best IoU prediction
+            sam_masks.append(
+                (point_logits[best_iou_index] > threshold).astype(
+                    np.float32
+                )  # Apply threshold to the best IoU mask
+            )
 
     stacked = (
-        np.stack(masks, axis=0)
-        if masks
-        else np.zeros((0, *image.size, 3), dtype=np.float32)
+        np.stack(sam_masks, axis=0)
+        if sam_masks
+        else np.zeros((1, 0, *sam_logits.shape[-2:]), dtype=np.float32)
     )
 
     return stacked if stacked.ndim > 4 else stacked[np.newaxis, ...]
