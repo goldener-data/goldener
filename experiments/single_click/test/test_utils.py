@@ -1,11 +1,16 @@
 from typing import Any
 
+from unittest.mock import MagicMock
+
+import fiftyone as fo
+import PIL
 import torch
 import numpy as np
 from PIL.Image import Image
 from omegaconf import OmegaConf
+from pathlib import Path
+
 from experiments.single_click import utils
-from unittest.mock import MagicMock
 
 
 class TestGetPxtRunName:
@@ -135,3 +140,71 @@ class TestImportAnyDatasetToPixeltable:
             assert isinstance(row["image"], Image)
             assert np.all(row["mask"] == np.ones((8, 8)))
             assert row["label"] == "foo"
+
+
+class TestPxtSAMSingleClickDatasetImporter:
+    def test_importer_next(self, tmp_path: Path) -> None:
+        # Setup mocks for pxt_table and exprs
+        pxt_table = MagicMock()
+        image_expr = MagicMock()
+        masks_expr = MagicMock()
+        boxes_expr = MagicMock()
+        points_expr = MagicMock()
+        sam_logits_expr = MagicMock()
+        sam_masks_expr = MagicMock()
+
+        # Mock the image expression to have .col.is_stored and .localpath
+        image_expr.col.is_stored = True
+        image_expr.localpath = str(tmp_path / "image.png")
+
+        # Mock the DataFrame returned by pxt_table.select
+        df_mock = MagicMock()
+
+        # Create a dummy image and save it to the local path
+        img = PIL.Image.new("RGB", (10, 10))
+        img.save(image_expr.localpath)
+
+        # Prepare a fake row: [image, mask, box, point, sam_logits, sam_masks, localpath]
+        row = [
+            img,
+            np.ones((1, 10, 10)),
+            np.ones((1, 4)),
+            np.ones((1, 1, 2)),
+            np.ones((1, 1, 6, 10, 10)),
+            np.ones((1, 1, 10, 10)),
+            image_expr.localpath,
+        ]
+        df_mock._output_row_iterator.return_value = iter([row])
+        pxt_table.select.return_value = df_mock
+
+        importer = utils.PxtSAMSingleClickDatasetImporter(
+            pxt_table=pxt_table,
+            image=image_expr,
+            masks=masks_expr,
+            boxes=boxes_expr,
+            points=points_expr,
+            sam_logits=sam_logits_expr,
+            sam_masks=sam_masks_expr,
+            tmp_dir=str(tmp_path),
+            dataset_dir=None,
+        )
+
+        # Should not raise and should return a tuple
+        result = next(importer)
+
+        assert isinstance(result, tuple)
+        assert len(result) == 3
+        assert isinstance(result[0], str)
+        assert isinstance(result[1], fo.ImageMetadata)
+        assert isinstance(result[2], dict)
+        assert len(result[2]) == 10
+        assert isinstance(result[2]["ground_truth_0"], fo.Segmentation)
+        assert isinstance(result[2]["bounding_box_0"], fo.Detection)
+        assert isinstance(result[2]["random_point_0_0"], fo.Keypoint)
+        assert isinstance(result[2]["sam_logits_0_0_0"], fo.Heatmap)
+        assert isinstance(result[2]["sam_logits_0_0_1"], fo.Heatmap)
+        assert isinstance(result[2]["sam_logits_0_0_2"], fo.Heatmap)
+        assert isinstance(result[2]["sam_iou_0_0_0"], fo.Classification)
+        assert isinstance(result[2]["sam_iou_0_0_1"], fo.Classification)
+        assert isinstance(result[2]["sam_iou_0_0_2"], fo.Classification)
+        assert isinstance(result[2]["sam_masks_0_0"], fo.Segmentation)
