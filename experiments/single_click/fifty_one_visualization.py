@@ -7,15 +7,17 @@ from omegaconf import DictConfig
 import pixeltable as pxt
 import fiftyone as fo
 
-from experiments.utils import get_pxt_run_name, get_pxt_table_path
+from experiments.single_click.utils import (
+    get_pxt_run_name,
+    get_pxt_table_path,
+    PxtSAMSingleClickDatasetImporter,
+)
 
 logger = getLogger(__name__)
 
 
 @hydra.main(version_base=None, config_path="config/", config_name="config")
 def show_in_fiftyone(cfg: DictConfig) -> None:
-    from experiments.single_click.load import PxtSAMDatasetImporter
-
     pxt_run_name = get_pxt_run_name(
         cfg,
     )
@@ -31,7 +33,10 @@ def show_in_fiftyone(cfg: DictConfig) -> None:
     pxt_table = pxt.get_table(pxt_table_name)
 
     with TemporaryDirectory() as tmp_dir:
-        importer = PxtSAMDatasetImporter(
+        logger.info(
+            f"Using temporary directory: {tmp_dir} to create custom fiftyone importer"
+        )
+        importer = PxtSAMSingleClickDatasetImporter(
             pxt_table=pxt_table,
             image=pxt_table.image,
             masks=pxt_table.connected_components,
@@ -41,8 +46,9 @@ def show_in_fiftyone(cfg: DictConfig) -> None:
             sam_masks=pxt_table.sam_masks if cfg.visualization.show_mask else None,
             tmp_dir=tmp_dir,
         )
-
         fo_dataset = fo.Dataset.from_importer(importer)
+
+        logger.info("Running fiftyone session")
         session = fo.launch_app(fo_dataset)
         session.wait()
 

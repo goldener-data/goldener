@@ -6,7 +6,7 @@ from omegaconf import DictConfig
 
 import pixeltable as pxt
 
-from experiments.utils import (
+from experiments.single_click.utils import (
     force_seed,
     get_pxt_table_name,
     import_any_dataset_to_pixeltable,
@@ -20,14 +20,14 @@ logger = getLogger(__name__)
 @hydra.main(version_base=None, config_path="config/", config_name="config")
 def run_experiment(cfg: DictConfig) -> None:
     from experiments.single_click.pixeltable_udf import (
-        image_size,
         connected_components,
         random_points,
         bounding_boxes,
-        predict_with_sam,
-        mask_prediction_from_sam_logits,
+        sam_logits_from_single_click,
+        masks_from_sam_logits,
+        segmentation_ious,
     )
-    from experiments.single_click.load import sam_cache
+    from experiments.single_click.model import sam_cache
 
     force_seed(seed=cfg.pipeline.seed)
 
@@ -36,7 +36,7 @@ def run_experiment(cfg: DictConfig) -> None:
     logger.info(f"Loading the model: {cfg.model.name}")
     model_config = cfg.model
     if model_config.name == "sam":
-        from experiments.single_click.load import (
+        from experiments.single_click.model import (
             load_sam2_image_predictor_from_huggingface,
         )  # Sam2 is using hydra which is conflicting with hydra.main
 
@@ -99,9 +99,6 @@ def run_experiment(cfg: DictConfig) -> None:
         )
 
     pxt_columns = pxt_table.columns()
-    if "image_size" not in pxt_columns:
-        logger.info("Adding image_size columns to the pixeltable table")
-        pxt_table.add_computed_column(image_size=image_size(pxt_table.image))
 
     if "connected_components" not in pxt_columns:
         logger.info("Adding connected_components columns to the pixeltable table")
@@ -121,8 +118,7 @@ def run_experiment(cfg: DictConfig) -> None:
         logger.info("Adding random_points columns to the pixeltable table")
         pxt_table.add_computed_column(
             random_points=random_points(
-                masks=pxt_table.connected_components,
-                boxes=pxt_table.bounding_boxes,
+                connected_components=pxt_table.connected_components,
                 num_points=cfg.pipeline.num_points,
             )
         )
@@ -131,7 +127,7 @@ def run_experiment(cfg: DictConfig) -> None:
         if "sam_logits" not in pxt_columns:
             logger.info("Applying segmentation model to the pixeltable table")
             pxt_table.add_computed_column(
-                sam_logits=predict_with_sam(
+                sam_logits=sam_logits_from_single_click(
                     model_id=model_config.hf_id,
                     image=pxt_table.image,
                     boxes=pxt_table.bounding_boxes,
@@ -142,7 +138,18 @@ def run_experiment(cfg: DictConfig) -> None:
         if "sam_masks" not in pxt_columns:
             logger.info("Adding masks from the prediction to the pixeltable table")
             pxt_table.add_computed_column(
-                sam_masks=mask_prediction_from_sam_logits(pxt_table.sam_logits)
+                sam_masks=masks_from_sam_logits(pxt_table.sam_logits)
+            )
+
+        if "sam_ious" not in pxt_columns:
+            logger.info(
+                "Adding iou metric from the masks and ground truth to the pixeltable table"
+            )
+            pxt_table.add_computed_column(
+                sam_ious=segmentation_ious(
+                    connected_components=pxt_table.connected_components,
+                    predicted_masks=pxt_table.sam_masks,
+                )
             )
 
 

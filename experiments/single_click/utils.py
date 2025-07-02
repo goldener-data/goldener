@@ -1,55 +1,156 @@
 import os
-from typing import Optional, Any
+import random
+from typing import Any, Optional
 
 import cv2
-import numpy as np
+import fiftyone as fo
+import pixeltable as pxt
 import puremagic
-import torch
 from PIL.Image import Image
 from bson import ObjectId
-from hydra.utils import instantiate
+from fiftyone.utils import data as foud
+
 from omegaconf import DictConfig
 
-from huggingface_hub import hf_hub_download
-import fiftyone as fo
-import fiftyone.utils.data as foud
-from pixeltable import exprs
+from torchvision.transforms.v2 import functional as F
+import numpy as np
+import torch
+from pixeltable.type_system import ColumnType
+from torch.utils.data import DataLoader, RandomSampler
 
-from sam2.build_sam import HF_MODEL_ID_TO_FILENAMES
-from sam2.sam2_image_predictor import SAM2ImagePredictor
+from any_gold import AnyRawDataset, AnyVisionSegmentationDataset
+from pixeltable import catalog, exprs
 
-import pixeltable as pxt
+SEED = int(os.environ.get("SEED", 42))
 
 
-def load_sam2_image_predictor_from_huggingface(
-    model_cfg: DictConfig,
-    device: str = "cuda",
-    mode: str = "eval",
-) -> SAM2ImagePredictor:
-    hf_id = model_cfg.hf_id
+def force_seed(seed: int = SEED) -> None:
+    """
+    Force the random seed for reproducibility.
+    """
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
 
-    ckpt_path = hf_hub_download(
-        repo_id=hf_id, filename=HF_MODEL_ID_TO_FILENAMES[hf_id][1]
+
+def get_pxt_run_name(cfg: DictConfig) -> str:
+    """
+    Generate a unique name for the PixelTable based on the configuration.
+    """
+    if cfg.pixeltable.run_name is not None:
+        return f"{cfg.pixeltable.dir_name}.{cfg.pixeltable.run_name}"
+
+    dataset = cfg.dataset.args._target_.split(".")[-1]
+    model = cfg.model.name
+    split = cfg.dataset.args.split
+
+    run_name = f"{cfg.pixeltable.dir_name}.{dataset}_{model}_{split}"
+    if "category" in cfg.dataset.args:
+        run_name += f"_{cfg.dataset.args.category}"
+
+    return run_name
+
+
+def get_pxt_table_name(
+    cfg: DictConfig,
+    run_name: str,
+) -> str:
+    """
+    Generate a unique name for the PixelTable view based on the configuration.
+    """
+    view_name = (
+        cfg.pixeltable.table_name
+        if cfg.pixeltable.table_name is not None
+        else f"seed_{cfg.pipeline.seed}_k_{cfg.pipeline.k_shots}_n_{cfg.pipeline.num_points}_amin_{cfg.pipeline.min_area}"
     )
-    model = instantiate(model_cfg.config.model, _recursive_=True)
-    sd = torch.load(ckpt_path, map_location="cpu", weights_only=True)["model"]
-    missing_keys, unexpected_keys = model.load_state_dict(sd)
-    if missing_keys or unexpected_keys:
-        raise RuntimeError(
-            "Missing or unexpected keys in state dict to SAM 2 checkpoint."
-        )
 
-    model = model.to(device)
-    if mode == "eval":
-        model.eval()
-
-    return SAM2ImagePredictor(sam_model=model)
+    return f"{run_name}.{view_name}"
 
 
-sam_cache: dict[str, SAM2ImagePredictor] = {}
+def get_pxt_table_path(
+    cfg: DictConfig,
+) -> str:
+    """
+    Generate the path to the PixelTable based on the configuration.
+    """
+    run_name = get_pxt_run_name(cfg)
+    return get_pxt_table_name(cfg, run_name)
 
 
-class PxtSAMDatasetImporter(foud.LabeledImageDatasetImporter):
+def format_for_pixeltable(value: Any, is_image: bool) -> Any:
+    if isinstance(value, torch.Tensor):
+        if is_image:
+            return F.to_pil_image(value.cpu())
+        else:
+            if value.dim() == 0:
+                return value.item()
+
+            return value.numpy().astype(np.int64)
+    else:
+        return value
+
+
+def import_any_dataset_to_pixeltable(
+    dataset: AnyVisionSegmentationDataset,
+    pxt_table: catalog.Table,
+    label: str | None = None,
+    num_samples: int | None = None,
+    batch_size: int = 16,
+    num_workers: int = 0,
+) -> None:
+    """Load a PyTorch dataset into a PixelTable.
+
+    Args:
+        dataset: The PyTorch dataset to import from.
+        pxt_table: The PixelTable to import the data into.
+        label: The name of the label column in the dataset.
+        batch_size: Number of samples per batch.
+        num_workers: Number of subprocesses to use for data loading.
+    """
+    raw_dataset = AnyRawDataset(dataset)
+    sampler = RandomSampler(dataset, replacement=False, num_samples=num_samples)
+    dataloader = DataLoader(
+        raw_dataset,
+        batch_size=batch_size,
+        sampler=sampler,
+        num_workers=num_workers,
+        collate_fn=lambda x: x,
+    )
+
+    for batch in dataloader:
+        for sample in batch:
+            to_insert = {}
+            for key, value in sample.items():
+                value_for_pxt = format_for_pixeltable(value, key == "image")
+                # if the label is a column name, rename this column `label`
+                if key == label:
+                    key = "label"
+
+                # add missing column from table definition
+                if key not in pxt_table.columns():
+                    pxt_table.add_columns(
+                        {
+                            key: ColumnType.from_python_type(
+                                type(value_for_pxt),
+                                nullable_default=True,
+                                allow_builtin_types=True,
+                            )
+                        }
+                    )
+                if key == "mask":
+                    value_for_pxt = np.squeeze(value_for_pxt)
+                to_insert[key] = value_for_pxt
+
+            # missing label column mean the label should have the specified value
+            if "label" not in to_insert:
+                to_insert["label"] = label
+
+            pxt_table.insert(**to_insert)
+
+
+class PxtSAMSingleClickDatasetImporter(foud.LabeledImageDatasetImporter):
     """
     Implementation of a FiftyOne `DatasetImporter` that reads image data from a Pixeltable table.
     """
@@ -97,6 +198,8 @@ class PxtSAMDatasetImporter(foud.LabeledImageDatasetImporter):
         img = row[0]
         file = row[-1]
 
+        print(f"converting {file}")
+
         assert isinstance(img, Image), "Image data must be a PIL Image"
         metadata = fo.ImageMetadata(
             size_bytes=os.path.getsize(file),
@@ -124,20 +227,20 @@ class PxtSAMDatasetImporter(foud.LabeledImageDatasetImporter):
                     labels[label_name] = label_list
                 else:
                     classification_list = []
-                    heamtap_list = []
+                    heatmap_list = []
                     for heatmap, classification in label_list:
                         classification_list.append(classification)
                         map_path = f"{self.tmp_dir}/{heatmap.label}_{ObjectId()}.png"
 
                         cv2.imwrite(map_path, heatmap.map)  # Save the heatmap to a file
-                        heamtap_list.append(
+                        heatmap_list.append(
                             fo.Heatmap(
                                 label=heatmap.label,
                                 map_path=map_path,
                                 range=heatmap.range,
                             )
                         )
-                    labels["sam_logits"] = heamtap_list
+                    labels["sam_logits"] = heatmap_list
                     labels["sam_iou"] = classification_list
 
         return (
@@ -151,13 +254,13 @@ class PxtSAMDatasetImporter(foud.LabeledImageDatasetImporter):
         )
 
     def _as_fo_segmentation(
-        self, data: pxt.Array, prefix: str = "ground_truth"
+        self, data: None | np.ndarray, prefix: str = "ground_truth"
     ) -> list[fo.Segmentation] | None:
-        if (data == 0).all():
+        if data is None:
             return None
 
         if data.ndim == 3:
-            # ground truth masks are in the shape (num_masks, height, width)
+            # ground truth masks are in the shape (M, height, width)
             return [
                 fo.Segmentation(
                     mask=mask,
@@ -176,15 +279,15 @@ class PxtSAMDatasetImporter(foud.LabeledImageDatasetImporter):
             ]
 
     def _as_fo_detection(
-        self, data: pxt.Array, img_size: tuple[int, int]
+        self, data: np.ndarray | None, img_size: tuple[int, int]
     ) -> list[fo.Detection] | None:
-        if data.size == 0:
+        if data is None:
             return None
 
         w, h = img_size
         return [
             fo.Detection(
-                label=f"bounding_box_{idx_boxes}_{idx_box}",
+                label=f"bounding_box_{idx_box}",
                 bounding_box=[
                     box[0] / w,
                     box[1] / h,
@@ -192,14 +295,13 @@ class PxtSAMDatasetImporter(foud.LabeledImageDatasetImporter):
                     (box[3] - box[1]) / h,
                 ],
             )
-            for idx_boxes, boxes in enumerate(data)
-            for idx_box, box in enumerate(boxes)
+            for idx_box, box in enumerate(data)
         ]
 
     def _as_fo_keypoint(
-        self, data: pxt.Array, img_size: tuple[int, int]
+        self, data: np.ndarray | None, img_size: tuple[int, int]
     ) -> list[fo.Keypoint] | None:
-        if data.size == 0:
+        if data is None:
             return None
 
         w, h = img_size
@@ -214,9 +316,10 @@ class PxtSAMDatasetImporter(foud.LabeledImageDatasetImporter):
         ]
 
     def _as_fo_heatmap_and_classification(
-        self, data: pxt.Array
+        self,
+        data: np.ndarray | None,
     ) -> list[tuple[fo.Heatmap, fo.Classification]] | None:
-        if (data == 0).all():
+        if data is None:
             return None
 
         def make_heatmap(arr: np.ndarray) -> np.ndarray:
