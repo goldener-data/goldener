@@ -2,30 +2,30 @@
 
 # Goldener - Make your data even more valuable
 
-Goldener is an open-source Python library (Apach 2 licence) designed to manage the orchestration 
-of data (sampling, splitting and labeling) during the full life cycle of machine learning pipelines. 
+Goldener is an open-source Python library (Apache 2 licence) designed to manage the orchestration 
+of data (sampling, splitting and labeling) during the full life cycle of machine learning (ML) pipelines. 
 
 In the artificial intelligence (AI) era, the data is the new gold. Being able to collect it is already something.
-However, using blindly all these data is for sure costly: annotation cost, storage cost, training cost. Goldener is 
+However, using it blindly is for sure costly: annotation cost, storage cost, training cost. Goldener is 
 aiming to reduce all these costs by optimizing:
-- Data sampling and splitting: sample the right data to best train and test your machine learning models.
-- Data labeling: Ensure high-quality data to train and test machine learning models.
+- Data sampling and splitting: sample the right data ensuring just enough representativeness for the task.
+- Data labeling: Ensure high-quality data at scale with optimized human in loop processes.
 
 ## Sampling and labeling in AI life cycle
 
-Successful machine learning pipelines are all about data. All along the Machine Learning (ML) life cycle, getting access
-to data fully modelizing the real world task is key. Both training and test data are then crucial to the success of
+Successful machine learning pipelines are all about data. All along the AI life cycle, getting access
+to data fully modelizing the target task is key. Both training and test data are then crucial to the success of
 the ML pipelines and are continuously updated to ensure the pipeline performances during its whole usage:
 
 - **Training**: The training data defines the model ability to succeed its task.
     Training from not representative enough data makes the model unable to learn the task adequately. In the meantime,
-    using too much data will slow down the training process (time and money lost). Once the model is deployed, 
+    using too much data will slow down the training process. Once the model is deployed, 
     selecting new training data efficiently is as well crucial to solve data drift issues.
 - **Test**: The test data drives the design and validation of tested pipelines. Testing from not representative enough data 
-    ends up with bad design decision leading to poor performances in production. Once the model is deployed, selecting
+    ends up with bad design decision, hence to poor performances in production. Once the model is deployed, selecting
     new testing data is as well crucial to monitor the model performances and ensure it succeeds its task.
 
-In the meantime, all the sampled data is required to be labelled in order to be used in the ML pipelines, at least for
+In the meantime, all the sampled data is required to be labelled in order to be used during the ML lifecycle, at least for
 the test/monitoring sets in case of unsupervised learning. Labeling data is costly and time-consuming, 
 especially when it comes to large datasets. Most of the time, it involves an iterative process including human
 labelers potentially helped by some AI tools. An efficient data sampling before labeling allows to optimize
@@ -35,7 +35,7 @@ labeled data can:
 - Lead to wrong design decisions during the model validation phase (wrong test data leading to wrong conclusions)
 
 The goal of Goldener is to provide the orchestration ensuring the access to high-quality and representative enough data 
-during the whole life cycle of the ML pipelines. User gets the right data at the right time, ensuring the best performances
+during the whole life cycle of the ML pipelines. With Goldener, the users get the right data at the right time, ensuring the best performances
 of the ML pipelines while minimizing the costs of data sampling and labeling.
 
 <div align="center">
@@ -49,13 +49,13 @@ As a gardener exploiting the most of a good ground, Goldener aims to make the mo
 and make it even more valuable. Mainly, Goldener features a set of tools to help you to:
 
 - **Gold prospection**: Sample and split the most valuable gold (data)
-    - Sample among raw data: Spot the data allowing to modelize the task (pipeline training) 
+    - Sample among raw data: Spot the data allowing to train a pipeline for a task,
     or spot weaknesses of a deployed pipeline while minimizing the need for labeling.
     - Split labeled data: Ensure enough representativeness in both the training and test sets 
     while optimizing the training process in effectiveness and time.
 
 - **Gold refining**: Ensure the gold (data) quality
-    - Assist in the labeling processing: Make human labeling faster with some smart labeling tools 
+    - Assist in the labeling process: Make human labeling faster with some smart labeling tools 
     (for instance create image segmentation masks from a single click).
     - Label data automatically: Propose labels for raw data based on foundation models or existing labeled data.
     - Curate newly labeled data: Identify potential labeling mistakes allowing humans labelers to converge 
@@ -64,8 +64,8 @@ and make it even more valuable. Mainly, Goldener features a set of tools to help
 
 ## Key design principles
 
-Goldener is designed in order to be able to process large datasets efficiently and effectively. It is integrating
-that every AI lifecycle is most of the time iterative and incremental. The design principles are:
+Goldener is designed to process large datasets efficiently and effectively. It is built on the assumption
+that every AI lifecycle is most of the time iterative and incremental. Its design principles are:
 
 - **Progressive batch processing**: Each task can be stopped and restarted on demand (or failure). 
 Already computed results are not recomputed.
@@ -76,7 +76,7 @@ They are stored and available whenever a new request is made.
 the different prospection and refining actions on the same data.
 
 To orchestrate both the sampling and labeling of data in Goldener, the same data is moving from steps to steps
-during the AI lifecycle. In addition, the information gathered all along the cycle is valuable to drive the efficiency
+during the AI lifecycle. In addition, the information gathered all along the cycle is leveraged to drive the efficiency
 of the next sampling and labeling. Thus, all the data is cached behind the scene and accessible any time.
 
 <div align="center">
