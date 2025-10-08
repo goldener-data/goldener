@@ -130,33 +130,31 @@ class FeatureFusion:
 
     def fuse_features(
         self,
-        features: dict[str, torch.Tensor],
+        x: dict[str, torch.Tensor],
         layers: list[str] | dict[str, list[str]],
     ) -> torch.Tensor:
         """Fuse features from multiple layers and groups.
 
         Args:
-            features: Dictionary mapping layer names to feature tensors.
+            x: Dictionary mapping layer names to feature tensors.
             layers: List of layer names or a dictionary mapping group names to lists of layer names.
 
         Returns: Fused feature tensor.
         """
         # list of layers are fused by layer_fusion strategy
         if isinstance(layers, list):
-            return self.fuse_tensors(
-                [features[name] for name in layers], self.layer_fusion
-            )
+            return self.fuse_tensors([x[name] for name in layers], self.layer_fusion)
 
         # groups of layers are fused by layer_fusion strategy,
         # then all groups are fused by group_fusion strategy
         fused_groups = []
         for group, layer_names in layers.items():
             if len(layer_names) == 1:
-                fused_groups.append(features[layer_names[0]])
+                fused_groups.append(x[layer_names[0]])
             else:
                 fused_groups.append(
                     self.fuse_tensors(
-                        [features[name] for name in layer_names], self.layer_fusion
+                        [x[name] for name in layer_names], self.layer_fusion
                     )
                 )
         return self.fuse_tensors(fused_groups, self.group_fusion)
@@ -208,27 +206,27 @@ class TorchFeatureExtractor(FeatureExtractor):
         """
         return self._layers
 
-    def extract(self, data: torch.Tensor) -> dict[str, torch.Tensor]:
+    def extract(self, x: torch.Tensor) -> dict[str, torch.Tensor]:
         """Extract features from the model for the given input data.
 
         Args:
-            data: Input data tensor to be processed by the model.
+            x: Input data tensor to be processed by the model.
 
         Returns: Dictionary mapping layer names to their extracted feature tensors.
         """
         self._features = {}
-        self._model(data)
+        self._model(x)
         return self._features
 
-    def extract_and_fuse(self, data: torch.Tensor) -> torch.Tensor:
+    def extract_and_fuse(self, x: torch.Tensor) -> torch.Tensor:
         """Extract and fuse features from the model for the given input data.
 
         Args:
-            data: Input data tensor to be processed by the model.
+            x: Input data tensor to be processed by the model.
 
         Returns: Fused feature tensor.
         """
-        features = self.extract(data)
+        features = self.extract(x)
         return self.fusion.fuse_features(features, self._layers)
 
     def __del__(self):
@@ -300,19 +298,19 @@ class MultiModalTorchFeatureExtractor(FeatureExtractor):
         self.strategy = strategy
 
     def extract_and_fuse(
-        self, data: Dict[str, torch.Tensor], keep_modality: str
+        self, x: Dict[str, torch.Tensor], keep_modality: str
     ) -> torch.Tensor:
         return FeatureFusion.fuse_tensors(
             [
-                extractor.extract_and_fuse(data[modality])
+                extractor.extract_and_fuse(x[modality])
                 for modality, extractor in self.extractors.items()
             ],
             self.strategy,
         )
 
-    def extract(self, data: Dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
+    def extract(self, x: Dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
         per_modality = {
-            modality: extractor.extract(data[modality])
+            modality: extractor.extract(x[modality])
             for modality, extractor in self.extractors.items()
         }
 
