@@ -13,6 +13,8 @@ dependencies = [
   "pixeltable",
   "ray[default, data]",
   "nvidia-ml-py",
+  "scikit-learn",
+  "umap-learn",
 ]
 
 [project.optional-dependencies]
