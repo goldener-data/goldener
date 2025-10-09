@@ -30,6 +30,9 @@ jobs:
     - name: Create virtual environment
       run: uv venv --python ${{ matrix.python-version }}
 
+    - name: Activate virtual environment
+      run: source .venv/bin/activate
+
     - name: Install dependencies
       run: |
         uv sync --all-extras
