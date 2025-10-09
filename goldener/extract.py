@@ -297,9 +297,7 @@ class MultiModalTorchFeatureExtractor(FeatureExtractor):
         }
         self.strategy = strategy
 
-    def extract_and_fuse(
-        self, x: Dict[str, torch.Tensor], keep_modality: str
-    ) -> torch.Tensor:
+    def extract_and_fuse(self, x: Dict[str, torch.Tensor]) -> torch.Tensor:
         return FeatureFusion.fuse_tensors(
             [
                 extractor.extract_and_fuse(x[modality])
