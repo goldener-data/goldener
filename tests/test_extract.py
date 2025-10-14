@@ -134,10 +134,8 @@ class TestTorchFeatureExtractor:
     def test_invalid_layer(self):
         model = DummyModel()
         config = TorchFeatureExtractorConfig(model=model, layers=["invalid_layer"])
-        extractor = TorchFeatureExtractor(config)
-        data = torch.randn(2, 3, 8, 8)
         with pytest.raises(ValueError):
-            extractor.extract(data)
+            TorchFeatureExtractor(config)
 
 
 class TestMultiModalTorchFeatureExtractor:
