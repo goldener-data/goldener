@@ -5,6 +5,7 @@ from goldener.torch_utils import (
     torch_tensor_to_numpy_vectors,
     numpy_vectors_to_torch_tensor,
     np_transform_from_torch,
+    make_2d_tensor,
 )
 
 
@@ -30,7 +31,10 @@ class TestTensorToVector:
     def test_torch_tensor_to_numpy_vectors_3d(self):
         t = torch.rand(2, 3, 4, dtype=torch.float32)
         arr = torch_tensor_to_numpy_vectors(t)
-        assert arr.shape == (2, 4, 3)
+        assert arr.shape == (
+            8,
+            3,
+        )
 
 
 class TestArrayToTensor:
@@ -94,3 +98,47 @@ class TestNpTranformFromTorch:
         t = torch.arange(6, dtype=torch.float32).reshape(2, 3)
         out = np_transform_from_torch(t, dummy_transform)
         assert out.shape == t.shape
+
+
+class TestMake2DTensor:
+    def test_0d_tensor(self):
+        t = torch.tensor(7)
+        out = make_2d_tensor(t)
+        assert isinstance(out, torch.Tensor)
+        assert out.shape == (1, 1)
+        assert out[0, 0] == 7
+
+    def test_1d_tensor(self):
+        t = torch.tensor([1, 2, 3])
+        out = make_2d_tensor(t)
+        assert isinstance(out, torch.Tensor)
+        assert out.shape == (3, 1)
+        assert torch.equal(out.squeeze(1), t)
+
+    def test_2d_tensor(self):
+        t = torch.arange(6).reshape(2, 3)
+        out = make_2d_tensor(t)
+        assert isinstance(out, torch.Tensor)
+        assert out.shape == (2, 3)
+        assert torch.equal(out, t)
+
+    def test_3d_tensor(self):
+        t = torch.arange(24).reshape(2, 3, 4)
+        out = make_2d_tensor(t)
+        # After moveaxis(1, -1): shape (2, 4, 3), then flatten(0, -2): (8, 3)
+        assert isinstance(out, torch.Tensor)
+        assert out.shape == (8, 3)
+        # Check content: first block should match t[0].moveaxis(0, -1).reshape(-1, 3)
+        t_moved = t.moveaxis(1, -1)
+        t_flat = t_moved.flatten(0, -2)
+        assert torch.equal(out, t_flat)
+
+    def test_4d_tensor(self):
+        t = torch.arange(2 * 3 * 4 * 5).reshape(2, 3, 4, 5)
+        out = make_2d_tensor(t)
+        # After moveaxis(1, -1): shape (2, 4, 5, 3), then flatten(0, -2): (40, 3)
+        assert isinstance(out, torch.Tensor)
+        assert out.shape == (40, 3)
+        t_moved = t.moveaxis(1, -1)
+        t_flat = t_moved.flatten(0, -2)
+        assert torch.equal(out, t_flat)
