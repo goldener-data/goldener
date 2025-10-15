@@ -4,6 +4,34 @@ import numpy as np
 import torch
 
 
+def make_2d_tensor(x: torch.Tensor) -> torch.Tensor:
+    """Convert a torch tensor to a 2D tensor.
+
+    If the input tensor is 0D, it is converted to a (1, 1) tensor.
+    If the input tensor is 1D, it is converted to a (N, 1) tensor.
+    If the input tensor is 2D, it is kept as (N, M) tensor.
+    If the input tensor is 3D or higher, the second dimension is moved to the last
+    dimension, and the first dimensions are flattened to form a 2D tensor.
+
+    Args:
+        x: Input tensor convert to 2D tensor.
+
+    Returns:
+        A 2D tensor of shape (N, M)
+    """
+    initial_ndim = x.ndim
+    if initial_ndim == 0:
+        x = x.unsqueeze(0).unsqueeze(0)
+    elif initial_ndim == 1:
+        x = x.unsqueeze(1)
+
+    if x.ndim == 2:
+        return x
+
+    x = x.moveaxis(1, -1)
+    return x.flatten(0, -2)
+
+
 def torch_tensor_to_numpy_vectors(x: torch.Tensor) -> np.ndarray:
     """Convert a torch tensor to a numpy array of vectors.
 
@@ -19,17 +47,7 @@ def torch_tensor_to_numpy_vectors(x: torch.Tensor) -> np.ndarray:
     Returns:
         A 2D numpy array of shape (N, M)
     """
-    initial_ndim = x.ndim
-    if initial_ndim == 0:
-        x = x.unsqueeze(0).unsqueeze(0)
-    elif initial_ndim == 1:
-        x = x.unsqueeze(1)
-
-    if x.ndim <= 2:
-        return x.cpu().numpy()
-
-    x = x.moveaxis(1, -1)
-    x.flatten(0, -2)
+    x = make_2d_tensor(x)
     return x.cpu().numpy()
 
 

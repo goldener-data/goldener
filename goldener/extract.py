@@ -1,11 +1,11 @@
 from abc import abstractmethod
+from typing_extensions import assert_never
+from typing import Dict, List, Callable, Any
+
 from dataclasses import dataclass
 from enum import Enum
 
 import torch
-from typing import Dict, List, Callable, Any
-
-from typing_extensions import assert_never
 
 
 class FeatureExtractor:
