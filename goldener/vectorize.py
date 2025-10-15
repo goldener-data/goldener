@@ -61,7 +61,7 @@ class Filter2DWithCount:
 
     @property
     def is_random(self):
-        """Check if the filter is not random."""
+        """Check if the filter is random."""
         return self._filter_location is FilterLocation.RANDOM
 
     def filter(
