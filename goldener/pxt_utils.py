@@ -33,6 +33,9 @@ def create_views_per_column_value(
 
     Args:
         table: The PixelTable table.
+        col_expr: The column expression to create views for.
+        if_exists: Behavior when the view already exists. Options are "error", "ignore",
+            "replace", and "replace_force". Default is "error".
 
     Returns:
         A list of view path corresponding to each label.
@@ -77,7 +80,7 @@ def set_value_to_idx_rows(
     """Set a column to a specific value for rows with given indices in a PixelTable table.
 
     Args:
-        table: The PixelTable table.
+        table: The PixelTable table. Must contain an 'idx' column.
         col_expr: The column expression to be set.
         idx_list: List of row indices to update.
         value: The value to set the column to.
@@ -92,6 +95,15 @@ def update_column_if_too_many(
     max_count: int,
     new_value: int | float | str,
 ) -> None:
+    """Update some values of a column if the count of that value exceeds a maximum count.
+
+    Args:
+        table: The PixelTable table. Must contain an 'idx' column.
+        col_expr: The column expression to be checked and updated.
+        value: The value to check the count of.
+        max_count: The maximum allowed count for the specified value.
+        new_value: The new value to set for excess rows.
+    """
     value_df = table.where(col_expr == value)
     value_count = value_df.select().count()
     if value_count > max_count:
