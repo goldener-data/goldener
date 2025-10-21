@@ -12,16 +12,22 @@ from goldener.pxt_utils import create_pxt_table_from_sample
 class Descriptor:
     """Describe the `data` of a dataset by extracting features and storing them in a PixelTable table.
 
+    Assuming all the data will not fit in memory, the dataset is processed in batches.
+    All the data of the dataset, the computed features included, will be saved in a local Pixeltable table.
+    The `data` of the dataset will be saved in the shape and scale obtained after applying the `collate_fn` if provided.
+    These arrays are expected to be all the same size. All torch tensors will be converted to numpy arrays before saving.
+
     Attributes:
         table_path: Path to the PixelTable table where the description will be saved locally.
         extractor: FeatureExtractor instance for feature extraction.
         collate_fn: Optional function to collate dataset samples into batches composed of
         dictionaries with at least the `data` key returning a pytorch Tensor.
-        If None, the dataset is expected to directly provide such batches.
+        If None, the dataset is expected to directly provide such batches. It should as well format the `data` value
+        in the format expected by the feature extractor.
         batch_size: Optional batch size for processing the dataset.
         num_workers: Optional number of worker threads for data loading.
         if_exists: Behavior if the table already exists ('error' or 'replace_force'). If 'replace_force',
-        the existing table will be replaced.
+        the existing table will be replaced, otherwise an error will be raised.
         distribute: Whether to use distributed processing for feature extraction and table population. Not implemented yet.
     """
 
@@ -34,7 +40,7 @@ class Descriptor:
         num_workers: int | None = None,
         if_exists: Literal["error", "replace_force"] = "error",
         distribute: bool = False,
-        device: torch.device = torch.device("cuda"),
+        device: torch.device | None = None,
     ):
         self.extractor = extractor
         self.batch_size = batch_size
@@ -43,6 +49,9 @@ class Descriptor:
         self.table_path = table_path
         self.if_exists = if_exists
         self.distribute = distribute
+
+        if device is None:
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.device = device
 
         if not self.distribute:
@@ -59,16 +68,7 @@ class Descriptor:
             after applying the collate_fn. If the collate_fn is None, the dataset is expected to directly
             provide such batches.
         """
-        pxt_table = self._initialize_table(dataset[0])
-
-        if self.distribute:
-            self._distributed_describe(pxt_table, dataset)
-        else:
-            pxt_table = self._sequential_describe(pxt_table, dataset)
-
-        return pxt_table
-
-    def _initialize_table(self, sample: dict) -> Table:
+        sample = dataset[0]
         if self.collate_fn is not None:
             sample = self.collate_fn([sample])
 
@@ -80,6 +80,25 @@ class Descriptor:
         if "data" not in sample:
             raise ValueError("Dataset items must contain a 'data' key.")
 
+        pxt_table = self._initialize_table(sample)
+
+        if self.distribute:
+            self._distributed_describe(pxt_table, dataset)
+        else:
+            pxt_table = self._sequential_describe(pxt_table, dataset)
+
+        return pxt_table
+
+    def _initialize_table(self, sample: dict) -> Table:
+        """Initialize the PixelTable table using a single sample from the dataset.
+
+        It creates the required PixelTable directories and table schema based on the provided sample.
+
+        Args:
+            sample: A single sample from the dataset to initialize the table schema.
+            It should be a dictionary with at least the `data` key. The  `data` value must be formatted
+            in the format expected by the feature extractor.
+        """
         sample["features"] = self.extractor.extract_and_fuse(
             sample["data"].to(device=self.device)
         )
