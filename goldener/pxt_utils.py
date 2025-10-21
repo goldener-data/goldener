@@ -1,4 +1,3 @@
-
 from typing import Literal, Any
 
 import pixeltable as pxt
@@ -65,6 +64,8 @@ def create_pxt_table_from_sample(
     )
 
     return pxt_table
+
+
 def create_views_per_column_value(
     table: Table,
     col_expr: Expr,
