@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Literal, Any
 
 import pixeltable as pxt
 from pixeltable.catalog import Table
@@ -59,7 +59,7 @@ def create_views_per_column_value(
 def set_value_to_full_column(
     table: Table,
     col_expr: Expr,
-    value: int | float | str,
+    value: Any,
 ) -> None:
     """Set a column to a specific value for all rows in a PixelTable table.
 
@@ -93,7 +93,7 @@ def update_column_if_too_many(
     col_expr: Expr,
     value: int | float | str,
     max_count: int,
-    new_value: int | float | str,
+    new_value: Any,
 ) -> None:
     """Update some values of a column if the count of that value exceeds a maximum count.
 
