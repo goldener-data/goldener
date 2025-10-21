@@ -24,6 +24,7 @@ dependencies = [
   "nvidia-ml-py",
   "scikit-learn",
   "umap-learn",
+  "torchvision",
 ]
 
 [project.optional-dependencies]
