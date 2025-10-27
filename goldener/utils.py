@@ -33,3 +33,12 @@ def check_x_and_y_shapes(x_shape: tuple[int, ...], y_shape: tuple[int, ...]) -> 
             raise ValueError(
                 "x and y must have compatible shapes when x is more than 2D"
             )
+
+
+def get_ratio_list_sum(ratios: list[float]) -> float:
+    """Check if the sum of a list of ratios equals 1.0."""
+    ratio_sum = sum(ratios)
+    if not (0 < ratio_sum <= 1.0):
+        raise ValueError("Sum of split ratios must be 1.0")
+
+    return ratio_sum
