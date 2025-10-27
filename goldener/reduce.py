@@ -8,7 +8,7 @@ from sklearn.random_projection import GaussianRandomProjection
 from goldener.torch_utils import torch_tensor_to_numpy_vectors, np_transform_from_torch
 
 
-class DimensionReduction:
+class GoldReducer:
     """Dimensionality reduction using UMAP, PCA, TSNE, or GaussianRandomProjection.
 
     Attributes:

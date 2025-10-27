@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from functools import partial
 
 from torch.utils.data import RandomSampler
@@ -140,7 +141,20 @@ class Filter2DWithCount:
             return {k: v[mask.bool(), :] for k, v in x.items()}
 
 
-class Vectorizer:
+@dataclass
+class Vectorized:
+    """Dataclass to hold vectorized tensors and the corresponding batch indices.
+
+    Attributes:
+        vectors: 2D tensor of vectorized data.
+        batch_indices: 1D tensor containing information about the origin of each vector.
+    """
+
+    vectors: torch.Tensor
+    batch_indices: torch.Tensor
+
+
+class GoldVectorizer:
     """Transform input as 2D tensor and filter based on target tensor.
 
     Attributes:
@@ -177,7 +191,7 @@ class Vectorizer:
         self,
         x: torch.Tensor,
         y: torch.Tensor | None = None,
-    ) -> torch.Tensor:
+    ) -> Vectorized:
         """Vectorize input tensor and filter based on target tensor.
 
         If y is not provided, only filtering and vectorization are performed. If y is provided,
@@ -188,27 +202,55 @@ class Vectorizer:
             y: Optional target tensor to filter the input tensor.
 
         Returns:
-            Vectorized and filtered input tensor.
+            Vectorized and filtered input tensor with the information
+            about which element of the batch it corresponds to.
 
         Raises:
             ValueError: If x and y shapes are incompatible. See check_x_and_y_shapes for details.
         """
-        x = make_2d_tensor(x)
-        if self.keep is not None:
-            x = self.keep.filter(x)
+        if x.ndim < 3:
+            raise ValueError("Input tensor x to vectorize must be at least 3D.")
 
-        if self.remove is not None:
-            x = self.remove.filter(x)
+        if y is not None and self.transform_y is not None:
+            y = self.transform_y(y)
 
-        if y is not None:
-            x = self._filter_2d_tensor_from_y(x, y)
+        filtered_x = []
+        filtered_batch_info = []
+        for idx_sample, x_sample in enumerate(x):
+            x_sample = x_sample.unsqueeze(0)
+            x_sample = make_2d_tensor(x_sample)
 
-        if self.random_filter is not None:
-            x = self.random_filter.filter(x)
+            x_sample = self._apply_filter(
+                self.keep.filter if self.keep is not None else None, x_sample
+            )
+            x_sample = self._apply_filter(
+                self.remove.filter if self.remove is not None else None, x_sample
+            )
 
-        return x
+            if y is not None:
+                y_sample = y[idx_sample].unsqueeze(0)
+                x_sample = self._filter_2d_tensors_from_y(x_sample, y_sample)
 
-    def _filter_2d_tensor_from_y(
+            filtered_x.append(x_sample)
+            filtered_batch_info.append(
+                torch.full_like(x_sample[:, 0], idx_sample, dtype=torch.long)
+            )
+
+        return Vectorized(
+            torch.cat(filtered_x, dim=0), torch.cat(filtered_batch_info, dim=0)
+        )  # squeeze the last dimension
+
+    def _apply_filter(
+        self,
+        filter: Callable[[torch.Tensor], torch.Tensor] | None,
+        x: torch.Tensor,
+    ) -> torch.Tensor:
+        if filter is None:
+            return x
+
+        return filter(x)
+
+    def _filter_2d_tensors_from_y(
         self,
         x: torch.Tensor,
         y: torch.Tensor,
@@ -230,8 +272,6 @@ class Vectorizer:
             See check_x_and_y_shapes for details.
             ValueError: If y tensor after transform contains only zeros.
         """
-        if self.transform_y is not None:
-            y = self.transform_y(y)
         y = make_2d_tensor(y)
 
         y_shape = y.shape
@@ -243,9 +283,5 @@ class Vectorizer:
                 "The y tensor after transform must contain at least one "
                 "non-zero value to select vectors from x."
             )
-
-        # make sure the target is applicable to all samples in the batch
-        if len(x_shape) > 1 and x_shape[0] > 1 and y_shape[0] == 1:
-            y = y.expand(x.shape[0], *y_shape[1:])
 
         return x[y.bool().squeeze(-1)]

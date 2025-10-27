@@ -8,7 +8,7 @@ from enum import Enum
 import torch
 
 
-class FeatureExtractor:
+class GoldFeatureExtractor:
     @abstractmethod
     def extract(self, *args: Any, **kwargs: Any) -> dict[str, torch.Tensor]:
         """Extract features from the model for the given input data.
@@ -41,7 +41,7 @@ class FeatureFusionStrategy(Enum):
 
 
 @dataclass
-class TorchFeatureExtractorConfig:
+class TorchGoldFeatureExtractorConfig:
     """Configuration for the TorchFeatureExtractor.
 
     Attributes:
@@ -58,7 +58,7 @@ class TorchFeatureExtractorConfig:
     group_fusion: FeatureFusionStrategy = FeatureFusionStrategy.CONCAT
 
 
-class FeatureFusion:
+class GoldFeatureFusion:
     """Feature fusion from multiple layers and groups.
 
     Attributes:
@@ -160,7 +160,7 @@ class FeatureFusion:
         return self.fuse_tensors(fused_groups, self.group_fusion)
 
 
-class TorchFeatureExtractor(FeatureExtractor):
+class TorchGoldFeatureExtractor(GoldFeatureExtractor):
     """Feature extractor for PyTorch models.
 
     Once initialized, the extractor registers forward hooks on the specified layers of the model.
@@ -179,10 +179,10 @@ class TorchFeatureExtractor(FeatureExtractor):
 
     def __init__(
         self,
-        config: TorchFeatureExtractorConfig,
+        config: TorchGoldFeatureExtractorConfig,
     ) -> None:
         self._model = config.model
-        self.fusion = FeatureFusion(
+        self.fusion = GoldFeatureFusion(
             layer_fusion=config.layer_fusion,
             group_fusion=config.group_fusion,
         )
@@ -280,7 +280,7 @@ class TorchFeatureExtractor(FeatureExtractor):
             raise ValueError(f"Layers not found in the model: {not_found}")
 
 
-class MultiModalTorchFeatureExtractor(FeatureExtractor):
+class MultiModalTorchGoldFeatureExtractor(GoldFeatureExtractor):
     """Feature extractor for multimodal data using PyTorch.
 
     Each modality has its own TorchFeatureExtractor defined by its own configuration.
@@ -288,17 +288,17 @@ class MultiModalTorchFeatureExtractor(FeatureExtractor):
 
     def __init__(
         self,
-        configs: Dict[str, TorchFeatureExtractorConfig],
+        configs: Dict[str, TorchGoldFeatureExtractorConfig],
         strategy: FeatureFusionStrategy = FeatureFusionStrategy.CONCAT,
     ) -> None:
         self.extractors = {
-            modality: TorchFeatureExtractor(config)
+            modality: TorchGoldFeatureExtractor(config)
             for modality, config in configs.items()
         }
         self.strategy = strategy
 
     def extract_and_fuse(self, x: Dict[str, torch.Tensor]) -> torch.Tensor:
-        return FeatureFusion.fuse_tensors(
+        return GoldFeatureFusion.fuse_tensors(
             [
                 extractor.extract_and_fuse(x[modality])
                 for modality, extractor in self.extractors.items()
