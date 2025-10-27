@@ -238,7 +238,7 @@ class GoldVectorizer:
 
         return Vectorized(
             torch.cat(filtered_x, dim=0), torch.cat(filtered_batch_info, dim=0)
-        )  # squeeze the last dimension
+        )
 
     def _apply_filter(
         self,

@@ -19,7 +19,11 @@ class DummyDataset(Dataset):
         return len(self._samples)
 
     def __getitem__(self, idx):
-        return self._samples[idx].copy()
+        return (
+            self._samples[idx].copy()
+            if isinstance(self._samples[idx], dict)
+            else self._samples[idx]
+        )
 
 
 def collate_fn(batch):

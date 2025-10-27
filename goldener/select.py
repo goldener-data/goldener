@@ -53,7 +53,7 @@ class GoldSelector:
         table_path: str,
         vectorizer: GoldVectorizer,
         select_key: str = "features",
-        select_target_key: str | None = "target",
+        select_target_key: str | None = None,
         drop_table: bool = False,
         reducer: GoldReducer | None = None,
         chunk: int | None = None,
@@ -82,10 +82,8 @@ class GoldSelector:
         self.num_workers: int | None
 
         if not self.distribute:
-            if batch_size is None:
-                self.batch_size = 1
-            if num_workers is None:
-                self.num_workers = 0
+            self.batch_size = 1 if batch_size is None else batch_size
+            self.num_workers = 0 if num_workers is None else num_workers
         else:
             self.batch_size = batch_size
             self.num_workers = num_workers
@@ -304,7 +302,7 @@ class GoldSelector:
         herding_solver = KernelHerding(
             select_count,
             kernel=SquaredExponentialKernel(
-                length_scale=median_heuristic(jnp.asarray(x.mean(1).numpy()))[0].item()
+                length_scale=float(median_heuristic(jnp.asarray(x.mean(1).numpy())))
             ),
         )
         herding_coreset, _ = herding_solver.reduce(Data(jnp.array(x.numpy())))  # type: ignore[arg-type]
