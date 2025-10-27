@@ -5,11 +5,11 @@ import torch
 from pixeltable.catalog import Table
 from torch.utils.data import Dataset
 
-from goldener.extract import FeatureExtractor
+from goldener.extract import GoldFeatureExtractor
 from goldener.pxt_utils import create_pxt_table_from_sample
 
 
-class Descriptor:
+class GoldDescriptor:
     """Describe the `data` of a dataset by extracting features and storing them in a PixelTable table.
 
     Assuming all the data will not fit in memory, the dataset is processed in batches.
@@ -34,7 +34,7 @@ class Descriptor:
     def __init__(
         self,
         table_path: str,
-        extractor: FeatureExtractor,
+        extractor: GoldFeatureExtractor,
         collate_fn: Callable | None = None,
         batch_size: int | None = None,
         num_workers: int | None = None,
@@ -42,11 +42,9 @@ class Descriptor:
         distribute: bool = False,
         device: torch.device | None = None,
     ):
-        self.extractor = extractor
-        self.batch_size = batch_size
-        self.num_workers = num_workers
-        self.collate_fn = collate_fn
         self.table_path = table_path
+        self.extractor = extractor
+        self.collate_fn = collate_fn
         self.if_exists = if_exists
         self.distribute = distribute
 
@@ -54,11 +52,14 @@ class Descriptor:
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.device = device
 
+        self.batch_size: int | None
+        self.num_workers: int | None
         if not self.distribute:
-            if self.batch_size is None:
-                self.batch_size = 1
-            if self.num_workers is None:
-                self.num_workers = 0
+            self.batch_size = 1 if batch_size is None else batch_size
+            self.num_workers = 0 if num_workers is None else num_workers
+        else:
+            self.batch_size = batch_size
+            self.num_workers = num_workers
 
     def describe(self, dataset: Dataset) -> Table:
         """Describe the dataset by extracting features and storing them in a PixelTable table.
@@ -128,7 +129,8 @@ class Descriptor:
         pxt_table: Table,
         dataset: Dataset,
     ) -> Table:
-        # instantiate table using first sample
+        assert self.batch_size is not None
+        assert self.num_workers is not None
         dataloader = torch.utils.data.DataLoader(
             dataset,
             batch_size=self.batch_size,

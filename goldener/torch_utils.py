@@ -29,7 +29,7 @@ def make_2d_tensor(x: torch.Tensor) -> torch.Tensor:
         return x
 
     x = x.moveaxis(1, -1)
-    return x.flatten(0, -2)
+    return x.reshape(-1, x.shape[-1])
 
 
 def torch_tensor_to_numpy_vectors(x: torch.Tensor) -> np.ndarray:

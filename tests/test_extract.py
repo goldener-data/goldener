@@ -3,11 +3,11 @@ import pytest
 import torch
 
 from goldener.extract import (
-    FeatureFusion,
+    GoldFeatureFusion,
     FeatureFusionStrategy,
-    TorchFeatureExtractor,
-    TorchFeatureExtractorConfig,
-    MultiModalTorchFeatureExtractor,
+    TorchGoldFeatureExtractor,
+    TorchGoldFeatureExtractorConfig,
+    MultiModalTorchGoldFeatureExtractor,
 )
 
 
@@ -44,7 +44,7 @@ class TestFeatureFusion:
     def test_concat(self, shape):
         t1 = make_tensor(shape)
         t2 = make_tensor(shape)
-        fused = FeatureFusion.fuse_tensors([t1, t2], FeatureFusionStrategy.CONCAT)
+        fused = GoldFeatureFusion.fuse_tensors([t1, t2], FeatureFusionStrategy.CONCAT)
         assert fused.shape[1] == shape[1] * 2
         assert fused.shape[:2] == (shape[0], shape[1] * 2)[:2]
 
@@ -52,14 +52,14 @@ class TestFeatureFusion:
     def test_add(self, shape):
         t1 = make_tensor(shape, 1.0)
         t2 = make_tensor(shape, 1.0)
-        fused = FeatureFusion.fuse_tensors([t1, t2], FeatureFusionStrategy.ADD)
+        fused = GoldFeatureFusion.fuse_tensors([t1, t2], FeatureFusionStrategy.ADD)
         assert torch.allclose(fused, torch.full_like(fused, 2.0))
 
     @pytest.mark.parametrize("shape", shapes_2d_3d_4d)
     def test_average(self, shape):
         t1 = make_tensor(shape, 1.0)
         t2 = make_tensor(shape, 3.0)
-        fused = FeatureFusion.fuse_tensors([t1, t2], FeatureFusionStrategy.AVERAGE)
+        fused = GoldFeatureFusion.fuse_tensors([t1, t2], FeatureFusionStrategy.AVERAGE)
         assert torch.allclose(fused, torch.full_like(fused, 2.0))
 
     @pytest.mark.parametrize("shape", shapes_2d_3d_4d)
@@ -70,7 +70,7 @@ class TestFeatureFusion:
         t1 = make_tensor(shape)
         smaller_shape = (shape[0], shape[1]) + tuple(max(1, s // 2) for s in shape[2:])
         t2 = make_tensor(smaller_shape)
-        fused = FeatureFusion.fuse_tensors([t1, t2], FeatureFusionStrategy.ADD)
+        fused = GoldFeatureFusion.fuse_tensors([t1, t2], FeatureFusionStrategy.ADD)
         assert fused.shape == shape
 
     @pytest.mark.parametrize("shape", shapes_2d_3d_4d)
@@ -78,7 +78,7 @@ class TestFeatureFusion:
         t1 = make_tensor(shape)
         t2 = make_tensor(shape)
         features = {"mod1": t1, "mod2": t2}
-        fusion = FeatureFusion(
+        fusion = GoldFeatureFusion(
             layer_fusion=FeatureFusionStrategy.ADD,
             group_fusion=FeatureFusionStrategy.ADD,
         )
@@ -91,7 +91,7 @@ class TestFeatureFusion:
         t2 = make_tensor(shape)
         t3 = make_tensor(shape)
         features = {"layer1": t1, "layer2": t2, "layer3": t3}
-        fusion = FeatureFusion(
+        fusion = GoldFeatureFusion(
             layer_fusion=FeatureFusionStrategy.ADD,
             group_fusion=FeatureFusionStrategy.CONCAT,
         )
@@ -109,8 +109,8 @@ class TestTorchFeatureExtractor:
     def test_extract(self):
         model = DummyModel()
         layers = ["conv1", "conv2"]
-        config = TorchFeatureExtractorConfig(model=model, layers=layers)
-        extractor = TorchFeatureExtractor(config)
+        config = TorchGoldFeatureExtractorConfig(model=model, layers=layers)
+        extractor = TorchGoldFeatureExtractor(config)
         data = torch.randn(2, 3, 8, 8)
         features = extractor.extract(data)
         assert len(features) == len(layers)
@@ -120,12 +120,12 @@ class TestTorchFeatureExtractor:
     def test_extract_and_fuse(self):
         model = DummyModel()
         layers = ["conv1", "conv2"]
-        config = TorchFeatureExtractorConfig(
+        config = TorchGoldFeatureExtractorConfig(
             model=model,
             layers=layers,
             layer_fusion=FeatureFusionStrategy.CONCAT,
         )
-        extractor = TorchFeatureExtractor(config)
+        extractor = TorchGoldFeatureExtractor(config)
         data = torch.randn(2, 3, 8, 8)
         fused = extractor.extract_and_fuse(data)
         # Should add features from conv1 and conv2
@@ -133,18 +133,20 @@ class TestTorchFeatureExtractor:
 
     def test_invalid_layer(self):
         model = DummyModel()
-        config = TorchFeatureExtractorConfig(model=model, layers=["invalid_layer"])
+        config = TorchGoldFeatureExtractorConfig(model=model, layers=["invalid_layer"])
         with pytest.raises(ValueError):
-            TorchFeatureExtractor(config)
+            TorchGoldFeatureExtractor(config)
 
 
 class TestMultiModalTorchFeatureExtractor:
     def test_extract(self):
         model1 = DummyModel()
         model2 = DummyModel()
-        config1 = TorchFeatureExtractorConfig(model=model1, layers=["conv1"])
-        config2 = TorchFeatureExtractorConfig(model=model2, layers=["conv2"])
-        extractor = MultiModalTorchFeatureExtractor({"img": config1, "aux": config2})
+        config1 = TorchGoldFeatureExtractorConfig(model=model1, layers=["conv1"])
+        config2 = TorchGoldFeatureExtractorConfig(model=model2, layers=["conv2"])
+        extractor = MultiModalTorchGoldFeatureExtractor(
+            {"img": config1, "aux": config2}
+        )
         data = {
             "img": torch.randn(2, 3, 8, 8),
             "aux": torch.randn(2, 3, 8, 8),
@@ -157,9 +159,9 @@ class TestMultiModalTorchFeatureExtractor:
     def test_extract_and_fuse(self):
         model1 = DummyModel()
         model2 = DummyModel()
-        config1 = TorchFeatureExtractorConfig(model=model1, layers=["conv1"])
-        config2 = TorchFeatureExtractorConfig(model=model2, layers=["conv2"])
-        extractor = MultiModalTorchFeatureExtractor(
+        config1 = TorchGoldFeatureExtractorConfig(model=model1, layers=["conv1"])
+        config2 = TorchGoldFeatureExtractorConfig(model=model2, layers=["conv2"])
+        extractor = MultiModalTorchGoldFeatureExtractor(
             {"img": config1, "aux": config2},
             strategy=FeatureFusionStrategy.CONCAT,
         )

@@ -1,8 +1,10 @@
 import pytest
 import torch
 
-from goldener.describe import Descriptor
-from goldener.extract import TorchFeatureExtractorConfig, TorchFeatureExtractor
+import pixeltable as pxt
+
+from goldener.describe import GoldDescriptor
+from goldener.extract import TorchGoldFeatureExtractorConfig, TorchGoldFeatureExtractor
 
 
 class DummyModel(torch.nn.Module):
@@ -20,8 +22,8 @@ class DummyModel(torch.nn.Module):
 @pytest.fixture
 def extractor():
     model = DummyModel()
-    config = TorchFeatureExtractorConfig(model=model, layers=None)
-    return TorchFeatureExtractor(config)
+    config = TorchGoldFeatureExtractorConfig(model=model, layers=None)
+    return TorchGoldFeatureExtractor(config)
 
 
 class DummyDataset:
@@ -36,9 +38,9 @@ class DummyDataset:
         return {"data": torch.zeros(3, 8, 8), "idx": idx, "label": "dummy"}
 
 
-class TestDescriptor:
+class TestGoldDescriptor:
     def test_simple_usage(self, extractor):
-        desc = Descriptor(
+        desc = GoldDescriptor(
             table_path="unit_test.test_describe",
             extractor=extractor,
             batch_size=2,
@@ -50,19 +52,23 @@ class TestDescriptor:
         table = desc.describe(DummyDataset())
 
         assert table.count() == 2
-        # check that each inserted row contains 'features' and other keys
         for i, row in enumerate(table.collect()):
             assert row["idx"] == i
             assert (row["data"] == torch.zeros(3, 8, 8).numpy()).all()
             assert row["label"] == "dummy"
             assert row["features"].shape == (4, 8, 8)
 
+        try:
+            pxt.drop_table(desc.table_path)
+        except Exception:
+            pass
+
     def test_with_out_idx(self, extractor):
         def collate_fn(batch):
             data = torch.stack([b["data"] for b in batch], dim=0)
             return {"data": data}
 
-        desc = Descriptor(
+        desc = GoldDescriptor(
             table_path="unit_test.test_describe",
             batch_size=2,
             extractor=extractor,
@@ -75,13 +81,17 @@ class TestDescriptor:
             DummyDataset(),
         )
         assert table.count() == 2
-        # check that each inserted row contains 'features' and other keys
         for i, row in enumerate(table.collect()):
             assert row["idx"] == i
 
+        try:
+            pxt.drop_table(desc.table_path)
+        except Exception:
+            pass
+
     def test_describe_with_non_dict_item(self, extractor):
         # Dataset returning a non-dict should raise
-        desc = Descriptor(
+        desc = GoldDescriptor(
             table_path="unit_test.test_describe",
             extractor=extractor,
             collate_fn=lambda x: [d["data"] for d in x],
@@ -92,7 +102,7 @@ class TestDescriptor:
             desc.describe(DummyDataset())
 
     def test_describe_missing_data_key(self, extractor):
-        desc = Descriptor(
+        desc = GoldDescriptor(
             table_path="unit_test.test_describe",
             extractor=extractor,
             collate_fn=lambda x: {"not data": "not_data"},

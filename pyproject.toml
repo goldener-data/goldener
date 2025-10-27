@@ -25,6 +25,7 @@ dependencies = [
   "scikit-learn",
   "umap-learn",
   "torchvision",
+  "coreax"
 ]
 
 [project.optional-dependencies]
