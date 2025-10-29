@@ -184,4 +184,4 @@ To release a new version of the `goldener` package:
 2. Update the version `vX.Y.Z` in `pyproject.toml`
 3. Commit the changes with a message like `release vX.Y.Z`
 4. Merge the branch into `main`
-5. trigger a new release on GitHub with the tag `vX.Y.Z`
+5. Trigger a new release on GitHub with the tag `vX.Y.Z`
