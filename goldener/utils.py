@@ -1,3 +1,6 @@
+from typing import Iterable
+
+
 def check_x_and_y_shapes(x_shape: tuple[int, ...], y_shape: tuple[int, ...]) -> None:
     """Check compatibility of shapes of x and y tensors.
 
@@ -33,3 +36,35 @@ def check_x_and_y_shapes(x_shape: tuple[int, ...], y_shape: tuple[int, ...]) -> 
             raise ValueError(
                 "x and y must have compatible shapes when x is more than 2D"
             )
+
+
+def get_ratio_list_sum(ratios: list[float]) -> float:
+    """Get the sum of a list of ratios and validate it (total between 0 and 1).
+
+    Args:
+        ratios: A list of float ratios.
+
+    Returns:
+        The sum of the ratios.
+
+    Raises:
+        ValueError: If the sum of the ratios is not between 0 and 1 (included).
+    """
+    ratio_sum = sum(ratios)
+    if not (0 < ratio_sum <= 1.0):
+        raise ValueError("Sum of split ratios must be 1.0")
+
+    return ratio_sum
+
+
+def get_ratios_for_counts(counts: Iterable[int]) -> list[float]:
+    """Get ratios for a list of counts.
+
+    Args:
+        counts: An iterable of integer counts.
+
+    Returns:
+        A list of float ratios corresponding to the input counts.
+    """
+    total = sum(counts)
+    return [count / total for count in counts]
