@@ -197,7 +197,7 @@ def pxt_torch_dataset_collate_fn(batch: list[dict[str, Any]]) -> dict[str, Any]:
 class GoldPxtTorchDataset(PixeltablePytorchDataset):
     """A Pixeltable PyTorch Dataset that reshapes array columns to their original shapes.
 
-    This class intend to solve a current issue in Pixeltable dataset where array columns
+    This class intends to solve a current issue in Pixeltable dataset where array columns
     are flattened when converted to PyTorch datasets. This class reshapes those columns
     back to their original shapes during iteration.
 
@@ -210,7 +210,7 @@ class GoldPxtTorchDataset(PixeltablePytorchDataset):
     ) -> None:
         """Initialize the GoldPxtTorchDataset.
 
-        Attributes:
+        Args:
             source: The PixelTable Table or DataFrame to convert to a PyTorch dataset.
             shapes: A dictionary mapping column names of arrays to their original shapes.
         """
