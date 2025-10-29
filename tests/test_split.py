@@ -191,7 +191,7 @@ class TestGoldSplitter:
             sets=sets, descriptor=descriptor, selector=selector, class_key="label"
         )
 
-        with pytest.raises(Error):
+        with pytest.raises(ValueError):
             splitter.split(
                 dataset=DummyDataset(
                     [
