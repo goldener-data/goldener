@@ -48,7 +48,7 @@ def get_ratio_list_sum(ratios: list[float]) -> float:
         The sum of the ratios.
 
     Raises:
-        ValueError: If the sum of the ratios is between 0 and 1.
+        ValueError: If the sum of the ratios is not between 0 and 1 (included).
     """
     ratio_sum = sum(ratios)
     if not (0 < ratio_sum <= 1.0):

@@ -24,7 +24,8 @@ class GoldSet:
 
     Attributes:
         name: Name of the gold set.
-        ratio: Ratio of samples to assign to this set (between 0 and 1).
+        ratio: Ratio of samples to assign to this set (between 0 and 1). This value
+        cannot be one of 0 or 1 (goal is to select a subset of the full dataset).
     """
 
     name: str
