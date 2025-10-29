@@ -12,6 +12,7 @@ from goldener.pxt_utils import (
     GoldPxtTorchDataset,
     get_array_column_shapes,
     _get_column_distinct_ratios,
+    set_value_to_idx_rows,
 )
 from goldener.select import GoldSelector
 from goldener.torch_utils import ResetableTorchIterableDataset
@@ -142,8 +143,11 @@ class GoldSplitter:
             .where(described_table.gold_set == None)  # noqa: E711
             .collect()
         ]
-        described_table.where(described_table.idx.isin(remaining_idx_list)).update(
-            {"gold_set": self.sets[-1].name}
+        set_value_to_idx_rows(
+            described_table,
+            described_table.gold_set,
+            set(remaining_idx_list),
+            self.sets[-1].name,
         )
 
         self._drop_tables()

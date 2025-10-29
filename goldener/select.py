@@ -11,7 +11,7 @@ from coreax.kernels import median_heuristic
 from coreax.solvers import KernelHerding
 from torch.utils.data import Dataset
 
-from goldener.pxt_utils import create_pxt_table_from_sample
+from goldener.pxt_utils import create_pxt_table_from_sample, set_value_to_idx_rows
 from goldener.reduce import GoldReducer
 from goldener.torch_utils import ResetableTorchIterableDataset
 from goldener.vectorize import GoldVectorizer
@@ -178,8 +178,11 @@ class GoldSelector:
                 vectors_list, indices_list = map(list, zip(*to_select))
                 vectors = torch.stack(vectors_list, dim=0)
                 indices = torch.cat(indices_list, dim=0)
-                vector_table.where(vector_table.idx.isin(indices.tolist())).update(
-                    {"chunked": True}
+                set_value_to_idx_rows(
+                    vector_table,
+                    vector_table.chunked,
+                    set(indices.tolist()),
+                    True,
                 )  # selected indices are marked as already chunked
 
                 # make coresubset selection for the chunk
@@ -191,8 +194,11 @@ class GoldSelector:
                 )
 
                 # update table with selected indices
-                vector_table.where(vector_table.idx.isin(coresubset_indices)).update(
-                    {"selected": True}
+                set_value_to_idx_rows(
+                    vector_table,
+                    vector_table.selected,
+                    coresubset_indices,
+                    False,
                 )
 
                 already_selected = len(self._get_selected_indices(vector_table))
