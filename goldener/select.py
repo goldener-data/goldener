@@ -198,7 +198,7 @@ class GoldSelector:
                     vector_table,
                     vector_table.selected,
                     coresubset_indices,
-                    False,
+                    True,
                 )
 
                 already_selected = len(self._get_selected_indices(vector_table))
