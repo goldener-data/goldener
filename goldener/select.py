@@ -13,6 +13,7 @@ from torch.utils.data import Dataset
 
 from goldener.pxt_utils import create_pxt_table_from_sample
 from goldener.reduce import GoldReducer
+from goldener.torch_utils import ResetableTorchIterableDataset
 from goldener.vectorize import GoldVectorizer
 
 
@@ -111,8 +112,9 @@ class GoldSelector:
             selected = self._distributed_select(dataset, select_count)
         else:
             selected = self._sequential_select(dataset, select_count)
-            if self.drop_table:
-                pxt.drop_table(self.table_path)
+
+        if self.drop_table:
+            pxt.drop_table(self.table_path)
 
         return selected
 
@@ -201,7 +203,14 @@ class GoldSelector:
         raise NotImplementedError("Distributed selection is not implemented yet.")
 
     def _check_dataset(self, dataset: Dataset) -> None:
-        sample = dataset[0]
+        sample = (
+            next(dataset)
+            if isinstance(dataset, ResetableTorchIterableDataset)
+            else dataset[0]
+        )
+        if isinstance(dataset, ResetableTorchIterableDataset):
+            dataset.reset()
+
         if self.collate_fn is not None:
             sample = self.collate_fn([sample])
 
@@ -230,8 +239,16 @@ class GoldSelector:
                     f"Value of {self.select_target_key} must correspond to a torch.Tensor."
                 )
 
-    def _initialize_table(self, dataset: Dataset) -> Table:
-        sample = dataset[0]
+    def _initialize_table(
+        self, dataset: Dataset | ResetableTorchIterableDataset
+    ) -> Table:
+        sample = (
+            next(dataset)
+            if isinstance(dataset, ResetableTorchIterableDataset)
+            else dataset[0]
+        )
+        if isinstance(dataset, ResetableTorchIterableDataset):
+            dataset.reset()
 
         if self.collate_fn is not None:
             sample = self.collate_fn([sample])

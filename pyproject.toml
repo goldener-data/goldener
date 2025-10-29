@@ -38,6 +38,10 @@ dev = [
   "types-tqdm",
 ]
 
+gpu = [
+  "jax[cuda]",
+]
+
 [project.urls]
 Homepage = "https://github.com/goldener-data/goldener"
 Repository = "https://github.com/goldener-data/goldener"
