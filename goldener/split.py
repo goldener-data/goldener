@@ -148,7 +148,6 @@ class GoldSplitter:
             described_table.gold_set,
             set(remaining_idx_list),
             self.sets[-1].name,
-
         )
 
         self._drop_tables()
