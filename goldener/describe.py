@@ -1,4 +1,5 @@
 from typing import Callable, Literal
+import json
 
 import torch
 
@@ -100,18 +101,41 @@ class GoldDescriptor:
             It should be a dictionary with at least the `data` key. The  `data` value must be formatted
             in the format expected by the feature extractor.
         """
-        sample["features"] = self.extractor.extract_and_fuse(
-            sample["data"].to(device=self.device)
+        # Create a mutable copy to process for schema inference
+        processed_sample = sample.copy()
+
+        processed_sample["features"] = self.extractor.extract_and_fuse(
+            processed_sample["data"].to(device=self.device)
         )
         if self.collate_fn is not None:
-            sample["features"] = sample["features"].squeeze(0)
-            sample["data"] = sample["data"].squeeze(0)
+            processed_sample["features"] = processed_sample["features"].squeeze(0)
+            processed_sample["data"] = processed_sample["data"].squeeze(0)
 
-        if "idx" not in sample:
-            sample["idx"] = 0
+        if "idx" not in processed_sample:
+            processed_sample["idx"] = 0
+
+        # Preprocess the sample for accurate schema inference by PixelTable.
+        # This converts PyTorch tensors to numpy arrays or Python primitives,
+        # and serializes complex non-tensor types (lists, dicts) to JSON strings
+        # for storage as TEXT. Primitive types are left as-is for direct SQL mapping.
+        for key, value in list(processed_sample.items()):  # Iterate over a copy to allow modification
+            if isinstance(value, torch.Tensor):
+                # Convert scalar tensors (0-dim or 1-dim with 1 element) to Python primitives
+                # Convert non-scalar tensors to NumPy arrays
+                if value.ndim == 0 or (value.ndim == 1 and value.numel() == 1):
+                    processed_sample[key] = value.item()
+                else:
+                    processed_sample[key] = value.detach().cpu().numpy()
+            elif isinstance(value, (list, dict)):
+                # For lists and dictionaries, serialize to JSON string.
+                # These will typically be stored as TEXT in SQL.
+                processed_sample[key] = json.dumps(value)
+            # For int, float, bool, str: leave as is.
+            # PixelTable (via create_pxt_table_from_sample) is expected to infer
+            # native SQL types (INTEGER, REAL, BOOLEAN, TEXT) for these.
 
         pxt_table = create_pxt_table_from_sample(
-            self.table_path, sample, self.if_exists
+            self.table_path, processed_sample, self.if_exists
         )
         pxt_table.where(pxt_table.idx == 0).delete()  # remove the initial sample
 
@@ -147,13 +171,21 @@ class GoldDescriptor:
                 [
                     {
                         key: (
+                            # Existing tensor conversion logic, corrected for scalar check
                             (
                                 value[sample_idx].item()
-                                if value.ndim == 1
+                                if value.ndim == 0 or (value.ndim == 1 and value.numel() == 1)
                                 else value[sample_idx].detach().cpu().numpy()
                             )
                             if isinstance(value, torch.Tensor)
-                            else value[sample_idx]
+                            # New logic for non-tensor types:
+                            # Serialize lists/dicts to JSON strings to match TEXT column schema.
+                            # Primitive types are inserted directly.
+                            else (
+                                json.dumps(value[sample_idx])
+                                if isinstance(value[sample_idx], (list, dict))
+                                else value[sample_idx]
+                            )
                         )
                         for key, value in batch.items()
                     }
