@@ -106,11 +106,14 @@ class GoldDescriptor:
         if self.collate_fn is not None:
             for key, value in sample.items():
                 if isinstance(value, torch.Tensor):
-                    if value.ndim > 1 or value.shape[1] > 1:
+                    # Only initial tensors will have a batch dimension added by the collate_fn
+                    # otherwise, they were initially single values (float or int)
+                    if value.ndim > 1:
                         sample[key] = value.squeeze(0)
                     else:
                         sample[key] = value.item()
                 else:
+                    # non tensor values are expected to be lists of single values
                     sample[key] = value[0]
 
         if "idx" not in sample:
