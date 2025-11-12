@@ -104,8 +104,14 @@ class GoldDescriptor:
             sample["data"].to(device=self.device)
         )
         if self.collate_fn is not None:
-            sample["features"] = sample["features"].squeeze(0)
-            sample["data"] = sample["data"].squeeze(0)
+            for key, value in sample.items():
+                if isinstance(value, torch.Tensor):
+                    if value.ndim > 1 or value.shape[1] > 1:
+                        sample[key] = value.squeeze(0)
+                    else:
+                        sample[key] = value.item()
+                else:
+                    sample[key] = value[0]
 
         if "idx" not in sample:
             sample["idx"] = 0
