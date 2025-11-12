@@ -63,7 +63,7 @@ class TestGoldDescriptor:
         except Exception:
             pass
 
-    def test_with_out_idx(self, extractor):
+    def test_without_idx(self, extractor):
         def collate_fn(batch):
             data = torch.stack([b["data"] for b in batch], dim=0)
             return {"data": data}
@@ -113,3 +113,44 @@ class TestGoldDescriptor:
             desc.describe(
                 DummyDataset(),
             )
+
+    def test_with_collate_fn(self, extractor):
+        def collate_fn(batch):
+            data = torch.stack([b["data"] for b in batch], dim=0)
+            idxs = [b["idx"] for b in batch]
+            labels = [b["label"] for b in batch]
+            return {"data": data, "idx": idxs, "label": labels}
+
+        desc = GoldDescriptor(
+            table_path="unit_test.test_describe",
+            batch_size=2,
+            extractor=extractor,
+            collate_fn=collate_fn,
+            device=torch.device("cpu"),
+            if_exists="replace_force",
+        )
+
+        table = desc.describe(
+            DummyDataset(),
+        )
+        assert table.count() == 2
+        for i, row in enumerate(table.collect()):
+            assert row["idx"] == i
+            assert row["label"] == "dummy"
+
+        desc_table = pxt.get_table(desc.table_path)
+        column_schema = desc_table.get_metadata()["columns"]
+        for col_name, col_dict in column_schema.items():
+            if col_name == "features":
+                assert col_dict["type_"] == "Array[(4, 8, 8), Float]"
+            elif col_name == "data":
+                assert col_dict["type_"] == "Array[(3, 8, 8), Float]"
+            elif col_name == "idx":
+                assert col_dict["type_"] == "Int"
+            elif col_name == "label":
+                assert col_dict["type_"] == "String"
+
+        try:
+            pxt.drop_table(desc.table_path)
+        except Exception:
+            pass
