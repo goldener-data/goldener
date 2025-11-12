@@ -1,6 +1,6 @@
 [project]
 name = "goldener"
-version = "0.1.0"
+version = "0.1.1"
 description = "Goldener - Make your data even more valuable"
 readme = "README.md"
 license-files= ["LICENSE"]
