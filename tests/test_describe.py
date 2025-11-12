@@ -63,7 +63,7 @@ class TestGoldDescriptor:
         except Exception:
             pass
 
-    def test_with_out_idx(self, extractor):
+    def test_without_idx(self, extractor):
         def collate_fn(batch):
             data = torch.stack([b["data"] for b in batch], dim=0)
             return {"data": data}
