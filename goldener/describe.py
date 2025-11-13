@@ -146,12 +146,13 @@ class GoldDescriptor:
             num_workers=self.num_workers if self.num_workers is not None else 0,
             collate_fn=self.collate_fn,
         )
-        for batch in dataloader:
+        for batch_idx, batch in enumerate(dataloader):
             batch["features"] = self.extractor.extract_and_fuse(
                 batch["data"].to(device=self.device)
             )
             if "idx" not in batch:
-                batch["idx"] = [idx for idx in range(len(batch["data"]))]
+                start = batch_idx * self.batch_size
+                batch["idx"] = [start + idx for idx in range(len(batch["data"]))]
             pxt_table.insert(
                 [
                     {
