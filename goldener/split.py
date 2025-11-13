@@ -94,8 +94,12 @@ class GoldSplitter:
 
         self.sets = sets
 
+        # the selection will be done on a dataset built from
+        # the described table computed from the descriptor
         self.selector.collate_fn = pxt_torch_dataset_collate_fn
 
+        # The selector might be called multiple times for different sets and classes,
+        # so we need to ensure it can handle replacing existing selections.
         if self.selector.if_exists != "replace_force":
             logger.warning(
                 "Forcing `selector.if_exists` to `replace_force` in the splitter "
