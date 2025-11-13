@@ -27,12 +27,13 @@ def extractor():
 
 
 class DummyDataset:
-    def __init__(self, output_shape=(3, 2, 2)):
+    def __init__(self, output_shape: tuple[int, ...] = (3, 2, 2), dataset_len: int = 2):
+        self.dataset_len = dataset_len
         # produce a fixed tensor
         self.output_shape = output_shape
 
     def __len__(self):
-        return 2
+        return self.dataset_len
 
     def __getitem__(self, idx):
         return {"data": torch.zeros(3, 8, 8), "idx": idx, "label": "dummy"}
@@ -78,9 +79,9 @@ class TestGoldDescriptor:
         )
 
         table = desc.describe(
-            DummyDataset(),
+            DummyDataset(dataset_len=10),
         )
-        assert table.count() == 2
+        assert table.count() == 10
         for i, row in enumerate(table.collect()):
             assert row["idx"] == i
 
