@@ -77,6 +77,7 @@ class GoldSplitter:
         """
         self.descriptor = descriptor
         self.selector = selector
+                self.selector.if_exists = "replace_force"
         self.drop_table = drop_table
         self.class_key = class_key
 
@@ -212,10 +213,7 @@ class GoldSplitter:
                 )
             )
 
-            
-                    # Modify table path for each class when using class stratification
-                    if self.class_key is not None and len(class_ratios) > 1:
-                        self.selector.table_path = f"{self.selector.table_path}_{class_label}"
+
             selected_indices = self.selector.select(torch_dataset, class_count)
             described_table.where(described_table.idx.isin(selected_indices)).update(
                 {"gold_set": set_name}
