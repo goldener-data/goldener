@@ -21,9 +21,9 @@ class GoldDescriptor:
         table_path: Path to the PixelTable table where the description will be saved locally.
         extractor: FeatureExtractor instance for feature extraction.
         collate_fn: Optional function to collate dataset samples into batches composed of
-        dictionaries with at least the `data` key returning a pytorch Tensor.
-        If None, the dataset is expected to directly provide such batches. It should as well format the `data` value
-        in the format expected by the feature extractor.
+        dictionaries with at least the key specified by `data_key` returning a pytorch Tensor.
+        If None, the dataset is expected to directly provide such batches. It should as well format
+        the value at `data_key` in the format expected by the feature extractor.
         data_key: Key in the batch dictionary that contains the data to extract features from. Default is "data".
         batch_size: Optional batch size for processing the dataset.
         num_workers: Optional number of worker threads for data loading.
@@ -68,9 +68,9 @@ class GoldDescriptor:
         """Describe the dataset by extracting features and storing them in a PixelTable table.
 
         Args:
-            dataset: Dataset to be described. Each item should be a dictionary with at least the `data` key
-            after applying the collate_fn. If the collate_fn is None, the dataset is expected to directly
-            provide such batches.
+            dataset: Dataset to be described. Each item should be a dictionary with at least the key specified
+            by `data_key` (default: "data") after applying the collate_fn. If the collate_fn is None, the
+            dataset is expected to directly provide such batches.
         """
         sample = dataset[0]
         if self.collate_fn is not None:
@@ -100,8 +100,8 @@ class GoldDescriptor:
 
         Args:
             sample: A single sample from the dataset to initialize the table schema.
-            It should be a dictionary with at least the `data` key. The  `data` value must be formatted
-            in the format expected by the feature extractor.
+            It should be a dictionary with at least the key specified by `data_key`. The value at this
+            key must be formatted in the format expected by the feature extractor.
         """
         sample["features"] = self.extractor.extract_and_fuse(
             sample[self.data_key].to(device=self.device)
