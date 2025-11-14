@@ -209,3 +209,35 @@ class TestGoldSplitter:
                 pxt.drop_table(path)
             except Exception:
                 pass
+
+    def test_selector_with_wrong_select_key(self, descriptor):
+        """Test that GoldSplitter forces selector to use 'features' column."""
+        # Create a selector with a non-default select_key
+        selector = GoldSelector(
+            table_path="unit_test.selector_split_wrong_key",
+            vectorizer=GoldVectorizer(),
+            select_key="wrong_key",
+        )
+
+        sets = [GoldSet(name="train", ratio=0.5)]
+        splitter = GoldSplitter(sets=sets, descriptor=descriptor, selector=selector)
+
+        # The selector's select_key should be forced to "features"
+        assert splitter.selector.select_key == "features"
+
+        # And the split should work correctly
+        splitted = splitter.split(
+            dataset=DummyDataset(
+                [{"data": torch.rand(3, 8, 8), "idx": idx} for idx in range(10)]
+            )
+        )
+
+        assert len(splitted) == 2
+        assert len(splitted["train"]) == 5
+        assert len(splitted["not assigned"]) == 5
+
+        for path in (descriptor.table_path, selector.table_path):
+            try:
+                pxt.drop_table(path)
+            except Exception:
+                pass
