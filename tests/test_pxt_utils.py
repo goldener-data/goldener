@@ -59,9 +59,9 @@ class TestGoldPxtTorchDataset:
         time.sleep(0.1)
 
         # Verify cache was cleaned up
-        assert (
-            not cache_path.exists()
-        ), "Cache should be cleaned up after dataset deletion"
+        assert not cache_path.exists(), (
+            "Cache should be cleaned up after dataset deletion"
+        )
 
     def test_dataset_iteration_with_shapes(self, test_table):
         """Test that the dataset properly reshapes arrays during iteration."""
@@ -80,9 +80,9 @@ class TestGoldPxtTorchDataset:
         for item in items:
             assert "data" in item, "Item should contain 'data' key"
             # The shape should match the original shape
-            assert (
-                item["data"].shape == shapes["data"]
-            ), "Data should be reshaped correctly"
+            assert item["data"].shape == shapes["data"], (
+                "Data should be reshaped correctly"
+            )
 
         # Cleanup
         del dataset
