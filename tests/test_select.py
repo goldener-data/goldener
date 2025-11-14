@@ -336,3 +336,68 @@ class TestGoldSelector:
             pxt.drop_table(table_path)
         except Exception:
             pass
+
+    def test_target_key_filters_vectors_during_storage(self):
+        """Verify that when select_target_key is provided, it's used to filter vectors.
+
+        This test explicitly verifies the bug fix: _sequential_store_vectors_in_table
+        should pass the target to the vectorizer, which will filter the vectors based
+        on the target values. Without the target, more vectors would be stored.
+        """
+        table_path_no_target = "unit_test.test_target_filter_no_target"
+        table_path_with_target = "unit_test.test_target_filter_with_target"
+
+        # Create dataset where each sample has 2 patches
+        # The target will filter some patches
+        dataset = DummyDataset(
+            [
+                {
+                    "features": torch.tensor([[1.0, 1.0], [2.0, 2.0]]),
+                    "target": torch.tensor([[1.0, 0.0]]),  # Filters to 1 patch
+                    "idx": 0,
+                },
+                {
+                    "features": torch.tensor([[3.0, 3.0], [4.0, 4.0]]),
+                    "target": torch.tensor([[1.0, 1.0]]),  # Keeps both patches
+                    "idx": 1,
+                },
+            ]
+        )
+
+        # Test WITHOUT target - should store all 4 vectors (2 samples * 2 patches)
+        selector_no_target = GoldSelector(
+            table_path=table_path_no_target,
+            vectorizer=GoldVectorizer(),
+            if_exists="replace_force",
+        )
+        table_no_target = selector_no_target._sequential_store_vectors_in_table(
+            dataset
+        )
+        count_no_target = table_no_target.count()
+
+        # Test WITH target - should store 3 vectors (1 from first sample, 2 from second)
+        selector_with_target = GoldSelector(
+            table_path=table_path_with_target,
+            vectorizer=GoldVectorizer(),
+            select_target_key="target",
+            if_exists="replace_force",
+        )
+        table_with_target = selector_with_target._sequential_store_vectors_in_table(
+            dataset
+        )
+        count_with_target = table_with_target.count()
+
+        # Verify that target filtering reduced the number of stored vectors
+        assert (
+            count_no_target == 4
+        ), f"Expected 4 vectors without target, got {count_no_target}"
+        assert (
+            count_with_target == 3
+        ), f"Expected 3 vectors with target, got {count_with_target}"
+
+        # Cleanup
+        try:
+            pxt.drop_table(table_path_no_target)
+            pxt.drop_table(table_path_with_target)
+        except Exception:
+            pass
