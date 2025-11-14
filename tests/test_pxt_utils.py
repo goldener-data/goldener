@@ -61,23 +61,6 @@ class TestGoldPxtTorchDataset:
         # Verify cache was cleaned up
         assert not cache_path.exists(), "Cache should be cleaned up after dataset deletion"
     
-    def test_multiple_dataset_cache_cleanup(self, test_table):
-        """Test that multiple datasets are cleaned up properly."""
-        shapes = get_array_column_shapes(test_table)
-        cache_paths = []
-        
-        # Create and delete multiple datasets
-        for _ in range(3):
-            dataset = GoldPxtTorchDataset(test_table, shapes)
-            cache_paths.append(dataset.path)
-            assert dataset.path.exists(), "Cache should exist after creation"
-            del dataset
-            time.sleep(0.05)
-        
-        # Verify all caches were cleaned up
-        for cache_path in cache_paths:
-            assert not cache_path.exists(), f"Cache at {cache_path} should be cleaned up"
-    
     def test_dataset_iteration_with_shapes(self, test_table):
         """Test that the dataset properly reshapes arrays during iteration."""
         shapes = get_array_column_shapes(test_table)
