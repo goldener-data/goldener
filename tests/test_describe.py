@@ -155,3 +155,96 @@ class TestGoldDescriptor:
             pxt.drop_table(desc.table_path)
         except Exception:
             pass
+
+    def test_custom_data_key(self, extractor):
+        """Test using a custom data_key parameter."""
+
+        class CustomKeyDataset:
+            def __init__(self, dataset_len: int = 2):
+                self.dataset_len = dataset_len
+
+            def __len__(self):
+                return self.dataset_len
+
+            def __getitem__(self, idx):
+                return {"images": torch.zeros(3, 8, 8), "idx": idx, "label": "dummy"}
+
+        desc = GoldDescriptor(
+            table_path="unit_test.test_describe",
+            extractor=extractor,
+            batch_size=2,
+            data_key="images",
+            collate_fn=None,
+            device=torch.device("cpu"),
+            if_exists="replace_force",
+        )
+
+        table = desc.describe(CustomKeyDataset())
+
+        assert table.count() == 2
+        for i, row in enumerate(table.collect()):
+            assert row["idx"] == i
+            assert (row["images"] == torch.zeros(3, 8, 8).numpy()).all()
+            assert row["label"] == "dummy"
+            assert row["features"].shape == (4, 8, 8)
+
+        try:
+            pxt.drop_table(desc.table_path)
+        except Exception:
+            pass
+
+    def test_custom_data_key_with_collate_fn(self, extractor):
+        """Test using a custom data_key with a collate_fn."""
+
+        class CustomKeyDataset:
+            def __init__(self, dataset_len: int = 2):
+                self.dataset_len = dataset_len
+
+            def __len__(self):
+                return self.dataset_len
+
+            def __getitem__(self, idx):
+                return {"input_tensor": torch.zeros(3, 8, 8), "idx": idx, "label": "dummy"}
+
+        def collate_fn(batch):
+            data = torch.stack([b["input_tensor"] for b in batch], dim=0)
+            idxs = [b["idx"] for b in batch]
+            labels = [b["label"] for b in batch]
+            return {"input_tensor": data, "idx": idxs, "label": labels}
+
+        desc = GoldDescriptor(
+            table_path="unit_test.test_describe",
+            batch_size=2,
+            extractor=extractor,
+            data_key="input_tensor",
+            collate_fn=collate_fn,
+            device=torch.device("cpu"),
+            if_exists="replace_force",
+        )
+
+        table = desc.describe(CustomKeyDataset())
+
+        assert table.count() == 2
+        for i, row in enumerate(table.collect()):
+            assert row["idx"] == i
+            assert (row["input_tensor"] == torch.zeros(3, 8, 8).numpy()).all()
+            assert row["label"] == "dummy"
+            assert row["features"].shape == (4, 8, 8)
+
+        try:
+            pxt.drop_table(desc.table_path)
+        except Exception:
+            pass
+
+    def test_missing_custom_data_key(self, extractor):
+        """Test that an error is raised when the custom data_key is missing."""
+        desc = GoldDescriptor(
+            table_path="unit_test.test_describe",
+            extractor=extractor,
+            data_key="non_existent_key",
+            collate_fn=None,
+            device=torch.device("cpu"),
+            if_exists="replace_force",
+        )
+        with pytest.raises(ValueError, match="Dataset items must contain a 'non_existent_key' key"):
+            desc.describe(DummyDataset())
