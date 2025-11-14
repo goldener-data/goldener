@@ -370,9 +370,7 @@ class TestGoldSelector:
             vectorizer=GoldVectorizer(),
             if_exists="replace_force",
         )
-        table_no_target = selector_no_target._sequential_store_vectors_in_table(
-            dataset
-        )
+        table_no_target = selector_no_target._sequential_store_vectors_in_table(dataset)
         count_no_target = table_no_target.count()
 
         # Test WITH target - should store 3 vectors (1 from first sample, 2 from second)
@@ -388,12 +386,12 @@ class TestGoldSelector:
         count_with_target = table_with_target.count()
 
         # Verify that target filtering reduced the number of stored vectors
-        assert (
-            count_no_target == 4
-        ), f"Expected 4 vectors without target, got {count_no_target}"
-        assert (
-            count_with_target == 3
-        ), f"Expected 3 vectors with target, got {count_with_target}"
+        assert count_no_target == 4, (
+            f"Expected 4 vectors without target, got {count_no_target}"
+        )
+        assert count_with_target == 3, (
+            f"Expected 3 vectors with target, got {count_with_target}"
+        )
 
         # Cleanup
         try:

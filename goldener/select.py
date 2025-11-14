@@ -303,7 +303,9 @@ class GoldSelector:
 
             vectorized = self.vectorizer.vectorize(
                 vectors,
-                None if self.select_target_key is None else batch[self.select_target_key],
+                None
+                if self.select_target_key is None
+                else batch[self.select_target_key],
             )
             to_insert = [
                 {
