@@ -157,8 +157,8 @@ class GoldPxtTorchDataset(PixeltablePytorchDataset):
 
     Attributes:
         shapes: A dictionary mapping column names of arrays to their original shapes.
-        path: Path to directory containing cached parquet files (inherited from PixeltablePytorchDataset).
-        image_format: Image format ('np' or 'pt') (inherited from PixeltablePytorchDataset).
+        path: Path to directory containing cached parquet files.
+        image_format: Image format ('np' or 'pt').
     """
 
     def __init__(
