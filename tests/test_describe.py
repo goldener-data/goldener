@@ -155,3 +155,27 @@ class TestGoldDescriptor:
             pxt.drop_table(desc.table_path)
         except Exception:
             pass
+
+    def test_max_batches(self, extractor):
+        desc = GoldDescriptor(
+            table_path="unit_test.test_describe",
+            extractor=extractor,
+            batch_size=2,
+            collate_fn=None,
+            device=torch.device("cpu"),
+            if_exists="replace_force",
+            max_batches=2,
+        )
+
+        # Dataset with 10 items, batch_size=2 means 5 batches total
+        # With max_batches=2, only first 2 batches (4 items) should be processed
+        table = desc.describe(DummyDataset(dataset_len=10))
+
+        assert table.count() == 4
+        for i, row in enumerate(table.collect()):
+            assert row["idx"] == i
+
+        try:
+            pxt.drop_table(desc.table_path)
+        except Exception:
+            pass

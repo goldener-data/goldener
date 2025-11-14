@@ -336,3 +336,32 @@ class TestGoldSelector:
             pxt.drop_table(table_path)
         except Exception:
             pass
+
+    def test_max_batches(self):
+        """Test that max_batches limits the number of batches processed."""
+        table_path = "unit_test.test_select_max_batches"
+
+        # Create dataset with 50 samples - with batch_size=10, that's 5 batches
+        dataset = DummyDataset(
+            [{"features": torch.rand(5, 2), "idx": idx} for idx in range(50)]
+        )
+
+        selector = GoldSelector(
+            table_path=table_path,
+            vectorizer=GoldVectorizer(),
+            if_exists="replace_force",
+            batch_size=10,
+            max_batches=2,  # Only process first 2 batches
+        )
+
+        # Store vectors with max_batches=2, should only process 20 items
+        pxt_table = selector._sequential_store_vectors_in_table(dataset)
+
+        # Should only have vectors from first 2 batches (20 samples with 5 patches each)
+        assert pxt_table.count() == 40  # 20 samples * 2 vectors per sample = 40 vectors
+
+        # Cleanup
+        try:
+            pxt.drop_table(table_path)
+        except Exception:
+            pass
