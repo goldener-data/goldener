@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from logging import getLogger
 
 import pixeltable as pxt
 from pixeltable.catalog import Table
@@ -17,6 +18,9 @@ from goldener.pxt_utils import (
 from goldener.select import GoldSelector
 from goldener.torch_utils import ResetableTorchIterableDataset
 from goldener.utils import get_ratio_list_sum
+
+
+logger = getLogger(__name__)
 
 
 @dataclass
@@ -90,7 +94,18 @@ class GoldSplitter:
 
         self.sets = sets
 
+        # the selection will be done on a dataset built from
+        # the described table computed from the descriptor
         self.selector.collate_fn = pxt_torch_dataset_collate_fn
+
+        # The selector might be called multiple times for different sets and classes,
+        # so we need to ensure it can handle replacing existing selections.
+        if self.selector.if_exists != "replace_force":
+            logger.warning(
+                "Forcing `selector.if_exists` to `replace_force` in the splitter "
+                "(allows selection for multiple sets or classes)."
+            )
+            self.selector.if_exists = "replace_force"
 
     def split(self, dataset: Dataset) -> dict[str, set[int]]:
         """Split the dataset into multiple sets based on the configured ratios.

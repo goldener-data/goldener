@@ -63,7 +63,6 @@ def selector():
     return GoldSelector(
         table_path="unit_test.selector_split",
         vectorizer=GoldVectorizer(),
-        if_exists="replace_force",
     )
 
 
