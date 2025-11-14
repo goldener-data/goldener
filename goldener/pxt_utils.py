@@ -157,6 +157,8 @@ class GoldPxtTorchDataset(PixeltablePytorchDataset):
 
     Attributes:
         shapes: A dictionary mapping column names of arrays to their original shapes.
+        path: Path to directory containing cached parquet files (inherited from PixeltablePytorchDataset).
+        image_format: Image format ('np' or 'pt') (inherited from PixeltablePytorchDataset).
     """
 
     def __init__(
@@ -189,7 +191,7 @@ class GoldPxtTorchDataset(PixeltablePytorchDataset):
         This method removes the cache directory created by PixeltablePytorchDataset
         to prevent accumulation of temporary files.
         """
-        if hasattr(self, "path") and self.path.exists():
+        if self.path.exists():
             shutil.rmtree(self.path, ignore_errors=True)
 
 
