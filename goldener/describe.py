@@ -21,9 +21,10 @@ class GoldDescriptor:
         table_path: Path to the PixelTable table where the description will be saved locally.
         extractor: FeatureExtractor instance for feature extraction.
         collate_fn: Optional function to collate dataset samples into batches composed of
-        dictionaries with at least the `data` key returning a pytorch Tensor.
-        If None, the dataset is expected to directly provide such batches. It should as well format the `data` value
-        in the format expected by the feature extractor.
+        dictionaries with at least the key specified by `data_key` returning a pytorch Tensor.
+        If None, the dataset is expected to directly provide such batches. It should as well format
+        the value at `data_key` in the format expected by the feature extractor.
+        data_key: Key in the batch dictionary that contains the data to extract features from. Default is "data".
         batch_size: Optional batch size for processing the dataset.
         num_workers: Optional number of worker threads for data loading.
         if_exists: Behavior if the table already exists ('error' or 'replace_force'). If 'replace_force',
@@ -36,6 +37,7 @@ class GoldDescriptor:
         table_path: str,
         extractor: GoldFeatureExtractor,
         collate_fn: Callable | None = None,
+        data_key: str = "data",
         batch_size: int | None = None,
         num_workers: int | None = None,
         if_exists: Literal["error", "replace_force"] = "error",
@@ -45,6 +47,7 @@ class GoldDescriptor:
         self.table_path = table_path
         self.extractor = extractor
         self.collate_fn = collate_fn
+        self.data_key = data_key
         self.if_exists = if_exists
         self.distribute = distribute
 
@@ -65,9 +68,9 @@ class GoldDescriptor:
         """Describe the dataset by extracting features and storing them in a PixelTable table.
 
         Args:
-            dataset: Dataset to be described. Each item should be a dictionary with at least the `data` key
-            after applying the collate_fn. If the collate_fn is None, the dataset is expected to directly
-            provide such batches.
+            dataset: Dataset to be described. Each item should be a dictionary with at least the key specified
+            by `data_key` (default: "data") after applying the collate_fn. If the collate_fn is None, the
+            dataset is expected to directly provide such batches.
         """
         sample = dataset[0]
         if self.collate_fn is not None:
@@ -78,8 +81,8 @@ class GoldDescriptor:
                 "Dataset items must be dictionaries after applying the collate_fn."
             )
 
-        if "data" not in sample:
-            raise ValueError("Dataset items must contain a 'data' key.")
+        if self.data_key not in sample:
+            raise ValueError(f"Dataset items must contain a '{self.data_key}' key.")
 
         pxt_table = self._initialize_table(sample)
 
@@ -97,11 +100,11 @@ class GoldDescriptor:
 
         Args:
             sample: A single sample from the dataset to initialize the table schema.
-            It should be a dictionary with at least the `data` key. The  `data` value must be formatted
-            in the format expected by the feature extractor.
+            It should be a dictionary with at least the key specified by `data_key`. The value at this
+            key must be formatted in the format expected by the feature extractor.
         """
         sample["features"] = self.extractor.extract_and_fuse(
-            sample["data"].to(device=self.device)
+            sample[self.data_key].to(device=self.device)
         )
         if self.collate_fn is not None:
             for key, value in sample.items():
@@ -148,11 +151,11 @@ class GoldDescriptor:
         )
         for batch_idx, batch in enumerate(dataloader):
             batch["features"] = self.extractor.extract_and_fuse(
-                batch["data"].to(device=self.device)
+                batch[self.data_key].to(device=self.device)
             )
             if "idx" not in batch:
                 start = batch_idx * self.batch_size
-                batch["idx"] = [start + idx for idx in range(len(batch["data"]))]
+                batch["idx"] = [start + idx for idx in range(len(batch[self.data_key]))]
             pxt_table.insert(
                 [
                     {
@@ -167,7 +170,7 @@ class GoldDescriptor:
                         )
                         for key, value in batch.items()
                     }
-                    for sample_idx in range(len(batch["data"]))
+                    for sample_idx in range(len(batch[self.data_key]))
                 ]
             )
 
