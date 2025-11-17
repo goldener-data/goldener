@@ -47,7 +47,7 @@ class GoldSelector:
         distribute: Whether to use distributed selection.
         shuffle: Whether to shuffle the dataset during loading.
         generator: Optional random number generator for shuffling.
-        max_batches: Optional maximum number of batches to process. Useful for testing on a small subset of the dataset.
+        max_samples: Optional maximum number of samples to process. Useful for testing on a small subset of the dataset.
     """
 
     def __init__(
@@ -66,7 +66,7 @@ class GoldSelector:
         distribute: bool = False,
         shuffle: bool = False,
         generator: torch.Generator | None = None,
-        max_batches: int | None = None,
+        max_samples: int | None = None,
     ) -> None:
         self.table_path = table_path
         self.vectorizer = vectorizer
@@ -80,7 +80,7 @@ class GoldSelector:
         self.distribute = distribute
         self.shuffle = shuffle
         self.generator = generator
-        self.max_batches = max_batches
+        self.max_samples = max_samples
 
         self.batch_size: int | None
         self.num_workers: int | None
@@ -292,14 +292,12 @@ class GoldSelector:
         assert self.batch_size is not None
         assert self.num_workers is not None
         
-        # Create sampler to limit dataset if max_batches is specified
-        # Note: Cannot use sampler with shuffle=True or with IterableDatasets
+        # Create sampler to limit dataset if max_samples is specified
+        # Note: Cannot use sampler with IterableDataset
         sampler = None
-        if (self.max_batches is not None and not self.shuffle 
-            and not isinstance(dataset, ResetableTorchIterableDataset)
-            and hasattr(dataset, '__len__')):
-            max_samples = self.batch_size * self.max_batches
-            sampler = SequentialSampler(range(min(max_samples, len(dataset))))
+        if (self.max_samples is not None 
+            and not isinstance(dataset, ResetableTorchIterableDataset)):
+            sampler = SequentialSampler(range(self.max_samples))
         
         data_loader = torch.utils.data.DataLoader(
             dataset,
@@ -312,13 +310,7 @@ class GoldSelector:
         )
 
         vector_count = 0
-        batch_count = 0
         for batch_idx, batch in enumerate(data_loader):
-            # For IterableDatasets or when sampler can't be used, limit by breaking
-            if (self.max_batches is not None and sampler is None 
-                and batch_count >= self.max_batches):
-                break
-            batch_count += 1
             vectors = batch[self.select_key]
 
             vectorized = self.vectorizer.vectorize(vectors)

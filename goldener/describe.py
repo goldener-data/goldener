@@ -29,7 +29,7 @@ class GoldDescriptor:
         if_exists: Behavior if the table already exists ('error' or 'replace_force'). If 'replace_force',
         the existing table will be replaced, otherwise an error will be raised.
         distribute: Whether to use distributed processing for feature extraction and table population. Not implemented yet.
-        max_batches: Optional maximum number of batches to process. Useful for testing on a small subset of the dataset.
+        max_samples: Optional maximum number of samples to process. Useful for testing on a small subset of the dataset.
     """
 
     def __init__(
@@ -42,14 +42,14 @@ class GoldDescriptor:
         if_exists: Literal["error", "replace_force"] = "error",
         distribute: bool = False,
         device: torch.device | None = None,
-        max_batches: int | None = None,
+        max_samples: int | None = None,
     ):
         self.table_path = table_path
         self.extractor = extractor
         self.collate_fn = collate_fn
         self.if_exists = if_exists
         self.distribute = distribute
-        self.max_batches = max_batches
+        self.max_samples = max_samples
 
         if device is None:
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -144,12 +144,10 @@ class GoldDescriptor:
         assert self.batch_size is not None
         assert self.num_workers is not None
         
-        # Create sampler to limit dataset if max_batches is specified
-        # Only use sampler for map-style datasets (with __len__)
+        # Create sampler to limit dataset if max_samples is specified
         sampler = None
-        if self.max_batches is not None and hasattr(dataset, '__len__'):
-            max_samples = self.batch_size * self.max_batches
-            sampler = SequentialSampler(range(min(max_samples, len(dataset))))
+        if self.max_samples is not None:
+            sampler = SequentialSampler(range(self.max_samples))
         
         dataloader = torch.utils.data.DataLoader(
             dataset,
@@ -158,12 +156,7 @@ class GoldDescriptor:
             collate_fn=self.collate_fn,
             sampler=sampler,
         )
-        batch_count = 0
         for batch_idx, batch in enumerate(dataloader):
-            # For IterableDatasets, limit by breaking since sampler can't be used
-            if self.max_batches is not None and sampler is None and batch_count >= self.max_batches:
-                break
-            batch_count += 1
             batch["features"] = self.extractor.extract_and_fuse(
                 batch["data"].to(device=self.device)
             )

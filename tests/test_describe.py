@@ -156,7 +156,7 @@ class TestGoldDescriptor:
         except Exception:
             pass
 
-    def test_max_batches(self, extractor):
+    def test_max_samples(self, extractor):
         desc = GoldDescriptor(
             table_path="unit_test.test_describe",
             extractor=extractor,
@@ -164,11 +164,11 @@ class TestGoldDescriptor:
             collate_fn=None,
             device=torch.device("cpu"),
             if_exists="replace_force",
-            max_batches=2,
+            max_samples=4,
         )
 
-        # Dataset with 10 items, batch_size=2 means 5 batches total
-        # With max_batches=2, only first 2 batches (4 items) should be processed
+        # Dataset with 10 items
+        # With max_samples=4, only first 4 items should be processed
         table = desc.describe(DummyDataset(dataset_len=10))
 
         assert table.count() == 4
