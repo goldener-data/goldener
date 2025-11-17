@@ -51,7 +51,8 @@ class GoldSplitter:
         sets: List of GoldSet configurations defining the splits.
         descriptor: GoldDescriptor used to describe the dataset.
         selector: GoldSelector used to select samples for each set. The collate_fn of the selector
-        will be set to `pxt_torch_dataset_collate_fn`.
+        will be set to `pxt_torch_dataset_collate_fn`, and the select_key will be forced to "features"
+        to match the descriptor's output column.
         class_key: Optional key for class-based stratification.
         drop_table: Whether to drop the described table after splitting.
     """
@@ -71,7 +72,8 @@ class GoldSplitter:
             an additional set named "not assigned" will be created to cover the remaining samples.
             descriptor: GoldDescriptor used to describe the dataset.
             selector: GoldSelector used to select samples for each set. The collate_fn of the selector
-            will be set to `pxt_torch_dataset_collate_fn`.
+            will be set to `pxt_torch_dataset_collate_fn`, and the select_key will be forced to "features"
+            to match the descriptor's output column.
             class_key: Optional key for class-based stratification.
             drop_table: Whether to drop the described table after splitting.
 
@@ -97,6 +99,15 @@ class GoldSplitter:
         # the selection will be done on a dataset built from
         # the described table computed from the descriptor
         self.selector.collate_fn = pxt_torch_dataset_collate_fn
+
+        # The descriptor always stores features in the "features" column,
+        # so we must ensure the selector looks for features there.
+        if self.selector.select_key != "features":
+            logger.warning(
+                f"Forcing `selector.select_key` to 'features' in the splitter "
+                f"(was '{self.selector.select_key}'). The descriptor stores features in the 'features' column."
+            )
+            self.selector.select_key = "features"
 
         # The selector might be called multiple times for different sets and classes,
         # so we need to ensure it can handle replacing existing selections.
