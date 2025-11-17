@@ -9,7 +9,7 @@ import jax.numpy as jnp
 from coreax import SquaredExponentialKernel, Data
 from coreax.kernels import median_heuristic
 from coreax.solvers import KernelHerding
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, SequentialSampler
 
 from goldener.pxt_utils import create_pxt_table_from_sample, set_value_to_idx_rows
 from goldener.reduce import GoldReducer
@@ -291,19 +291,34 @@ class GoldSelector:
 
         assert self.batch_size is not None
         assert self.num_workers is not None
+        
+        # Create sampler to limit dataset if max_batches is specified
+        # Note: Cannot use sampler with shuffle=True or with IterableDatasets
+        sampler = None
+        if (self.max_batches is not None and not self.shuffle 
+            and not isinstance(dataset, ResetableTorchIterableDataset)
+            and hasattr(dataset, '__len__')):
+            max_samples = self.batch_size * self.max_batches
+            sampler = SequentialSampler(range(min(max_samples, len(dataset))))
+        
         data_loader = torch.utils.data.DataLoader(
             dataset,
             batch_size=self.batch_size,
             collate_fn=self.collate_fn,
             num_workers=self.num_workers,
-            shuffle=self.shuffle,
+            shuffle=self.shuffle if sampler is None else False,
             generator=self.generator,
+            sampler=sampler,
         )
 
         vector_count = 0
+        batch_count = 0
         for batch_idx, batch in enumerate(data_loader):
-            if self.max_batches is not None and batch_idx >= self.max_batches:
+            # For IterableDatasets or when sampler can't be used, limit by breaking
+            if (self.max_batches is not None and sampler is None 
+                and batch_count >= self.max_batches):
                 break
+            batch_count += 1
             vectors = batch[self.select_key]
 
             vectorized = self.vectorizer.vectorize(vectors)
