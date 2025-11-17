@@ -9,7 +9,7 @@ import jax.numpy as jnp
 from coreax import SquaredExponentialKernel, Data
 from coreax.kernels import median_heuristic
 from coreax.solvers import KernelHerding
-from torch.utils.data import Dataset, SequentialSampler
+from torch.utils.data import Dataset, IterableDataset, SequentialSampler
 
 from goldener.pxt_utils import create_pxt_table_from_sample, set_value_to_idx_rows
 from goldener.reduce import GoldReducer
@@ -295,8 +295,7 @@ class GoldSelector:
         # Create sampler to limit dataset if max_samples is specified
         # Note: Cannot use sampler with IterableDataset
         sampler = None
-        if (self.max_samples is not None 
-            and not isinstance(dataset, ResetableTorchIterableDataset)):
+        if self.max_samples is not None and not isinstance(dataset, IterableDataset):
             sampler = SequentialSampler(range(self.max_samples))
         
         data_loader = torch.utils.data.DataLoader(
