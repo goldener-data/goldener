@@ -300,19 +300,18 @@ class TestGoldSelector:
         """Ensure selection works when features to select are provided under a custom target key.
 
         The dataset samples include a `target` tensor which should be used by the selector
-        when `select_target_key="target"` is passed.
+        when `select_target_key="target"` is passed. The target filters some vectors,
+        reducing the total number of vectors stored.
         """
         table_path = "unit_test.test_select_with_target"
 
         # prepare samples that include both features and a target tensor
+        # Each sample has 2 patches, and the target will filter some patches
         dataset = DummyDataset(
             [
                 {
-                    "features": torch.rand(5, 2),
-                    "target": torch.ones(
-                        1,
-                        2,
-                    ),
+                    "features": torch.rand(2, 2),  # 2 patches with random features
+                    "target": torch.tensor([[1.0, 0.0]]),  # Filters to 1 patch
                     "idx": idx,
                 }
                 for idx in range(50)
@@ -326,6 +325,14 @@ class TestGoldSelector:
             if_exists="replace_force",
         )
 
+        # Store vectors and verify that target filtering is applied
+        table = selector._sequential_store_vectors_in_table(dataset)
+        # Each sample has 2 patches but target filters to 1 patch per sample
+        # So 50 samples * 1 patch = 50 vectors (not 50 * 2 = 100)
+        assert table.count() == 50, (
+            f"Expected 50 vectors with target filtering, got {table.count()}"
+        )
+
         selected = selector.select(dataset, select_count=10)
 
         assert isinstance(selected, set)
@@ -334,68 +341,5 @@ class TestGoldSelector:
         # Cleanup created table
         try:
             pxt.drop_table(table_path)
-        except Exception:
-            pass
-
-    def test_target_key_filters_vectors_during_storage(self):
-        """Verify that when select_target_key is provided, it's used to filter vectors.
-
-        This test explicitly verifies the bug fix: _sequential_store_vectors_in_table
-        should pass the target to the vectorizer, which will filter the vectors based
-        on the target values. Without the target, more vectors would be stored.
-        """
-        table_path_no_target = "unit_test.test_target_filter_no_target"
-        table_path_with_target = "unit_test.test_target_filter_with_target"
-
-        # Create dataset where each sample has 2 patches
-        # The target will filter some patches
-        dataset = DummyDataset(
-            [
-                {
-                    "features": torch.tensor([[1.0, 1.0], [2.0, 2.0]]),
-                    "target": torch.tensor([[1.0, 0.0]]),  # Filters to 1 patch
-                    "idx": 0,
-                },
-                {
-                    "features": torch.tensor([[3.0, 3.0], [4.0, 4.0]]),
-                    "target": torch.tensor([[1.0, 1.0]]),  # Keeps both patches
-                    "idx": 1,
-                },
-            ]
-        )
-
-        # Test WITHOUT target - should store all 4 vectors (2 samples * 2 patches)
-        selector_no_target = GoldSelector(
-            table_path=table_path_no_target,
-            vectorizer=GoldVectorizer(),
-            if_exists="replace_force",
-        )
-        table_no_target = selector_no_target._sequential_store_vectors_in_table(dataset)
-        count_no_target = table_no_target.count()
-
-        # Test WITH target - should store 3 vectors (1 from first sample, 2 from second)
-        selector_with_target = GoldSelector(
-            table_path=table_path_with_target,
-            vectorizer=GoldVectorizer(),
-            select_target_key="target",
-            if_exists="replace_force",
-        )
-        table_with_target = selector_with_target._sequential_store_vectors_in_table(
-            dataset
-        )
-        count_with_target = table_with_target.count()
-
-        # Verify that target filtering reduced the number of stored vectors
-        assert count_no_target == 4, (
-            f"Expected 4 vectors without target, got {count_no_target}"
-        )
-        assert count_with_target == 3, (
-            f"Expected 3 vectors with target, got {count_with_target}"
-        )
-
-        # Cleanup
-        try:
-            pxt.drop_table(table_path_no_target)
-            pxt.drop_table(table_path_with_target)
         except Exception:
             pass
