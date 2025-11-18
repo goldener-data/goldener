@@ -291,7 +291,7 @@ class GoldSelector:
 
         assert self.batch_size is not None
         assert self.num_workers is not None
-        
+
         data_loader = torch.utils.data.DataLoader(
             dataset,
             batch_size=self.batch_size,
@@ -308,7 +308,12 @@ class GoldSelector:
                 break
             vectors = batch[self.select_key]
 
-            vectorized = self.vectorizer.vectorize(vectors)
+            vectorized = self.vectorizer.vectorize(
+                vectors,
+                None
+                if self.select_target_key is None
+                else batch[self.select_target_key],
+            )
             to_insert = [
                 {
                     "idx": vector_idx + vector_count,

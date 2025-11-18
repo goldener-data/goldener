@@ -1,5 +1,6 @@
 from collections import defaultdict
 from typing import Literal, Any, Iterator, Sequence, Callable
+import shutil
 
 import numpy as np
 import pixeltable as pxt
@@ -156,6 +157,8 @@ class GoldPxtTorchDataset(PixeltablePytorchDataset):
 
     Attributes:
         shapes: A dictionary mapping column names of arrays to their original shapes.
+        path: Path to directory containing cached parquet files.
+        image_format: Image format ('np' or 'pt').
     """
 
     def __init__(
@@ -181,6 +184,15 @@ class GoldPxtTorchDataset(PixeltablePytorchDataset):
                 else value.reshape(self.shapes[key])
                 for key, value in item.items()
             }
+
+    def __del__(self) -> None:
+        """Clean up cached parquet files when the dataset is destroyed.
+
+        This method removes the cache directory created by PixeltablePytorchDataset
+        to prevent accumulation of temporary files.
+        """
+        if self.path.exists():
+            shutil.rmtree(self.path, ignore_errors=True)
 
 
 def get_array_column_shapes(table: Table) -> dict[str, tuple[int, ...]]:

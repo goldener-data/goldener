@@ -214,16 +214,16 @@ class TestGoldSplitter:
         """Test that max_batches limits the number of batches processed."""
         sets = [GoldSet(name="train", ratio=0.5), GoldSet(name="val", ratio=0.5)]
         splitter = GoldSplitter(
-            sets=sets, 
-            descriptor=descriptor, 
+            sets=sets,
+            descriptor=descriptor,
             selector=selector,
-            max_batches=1  # Only process 1 batch
+            max_batches=1,  # Only process 1 batch
         )
-        
+
         # Verify max_batches was set on descriptor and selector
         assert splitter.descriptor.max_batches == 1
         assert splitter.selector.max_batches == 1
-        
+
         # Dataset with 10 items, batch_size=2 means 5 batches total
         # With max_batches=1, only first batch (2 items) should be processed
         splitted = splitter.split(
@@ -235,11 +235,43 @@ class TestGoldSplitter:
         assert len(splitted) == 2
         # Only 2 items total (1 batch with batch_size=2)
         assert len(splitted["train"]) + len(splitted["val"]) == 2
-        
+
         for path in (
             splitter.descriptor.table_path,
             splitter.selector.table_path,
         ):
+            try:
+                pxt.drop_table(path)
+            except Exception:
+                pass
+
+    def test_selector_with_wrong_select_key(self, descriptor):
+        """Test that GoldSplitter forces selector to use 'features' column."""
+        # Create a selector with a non-default select_key
+        selector = GoldSelector(
+            table_path="unit_test.selector_split_wrong_key",
+            vectorizer=GoldVectorizer(),
+            select_key="wrong_key",
+        )
+
+        sets = [GoldSet(name="train", ratio=0.5)]
+        splitter = GoldSplitter(sets=sets, descriptor=descriptor, selector=selector)
+
+        # The selector's select_key should be forced to "features"
+        assert splitter.selector.select_key == "features"
+
+        # And the split should work correctly
+        splitted = splitter.split(
+            dataset=DummyDataset(
+                [{"data": torch.rand(3, 8, 8), "idx": idx} for idx in range(10)]
+            )
+        )
+
+        assert len(splitted) == 2
+        assert len(splitted["train"]) == 5
+        assert len(splitted["not assigned"]) == 5
+
+        for path in (descriptor.table_path, selector.table_path):
             try:
                 pxt.drop_table(path)
             except Exception:
