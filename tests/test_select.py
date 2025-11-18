@@ -300,19 +300,18 @@ class TestGoldSelector:
         """Ensure selection works when features to select are provided under a custom target key.
 
         The dataset samples include a `target` tensor which should be used by the selector
-        when `select_target_key="target"` is passed.
+        when `select_target_key="target"` is passed. The target filters some vectors,
+        reducing the total number of vectors stored.
         """
         table_path = "unit_test.test_select_with_target"
 
         # prepare samples that include both features and a target tensor
+        # Each sample has 2 patches, and the target will filter some patches
         dataset = DummyDataset(
             [
                 {
-                    "features": torch.rand(5, 2),
-                    "target": torch.ones(
-                        1,
-                        2,
-                    ),
+                    "features": torch.rand(2, 2),  # 2 patches with random features
+                    "target": torch.tensor([[1.0, 0.0]]),  # Filters to 1 patch
                     "idx": idx,
                 }
                 for idx in range(50)
@@ -324,6 +323,14 @@ class TestGoldSelector:
             vectorizer=GoldVectorizer(),
             select_target_key="target",
             if_exists="replace_force",
+        )
+
+        # Store vectors and verify that target filtering is applied
+        table = selector._sequential_store_vectors_in_table(dataset)
+        # Each sample has 2 patches but target filters to 1 patch per sample
+        # So 50 samples * 1 patch = 50 vectors (not 50 * 2 = 100)
+        assert table.count() == 50, (
+            f"Expected 50 vectors with target filtering, got {table.count()}"
         )
 
         selected = selector.select(dataset, select_count=10)
