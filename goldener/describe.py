@@ -3,7 +3,7 @@ from typing import Callable, Literal
 import torch
 
 from pixeltable.catalog import Table
-from torch.utils.data import Dataset, SequentialSampler
+from torch.utils.data import Dataset
 
 from goldener.extract import GoldFeatureExtractor
 from goldener.pxt_utils import create_pxt_table_from_sample
@@ -144,19 +144,20 @@ class GoldDescriptor:
         assert self.batch_size is not None
         assert self.num_workers is not None
         
-        # Create sampler to limit dataset if max_samples is specified
-        sampler = None
-        if self.max_samples is not None:
-            sampler = SequentialSampler(range(self.max_samples))
-        
         dataloader = torch.utils.data.DataLoader(
             dataset,
             batch_size=self.batch_size,
             num_workers=self.num_workers if self.num_workers is not None else 0,
             collate_fn=self.collate_fn,
-            sampler=sampler,
         )
+        
+        samples_processed = 0
         for batch_idx, batch in enumerate(dataloader):
+            # Stop if we've processed enough samples
+            if self.max_samples is not None and samples_processed >= self.max_samples:
+                break
+            
+            samples_processed += len(batch["data"])
             batch["features"] = self.extractor.extract_and_fuse(
                 batch["data"].to(device=self.device)
             )
