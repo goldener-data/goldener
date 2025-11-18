@@ -30,6 +30,7 @@ class GoldDescriptor:
         if_exists: Behavior if the table already exists ('error' or 'replace_force'). If 'replace_force',
         the existing table will be replaced, otherwise an error will be raised.
         distribute: Whether to use distributed processing for feature extraction and table population. Not implemented yet.
+        max_batches: Optional maximum number of batches to process. Useful for testing on a small subset of the dataset.
     """
 
     def __init__(
@@ -43,6 +44,7 @@ class GoldDescriptor:
         if_exists: Literal["error", "replace_force"] = "error",
         distribute: bool = False,
         device: torch.device | None = None,
+        max_batches: int | None = None,
     ):
         self.table_path = table_path
         self.extractor = extractor
@@ -50,6 +52,7 @@ class GoldDescriptor:
         self.data_key = data_key
         self.if_exists = if_exists
         self.distribute = distribute
+        self.max_batches = max_batches
 
         if device is None:
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -143,13 +146,18 @@ class GoldDescriptor:
     ) -> Table:
         assert self.batch_size is not None
         assert self.num_workers is not None
+
         dataloader = torch.utils.data.DataLoader(
             dataset,
             batch_size=self.batch_size,
             num_workers=self.num_workers if self.num_workers is not None else 0,
             collate_fn=self.collate_fn,
         )
+
         for batch_idx, batch in enumerate(dataloader):
+            # Stop if we've processed enough batches
+            if self.max_batches is not None and batch_idx >= self.max_batches:
+                break
             batch["features"] = self.extractor.extract_and_fuse(
                 batch[self.data_key].to(device=self.device)
             )

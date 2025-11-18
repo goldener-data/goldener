@@ -55,6 +55,7 @@ class GoldSplitter:
         to match the descriptor's output column.
         class_key: Optional key for class-based stratification.
         drop_table: Whether to drop the described table after splitting.
+        max_batches: Optional maximum number of batches to process in both descriptor and selector. Useful for testing on a small subset of the dataset.
     """
 
     def __init__(
@@ -64,6 +65,7 @@ class GoldSplitter:
         selector: GoldSelector,
         class_key: str | None = None,
         drop_table: bool = False,
+        max_batches: int | None = None,
     ) -> None:
         """Initialize the GoldSplitter.
 
@@ -76,6 +78,8 @@ class GoldSplitter:
             to match the descriptor's output column.
             class_key: Optional key for class-based stratification.
             drop_table: Whether to drop the described table after splitting.
+            max_batches: Optional maximum number of batches to process in both descriptor and selector.
+            If provided, overrides the max_batches setting in descriptor and selector. Useful for testing on a small subset of the dataset.
 
         Raises:
             ValueError: If set names are not unique or ratios do not sum to 1.
@@ -85,6 +89,11 @@ class GoldSplitter:
         self.selector = selector
         self.drop_table = drop_table
         self.class_key = class_key
+
+        # Override max_batches if provided
+        if max_batches is not None:
+            self.descriptor.max_batches = max_batches
+            self.selector.max_batches = max_batches
 
         ratios_sum = get_ratio_list_sum([s.ratio for s in sets])
         set_names = [s.name for s in sets]
