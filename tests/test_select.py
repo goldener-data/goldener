@@ -196,12 +196,6 @@ class TestGoldSelector:
             pass
 
     def test_sequential_select(self):
-        """Test _sequential_select using a real PixelTable table.
-
-        This test will be skipped if the `pixeltable` package is not available.
-        We only monkeypatch `_coresubset_selection` to control the selected indices
-        while keeping the real table creation and insertion logic.
-        """
         table_path = "unit_test.test_select_sequential"
 
         # prepare two samples, each with a single vector (shape: (1, D))
@@ -229,12 +223,6 @@ class TestGoldSelector:
             pass
 
     def test_sequential_select_with_chunk(self):
-        """Test _sequential_select using a real PixelTable table.
-
-        This test will be skipped if the `pixeltable` package is not available.
-        We only monkeypatch `_coresubset_selection` to control the selected indices
-        while keeping the real table creation and insertion logic.
-        """
         table_path = "unit_test.test_select_sequential"
 
         # prepare two samples, each with a single vector (shape: (1, D))
@@ -263,12 +251,6 @@ class TestGoldSelector:
             pass
 
     def test_sequential_reducer(self):
-        """Test _sequential_select using a real PixelTable table.
-
-        This test will be skipped if the `pixeltable` package is not available.
-        We only monkeypatch `_coresubset_selection` to control the selected indices
-        while keeping the real table creation and insertion logic.
-        """
         table_path = "unit_test.test_select_sequential"
 
         # prepare two samples, each with a single vector (shape: (1, D))
@@ -297,12 +279,6 @@ class TestGoldSelector:
             pass
 
     def test_select_with_target_key(self):
-        """Ensure selection works when features to select are provided under a custom target key.
-
-        The dataset samples include a `target` tensor which should be used by the selector
-        when `select_target_key="target"` is passed. The target filters some vectors,
-        reducing the total number of vectors stored.
-        """
         table_path = "unit_test.test_select_with_target"
 
         # prepare samples that include both features and a target tensor
