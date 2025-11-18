@@ -211,7 +211,6 @@ class TestGoldSplitter:
                 pass
 
     def test_selector_with_wrong_select_key(self, descriptor):
-        """Test that GoldSplitter forces selector to use 'features' column."""
         # Create a selector with a non-default select_key
         selector = GoldSelector(
             table_path="unit_test.selector_split_wrong_key",

@@ -13,7 +13,6 @@ from goldener.pxt_utils import (
 
 @pytest.fixture
 def test_table():
-    """Create a test table with sample data."""
     table_path = "test_pxt_utils.test_table"
 
     # Clean up if exists
@@ -38,7 +37,6 @@ def test_table():
 
 class TestGoldPxtTorchDataset:
     def test_cache_cleanup(self, test_table):
-        """Test that the cache is cleaned up when GoldPxtTorchDataset is destroyed."""
         # Get array shapes
         shapes = get_array_column_shapes(test_table)
 
@@ -64,7 +62,6 @@ class TestGoldPxtTorchDataset:
         )
 
     def test_dataset_iteration_with_shapes(self, test_table):
-        """Test that the dataset properly reshapes arrays during iteration."""
         shapes = get_array_column_shapes(test_table)
 
         # Create dataset
