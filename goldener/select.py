@@ -47,7 +47,7 @@ class GoldSelector:
         distribute: Whether to use distributed selection.
         shuffle: Whether to shuffle the dataset during loading.
         generator: Optional random number generator for shuffling.
-        max_samples: Optional maximum number of samples to process. Useful for testing on a small subset of the dataset.
+        max_batches: Optional maximum number of batches to process. Useful for testing on a small subset of the dataset.
     """
 
     def __init__(
@@ -66,7 +66,7 @@ class GoldSelector:
         distribute: bool = False,
         shuffle: bool = False,
         generator: torch.Generator | None = None,
-        max_samples: int | None = None,
+        max_batches: int | None = None,
     ) -> None:
         self.table_path = table_path
         self.vectorizer = vectorizer
@@ -80,7 +80,7 @@ class GoldSelector:
         self.distribute = distribute
         self.shuffle = shuffle
         self.generator = generator
-        self.max_samples = max_samples
+        self.max_batches = max_batches
 
         self.batch_size: int | None
         self.num_workers: int | None
@@ -302,13 +302,10 @@ class GoldSelector:
         )
 
         vector_count = 0
-        samples_processed = 0
         for batch_idx, batch in enumerate(data_loader):
-            # Stop if we've processed enough samples
-            if self.max_samples is not None and samples_processed >= self.max_samples:
+            # Stop if we've processed enough batches
+            if self.max_batches is not None and batch_idx >= self.max_batches:
                 break
-            
-            samples_processed += len(batch["idx"]) if "idx" in batch else self.batch_size
             vectors = batch[self.select_key]
 
             vectorized = self.vectorizer.vectorize(vectors)
