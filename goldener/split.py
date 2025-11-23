@@ -11,8 +11,7 @@ from goldener.pxt_utils import (
     get_expr_from_column_name,
     pxt_torch_dataset_collate_fn,
     GoldPxtTorchDataset,
-    get_array_column_shapes,
-    _get_column_distinct_ratios,
+    get_column_distinct_ratios,
     set_value_to_idx_rows,
 )
 from goldener.select import GoldSelector
@@ -147,11 +146,11 @@ class GoldSplitter:
             ValueError: If any set results in zero samples due to its ratio, if class_key is not found,
             or if class stratification results in zero samples for any class in a set.
         """
-        described_table = self.descriptor.describe(dataset)
+        described_table = self.descriptor.describe_in_table(dataset)
         described_table.add_column(gold_set=pxt.String, if_exists="error")
 
         class_expr = self._get_class_expr(described_table)
-        class_ratios = _get_column_distinct_ratios(described_table, class_expr)
+        class_ratios = get_column_distinct_ratios(described_table, class_expr)
 
         sample_count = described_table.count()
 
@@ -242,9 +241,7 @@ class GoldSplitter:
             ).select()
 
             torch_dataset = ResetableTorchIterableDataset(
-                GoldPxtTorchDataset(
-                    class_table, shapes=get_array_column_shapes(described_table)
-                )
+                GoldPxtTorchDataset(class_table)
             )
 
             selected_indices = self.selector.select(torch_dataset, class_count)

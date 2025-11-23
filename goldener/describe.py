@@ -1,35 +1,53 @@
-from typing import Callable, Literal
+from typing import Callable, Literal, Any
 
 import torch
 
+import pixeltable as pxt
 from pixeltable.catalog import Table
 from torch.utils.data import Dataset
 
 from goldener.extract import GoldFeatureExtractor
-from goldener.pxt_utils import create_pxt_table_from_sample
+from goldener.pxt_utils import (
+    create_pxt_table_from_sample,
+    create_pxt_dirs_for_path,
+    GoldPxtTorchDataset,
+    get_expr_from_column_name,
+    is_view_of,
+    get_sample_row_from_idx,
+    pxt_torch_dataset_collate_fn,
+)
+from goldener.torch_utils import get_dataset_sample_dict
 
 
 class GoldDescriptor:
-    """Describe the `data` of a dataset by extracting features and storing them in a PixelTable table.
+    """Describe the `data` of a dataset.
 
     Assuming all the data will not fit in memory, the dataset is processed in batches.
-    All the data of the dataset, the computed features included, will be saved in a local Pixeltable table.
-    The `data` of the dataset will be saved in the shape and scale obtained after applying the `collate_fn` if provided.
-    These arrays are expected to be all the same size. All torch tensors will be converted to numpy arrays before saving.
+
+    All the data of the dataset, the computed features included, will be saved in a local Pixeltable table during
+    the computation. In this table,the `data` of the dataset will be saved in the shape and scale obtained
+    after applying the `collate_fn` if provided. These arrays are expected to be all the same size.
+    All torch tensors will be converted to numpy arrays before saving.
 
     Attributes:
         table_path: Path to the PixelTable table where the description will be saved locally.
         extractor: FeatureExtractor instance for feature extraction.
+        transform: Transformation to apply to the `data` before running the feature extraction if it is not already
+        applied by the `collate_fn`.
         collate_fn: Optional function to collate dataset samples into batches composed of
         dictionaries with at least the key specified by `data_key` returning a pytorch Tensor.
         If None, the dataset is expected to directly provide such batches. It should as well format
         the value at `data_key` in the format expected by the feature extractor.
         data_key: Key in the batch dictionary that contains the data to extract features from. Default is "data".
+        description_key: Key in the table where the extracted features will be stored. Default is "features".
         batch_size: Optional batch size for processing the dataset.
         num_workers: Optional number of worker threads for data loading.
         if_exists: Behavior if the table already exists ('error' or 'replace_force'). If 'replace_force',
         the existing table will be replaced, otherwise an error will be raised.
         distribute: Whether to use distributed processing for feature extraction and table population. Not implemented yet.
+        drop_table: Whether to drop the description table after creating the dataset with descriptions. It is only applied
+        when using `describe_in_dataset`.
+        device: Torch device to use for feature extraction. If None, it will use 'cuda' if available, otherwise 'cpu'.
         max_batches: Optional maximum number of batches to process. Useful for testing on a small subset of the dataset.
     """
 
@@ -37,21 +55,27 @@ class GoldDescriptor:
         self,
         table_path: str,
         extractor: GoldFeatureExtractor,
+        transform: Callable | None = None,
         collate_fn: Callable | None = None,
         data_key: str = "data",
+        description_key: str = "features",
         batch_size: int | None = None,
         num_workers: int | None = None,
         if_exists: Literal["error", "replace_force"] = "error",
         distribute: bool = False,
+        drop_table: bool = False,
         device: torch.device | None = None,
         max_batches: int | None = None,
     ):
         self.table_path = table_path
         self.extractor = extractor
+        self.transform = transform
         self.collate_fn = collate_fn
         self.data_key = data_key
+        self.description_key = description_key
         self.if_exists = if_exists
         self.distribute = distribute
+        self.drop_table = drop_table
         self.max_batches = max_batches
 
         if device is None:
@@ -67,90 +91,229 @@ class GoldDescriptor:
             self.batch_size = batch_size
             self.num_workers = num_workers
 
-    def describe(self, dataset: Dataset) -> Table:
-        """Describe the dataset by extracting features and storing them in a PixelTable table.
+    def describe_in_dataset(
+        self,
+        to_describe: Dataset | Table,
+    ) -> GoldPxtTorchDataset:
+        """Describe the data by extracting features and returning them within a new dataset.
+
+        This method is idempotent (eg failure proof), meaning that if it is called
+        multiple times on the same dataset or table, it will not duplicate or recompute the descriptions
+        already present in the PixelTable table.
 
         Args:
-            dataset: Dataset to be described. Each item should be a dictionary with at least the key specified
-            by `data_key` (default: "data") after applying the collate_fn. If the collate_fn is None, the
-            dataset is expected to directly provide such batches.
-        """
-        sample = dataset[0]
-        if self.collate_fn is not None:
-            sample = self.collate_fn([sample])
+            to_describe: Dataset or Table to be described. If a Dataset is provided, each item should be a
+            dictionary with at least the key specified by `data_key` after applying the collate_fn.
+            If the collate_fn is None, the dataset is expected to directly provide such batches. If a Table is provided,
+            it should contain both 'idx' and `data_key` column and a column specified by.
 
-        if not isinstance(sample, dict):
-            raise ValueError(
-                "Dataset items must be dictionaries after applying the collate_fn."
+        Returns:
+            A GoldPxtTorchDataset containing the original data and the extracted features.
+        """
+
+        description_table = self.describe_in_table(to_describe)
+
+        description_dataset = GoldPxtTorchDataset(description_table, keep_cache=True)
+
+        if self.drop_table:
+            pxt.drop_table(description_table)
+
+        return description_dataset
+
+    def describe_in_table(
+        self,
+        to_describe: Dataset | Table,
+    ) -> Table:
+        """Describe the data by extracting features and storing them in a PixelTable table.
+
+        This method is idempotent (eg failure proof), meaning that if it is called
+        multiple times on the same dataset or table, it will not duplicate or recompute the descriptions
+        already present in the PixelTable table.
+
+        Args:
+            to_describe: Dataset or Table to be described. If a Dataset is provided, each item should be a
+            dictionary with at least the key specified by `data_key` after applying the collate_fn.
+            If the collate_fn is None, the dataset is expected to directly provide such batches. If a Table is provided,
+            it should contain both 'idx' and `data_key` column and a column specified by. The table containing
+            the description of the data will be created as a view of this table.
+
+        Returns:
+            A PixelTable Table containing the original data and the extracted features.
+        """
+        # If the computation was already started or already done, we resume from there
+        create_pxt_dirs_for_path(self.table_path)
+        old_description_table = pxt.get_table(
+            self.table_path,
+            if_not_exists="ignore",
+        )
+        if old_description_table is not None and old_description_table.count() == 0:
+            pxt.drop_table(old_description_table)  # remove empty table
+            old_description_table = None  # start back without it
+
+        # get the table and dataset to execute the description pipeline
+        to_describe_dataset: GoldPxtTorchDataset | Dataset
+        if isinstance(to_describe, Table):
+            description_table = self._description_table_from_table(
+                to_describe, old_description_table
             )
 
-        if self.data_key not in sample:
-            raise ValueError(f"Dataset items must contain a '{self.data_key}' key.")
+            description_col = get_expr_from_column_name(
+                description_table, self.description_key
+            )
+            with_no_description = description_table.where(description_col == None)  # noqa: E711
+            if with_no_description.count() == 0:
+                return description_table
 
-        pxt_table = self._initialize_table(sample)
+            table_indices = [
+                row["idx"]
+                for row in with_no_description.select(description_table.idx).collect()
+            ]
 
-        if self.distribute:
-            self._distributed_describe(pxt_table, dataset)
+            to_describe_dataset = GoldPxtTorchDataset(
+                to_describe.where(description_table.idx.isin(table_indices))
+            )
         else:
-            pxt_table = self._sequential_describe(pxt_table, dataset)
+            to_describe_dataset = to_describe
+            description_table = self._description_table_from_dataset(
+                to_describe_dataset, old_description_table
+            )
 
-        return pxt_table
+        # run the description process
+        if self.distribute:
+            described = self._distributed_describe(
+                description_table, to_describe_dataset
+            )
+        else:
+            described = self._sequential_describe(
+                description_table, to_describe_dataset
+            )
 
-    def _initialize_table(self, sample: dict) -> Table:
-        """Initialize the PixelTable table using a single sample from the dataset.
+        return described
 
-        It creates the required PixelTable directories and table schema based on the provided sample.
+    def _description_table_from_table(
+        self, to_describe: Table, old_description_table: Table | None
+    ) -> Table:
+        if self.data_key not in to_describe.columns():
+            raise ValueError(f"Table must contain a '{self.data_key}' column.")
 
-        Args:
-            sample: A single sample from the dataset to initialize the table schema.
-            It should be a dictionary with at least the key specified by `data_key`. The value at this
-            key must be formatted in the format expected by the feature extractor.
-        """
-        sample["features"] = self.extractor.extract_and_fuse(
-            sample[self.data_key].to(device=self.device)
-        )
-        if self.collate_fn is not None:
-            for key, value in sample.items():
-                if isinstance(value, torch.Tensor):
-                    # Only initial tensors will have a batch dimension added by the collate_fn
-                    # otherwise, they were initially single values (float or int)
-                    if value.ndim > 1:
-                        sample[key] = value.squeeze(0)
-                    else:
-                        sample[key] = value.item()
-                else:
-                    # non tensor values are expected to be lists of single values
-                    sample[key] = value[0]
+        if "idx" not in to_describe.columns():
+            raise ValueError("Table must contain an 'idx' column.")
 
-        if "idx" not in sample:
-            sample["idx"] = 0
+        if old_description_table is not None:
+            if not is_view_of(old_description_table, to_describe):
+                raise ValueError(
+                    "The existing description table points to an existing table "
+                    "that is not a view of the provided table to describe."
+                )
+            assert old_description_table is not None
+            description_table = old_description_table
+        else:
+            if self.description_key in to_describe.columns():
+                raise ValueError(
+                    f"Table already contains a '{self.description_key}' column."
+                )
 
-        pxt_table = create_pxt_table_from_sample(
-            self.table_path, sample, self.if_exists
-        )
-        pxt_table.where(pxt_table.idx == 0).delete()  # remove the initial sample
+            create_pxt_dirs_for_path(self.table_path)
+            table_view = pxt.create_view(self.table_path, base=to_describe)
+            assert table_view is not None
+            description_table = table_view
 
-        return pxt_table
+        if self.description_key not in description_table.columns():
+            sample = get_sample_row_from_idx(
+                description_table,
+                collate_fn=pxt_torch_dataset_collate_fn,
+                expected_keys=[self.data_key],
+            )
+            sample_data = sample[self.data_key]
+            if self.transform is not None:
+                sample_data = self.transform(sample_data)
+            description = (
+                self.extractor.extract_and_fuse(sample_data.to(device=self.device))
+                .squeeze(0)
+                .detach()
+                .cpu()
+                .numpy()
+            )
+            description_table.add_column(
+                **{
+                    self.description_key: pxt.Array[  # type: ignore[misc]
+                        description.shape, pxt.Float
+                    ]
+                }
+            )
+
+        return description_table
+
+    def _description_table_from_dataset(
+        self, dataset: Dataset, old_description_table: Table | None
+    ) -> Table:
+        if old_description_table is None:
+            sample = get_dataset_sample_dict(
+                dataset,
+                collate_fn=self.collate_fn,
+                expected_keys=[self.data_key],
+                rejected_keys=[self.description_key],
+            )
+            if self.transform is not None:
+                sample[self.data_key] = self.transform(sample[self.data_key])
+
+            sample[self.description_key] = self.extractor.extract_and_fuse(
+                sample[self.data_key].to(device=self.device)
+            )
+
+            description_table = create_pxt_table_from_sample(
+                self.table_path,
+                sample,
+                unwrap=self.collate_fn is not None,
+                add={"idx": 0} if "idx" not in sample else None,
+                if_exists=self.if_exists,
+            )
+        else:
+            # resume from existing table
+            # An error will be raised by Pixeltable insert if the data is not in accordance with
+            # the existing columns
+            description_table = old_description_table
+
+        return description_table
 
     def _distributed_describe(
         self,
-        pxt_table: Table,
-        dataset: Dataset,
+        description_table: Table,
+        to_describe_dataset: Dataset,
     ) -> Table:
         raise NotImplementedError("Distributed description is not implemented yet.")
 
     def _sequential_describe(
         self,
-        pxt_table: Table,
-        dataset: Dataset,
+        description_table: Table,
+        to_describe_dataset: Dataset,
     ) -> Table:
         assert self.batch_size is not None
         assert self.num_workers is not None
 
+        only_description = description_table.get_metadata()[
+            "is_view"
+        ]  # if the table is a view, we can only the description column
+        not_empty = (
+            description_table.count() > 0
+        )  # allow to filter out already described samples
+
+        description_col = get_expr_from_column_name(
+            description_table, self.description_key
+        )
+        already_described = [
+            row["idx"]
+            for row in description_table.where(
+                description_col != None  # noqa: E711
+            )
+            .select(description_table.idx)
+            .collect()
+        ]
+
         dataloader = torch.utils.data.DataLoader(
-            dataset,
+            to_describe_dataset,
             batch_size=self.batch_size,
-            num_workers=self.num_workers if self.num_workers is not None else 0,
+            num_workers=self.num_workers,
             collate_fn=self.collate_fn,
         )
 
@@ -158,28 +321,117 @@ class GoldDescriptor:
             # Stop if we've processed enough batches
             if self.max_batches is not None and batch_idx >= self.max_batches:
                 break
-            batch["features"] = self.extractor.extract_and_fuse(
+
+            # add idx if it is not provided by the dataset
+            if "idx" not in batch:
+                starts = self.batch_size * batch_idx
+                batch["idx"] = [
+                    starts + batch_idx for batch_idx in range(self.batch_size)
+                ]
+
+            # Keep only not yet described samples in the batch
+            if not_empty:
+                batch = self._batch_for_description(
+                    batch,
+                    already_described,
+                )
+
+            if len(batch) == 0:
+                continue  # all samples already described
+
+            already_described.extend([idx.item() for idx in batch["idx"]])
+
+            # describe data
+            batch[self.description_key] = self.extractor.extract_and_fuse(
                 batch[self.data_key].to(device=self.device)
             )
-            if "idx" not in batch:
-                start = batch_idx * self.batch_size
-                batch["idx"] = [start + idx for idx in range(len(batch[self.data_key]))]
-            pxt_table.insert(
-                [
-                    {
-                        key: (
-                            (
-                                value[sample_idx].item()
-                                if value.ndim == 1
-                                else value[sample_idx].detach().cpu().numpy()
-                            )
-                            if isinstance(value, torch.Tensor)
-                            else value[sample_idx]
-                        )
-                        for key, value in batch.items()
-                    }
-                    for sample_idx in range(len(batch[self.data_key]))
-                ]
+
+            # insert description in the table
+            self._insert_batch_description(
+                description_table,
+                batch,
+                only_description,
             )
 
-        return pxt_table
+        return description_table
+
+    def _batch_for_description(
+        self,
+        batch: dict[str, Any],
+        already_described: list[int],
+    ) -> dict[str, Any]:
+        keep_in_batch = [
+            idx_position
+            for idx_position, idx_value in enumerate(batch["idx"])
+            if idx_value.item() not in already_described
+        ]
+        if not keep_in_batch:
+            return {}  # all samples already described
+
+        def filter_batched_values(
+            batched_value: list | torch.Tensor,
+        ) -> list | torch.Tensor:
+            """Inner function to remove already described samples from the batch."""
+            filtered = [
+                value
+                for idx_value, value in enumerate(batched_value)
+                if idx_value in keep_in_batch
+            ]
+            if isinstance(batched_value, torch.Tensor):
+                return torch.stack(filtered, dim=0)
+            else:
+                return filtered
+
+        return {
+            key: filter_batched_values(batched_value)
+            for key, batched_value in batch.items()
+        }
+
+    def _insert_batch_description(
+        self,
+        description_table: Table,
+        batch: dict[str, Any],
+        only_description: bool,
+    ) -> None:
+        if only_description:
+            for batch_idx, idx_value in enumerate(batch["idx"]):
+                description_table.where(
+                    description_table.idx == idx_value.item()
+                ).update(
+                    {
+                        self.description_key: (
+                            batch[self.description_key][batch_idx]
+                            .detach()
+                            .cpu()
+                            .numpy()
+                        )
+                    }
+                )
+        else:
+            if (
+                description_table.where(
+                    description_table.idx.isin(batch["idx"])
+                ).count()
+                > 0
+            ):
+                raise ValueError(
+                    "Description table already contains some of the indices in the current batch. "
+                    "This should not happen when describing from a dataset."
+                )
+
+            to_insert = [
+                {
+                    key: (
+                        (
+                            value[sample_idx].item()
+                            if value.ndim == 1
+                            else value[sample_idx].detach().cpu().numpy()
+                        )
+                        if isinstance(value, torch.Tensor)
+                        else value[sample_idx]
+                    )
+                    for key, value in batch.items()
+                }
+                for sample_idx in range(len(batch["idx"]))
+            ]
+            description_table.insert(to_insert)
