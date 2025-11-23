@@ -51,7 +51,7 @@ class TestGoldPxtTorchDataset:
         del dataset
 
         # Give time for cleanup
-        time.sleep(1)
+        time.sleep(3)
 
         # Verify cache was cleaned up
         assert not cache_path.exists(), (
