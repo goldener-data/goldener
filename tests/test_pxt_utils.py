@@ -7,7 +7,7 @@ import pixeltable as pxt
 from goldener.pxt_utils import (
     create_pxt_table_from_sample,
     GoldPxtTorchDataset,
-    get_array_column_shapes,
+    get_array_column_shapes_from_table,
 )
 
 
@@ -38,7 +38,7 @@ def test_table():
 class TestGoldPxtTorchDataset:
     def test_cache_cleanup(self, test_table):
         # Get array shapes
-        shapes = get_array_column_shapes(test_table)
+        shapes = get_array_column_shapes_from_table(test_table)
 
         # Create dataset
         dataset = GoldPxtTorchDataset(test_table, shapes)
@@ -62,7 +62,7 @@ class TestGoldPxtTorchDataset:
         )
 
     def test_dataset_iteration_with_shapes(self, test_table):
-        shapes = get_array_column_shapes(test_table)
+        shapes = get_array_column_shapes_from_table(test_table)
 
         # Create dataset
         dataset = GoldPxtTorchDataset(test_table, shapes)
@@ -75,6 +75,24 @@ class TestGoldPxtTorchDataset:
 
         # Verify data shape is correct
         for item in items:
+            assert "data" in item, "Item should contain 'data' key"
+            # The shape should match the original shape
+            assert item["data"].shape == shapes["data"], (
+                "Data should be reshaped correctly"
+            )
+
+        # Cleanup
+        del dataset
+        time.sleep(0.1)
+
+    def test_dataset_with_query(self, test_table):
+        shapes = get_array_column_shapes_from_table(test_table)
+
+        # Create dataset
+        dataset = GoldPxtTorchDataset(test_table.where(test_table.idx == 0))
+
+        # Verify data shape is correct
+        for item in iter(dataset):
             assert "data" in item, "Item should contain 'data' key"
             # The shape should match the original shape
             assert item["data"].shape == shapes["data"], (

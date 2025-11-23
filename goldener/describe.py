@@ -20,7 +20,7 @@ from goldener.torch_utils import get_dataset_sample_dict
 
 
 class GoldDescriptor:
-    """Describe the `data` of a dataset.
+    """Describe the `data` of a dataset by extracting features from a pretrained model.
 
     Assuming all the data will not fit in memory, the dataset is processed in batches.
 
