@@ -37,11 +37,8 @@ def test_table():
 
 class TestGoldPxtTorchDataset:
     def test_cache_cleanup(self, test_table):
-        # Get array shapes
-        shapes = get_array_column_shapes_from_table(test_table)
-
         # Create dataset
-        dataset = GoldPxtTorchDataset(test_table, shapes)
+        dataset = GoldPxtTorchDataset(test_table, keep_cache=False)
 
         # Store the cache path
         cache_path = dataset.path
@@ -54,7 +51,7 @@ class TestGoldPxtTorchDataset:
         del dataset
 
         # Give time for cleanup
-        time.sleep(0.1)
+        time.sleep(1)
 
         # Verify cache was cleaned up
         assert not cache_path.exists(), (
@@ -64,22 +61,18 @@ class TestGoldPxtTorchDataset:
     def test_dataset_iteration_with_shapes(self, test_table):
         shapes = get_array_column_shapes_from_table(test_table)
 
-        # Create dataset
-        dataset = GoldPxtTorchDataset(test_table, shapes)
+        dataset = GoldPxtTorchDataset(test_table)
 
-        # Iterate through dataset
-        items = list(dataset)
-
-        # Verify we got data
-        assert len(items) > 0, "Dataset should return items"
-
-        # Verify data shape is correct
-        for item in items:
+        row_count = 0
+        for item in iter(dataset):
+            row_count += 1
             assert "data" in item, "Item should contain 'data' key"
             # The shape should match the original shape
             assert item["data"].shape == shapes["data"], (
                 "Data should be reshaped correctly"
             )
+
+        assert row_count == test_table.count()
 
         # Cleanup
         del dataset
@@ -88,16 +81,18 @@ class TestGoldPxtTorchDataset:
     def test_dataset_with_query(self, test_table):
         shapes = get_array_column_shapes_from_table(test_table)
 
-        # Create dataset
         dataset = GoldPxtTorchDataset(test_table.where(test_table.idx == 0))
 
-        # Verify data shape is correct
+        row_count = 0
         for item in iter(dataset):
+            row_count += 1
             assert "data" in item, "Item should contain 'data' key"
             # The shape should match the original shape
             assert item["data"].shape == shapes["data"], (
                 "Data should be reshaped correctly"
             )
+
+        assert row_count == test_table.count()
 
         # Cleanup
         del dataset

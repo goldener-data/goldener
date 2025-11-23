@@ -25,7 +25,7 @@ class GoldDescriptor:
     Assuming all the data will not fit in memory, the dataset is processed in batches.
 
     All the data of the dataset, the computed features included, will be saved in a local Pixeltable table during
-    the computation. In this table,the `data` of the dataset will be saved in the shape and scale obtained
+    the computation. In this table, the `data` of the dataset will be saved in the shape and scale obtained
     after applying the `collate_fn` if provided. These arrays are expected to be all the same size.
     All torch tensors will be converted to numpy arrays before saving.
 
@@ -97,7 +97,7 @@ class GoldDescriptor:
     ) -> GoldPxtTorchDataset:
         """Describe the data by extracting features and returning them within a new dataset.
 
-        This method is idempotent (eg failure proof), meaning that if it is called
+        This method is idempotent (e.g. failure proof), meaning that if it is called
         multiple times on the same dataset or table, it will not duplicate or recompute the descriptions
         already present in the PixelTable table.
 
@@ -105,7 +105,7 @@ class GoldDescriptor:
             to_describe: Dataset or Table to be described. If a Dataset is provided, each item should be a
             dictionary with at least the key specified by `data_key` after applying the collate_fn.
             If the collate_fn is None, the dataset is expected to directly provide such batches. If a Table is provided,
-            it should contain both 'idx' and `data_key` column and a column specified by.
+            it should contain both 'idx' and `data_key` columns.
 
         Returns:
             A GoldPxtTorchDataset containing the original data and the extracted features.
@@ -126,7 +126,7 @@ class GoldDescriptor:
     ) -> Table:
         """Describe the data by extracting features and storing them in a PixelTable table.
 
-        This method is idempotent (eg failure proof), meaning that if it is called
+        This method is idempotent (e.g. failure proof), meaning that if it is called
         multiple times on the same dataset or table, it will not duplicate or recompute the descriptions
         already present in the PixelTable table.
 
@@ -134,7 +134,7 @@ class GoldDescriptor:
             to_describe: Dataset or Table to be described. If a Dataset is provided, each item should be a
             dictionary with at least the key specified by `data_key` after applying the collate_fn.
             If the collate_fn is None, the dataset is expected to directly provide such batches. If a Table is provided,
-            it should contain both 'idx' and `data_key` column and a column specified by. The table containing
+            it should contain both 'idx' and `data_key` column. The table containing
             the description of the data will be created as a view of this table.
 
         Returns:
@@ -293,7 +293,7 @@ class GoldDescriptor:
 
         only_description = description_table.get_metadata()[
             "is_view"
-        ]  # if the table is a view, we can only the description column
+        ]  # if the table is a view, only the description column can be updated
         not_empty = (
             description_table.count() > 0
         )  # allow to filter out already described samples
@@ -326,7 +326,7 @@ class GoldDescriptor:
             if "idx" not in batch:
                 starts = self.batch_size * batch_idx
                 batch["idx"] = [
-                    starts + batch_idx for batch_idx in range(self.batch_size)
+                    starts + idx for idx in range(len(batch[self.data_key]))
                 ]
 
             # Keep only not yet described samples in the batch
@@ -339,11 +339,20 @@ class GoldDescriptor:
             if len(batch) == 0:
                 continue  # all samples already described
 
-            already_described.extend([idx.item() for idx in batch["idx"]])
+            already_described.extend(
+                [
+                    idx.item() if isinstance(idx, torch.Tensor) else idx
+                    for idx in batch["idx"]
+                ]
+            )
+
+            batch_data = batch[self.data_key]
+            if self.transform is not None:
+                batch_data = self.transform(batch_data)
 
             # describe data
             batch[self.description_key] = self.extractor.extract_and_fuse(
-                batch[self.data_key].to(device=self.device)
+                batch_data.to(device=self.device)
             )
 
             # insert description in the table
@@ -363,7 +372,8 @@ class GoldDescriptor:
         keep_in_batch = [
             idx_position
             for idx_position, idx_value in enumerate(batch["idx"])
-            if idx_value.item() not in already_described
+            if (idx_value.item() if isinstance(idx_value, torch.Tensor) else idx_value)
+            not in already_described
         ]
         if not keep_in_batch:
             return {}  # all samples already described
@@ -397,6 +407,8 @@ class GoldDescriptor:
             for batch_idx, idx_value in enumerate(batch["idx"]):
                 description_table.where(
                     description_table.idx == idx_value.item()
+                    if isinstance(idx_value, torch.Tensor)
+                    else idx_value
                 ).update(
                     {
                         self.description_key: (

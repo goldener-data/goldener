@@ -282,7 +282,6 @@ class GoldSelector:
         pxt_table = create_pxt_table_from_sample(
             table_path=self.table_path, sample=unique_row, if_exists=self.if_exists
         )
-        pxt_table.where(pxt_table.idx == 0).delete()  # remove the initial sample
 
         return pxt_table
 

@@ -2,7 +2,7 @@ from typing import Callable, Any
 
 import numpy as np
 import torch
-from torch.utils.data import IterableDataset
+from torch.utils.data import IterableDataset, Dataset
 
 
 def make_2d_tensor(x: torch.Tensor) -> torch.Tensor:
@@ -152,7 +152,7 @@ class ResetableTorchIterableDataset(torch.utils.data.IterableDataset):
 
 
 def get_dataset_sample_dict(
-    dataset: torch.utils.data.Dataset,
+    dataset: Dataset,
     collate_fn: Callable | None = None,
     expected_keys: list[str] | None = None,
     rejected_keys: list[str] | None = None,

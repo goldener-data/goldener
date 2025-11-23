@@ -58,7 +58,7 @@ def create_pxt_table_from_sample(
     Args:
         table_path: The full path of the PixelTable table to create (e.g., 'dir1.dir2.table_name').
         sample: A dictionary representing a single sample, where keys are column names and values are the corresponding data.
-        unwrap: Whether to unwrap (ony take first element) tensors/lists in the sample.
+        unwrap: Whether to unwrap (only take first element) tensors/lists in the sample.
         add: Additional key-value pairs to add to the sample before creating the table.
         if_exists: Behavior if the table already exists. Options are 'error' or 'replace_force'.
     """
@@ -247,7 +247,7 @@ def get_array_column_shapes_from_table(table: Table) -> dict[str, tuple[int, ...
 
 
 def get_array_column_shapes_from_query(query: Query) -> dict[str, tuple[int, ...]]:
-    """Get the shapes of array columns in a PixelTable dataframe.
+    """Get the shapes of array columns in a PixelTable Query.
 
     Args:
         query: The PixelTable Query.
@@ -319,7 +319,7 @@ def is_view_of(view: Table, view_of: Table) -> bool:
     view_metadata = view.get_metadata()
     view_of_metadata = view_of.get_metadata()
     return (
-        view_metadata["path"] == view_of_metadata["base"] and view_metadata["is_view"]
+        view_metadata["base"] == view_of_metadata["path"] and view_metadata["is_view"]
     )
 
 

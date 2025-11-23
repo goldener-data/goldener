@@ -167,8 +167,6 @@ class TestGoldDescriptor:
             max_batches=2,
         )
 
-        # Dataset with 10 items, batch_size=2 means 5 batches total
-        # With max_batches=2, only first 2 batches (4 items) should be processed
         table = desc.describe_in_table(DummyDataset(dataset_len=10))
 
         assert table.count() == 4
@@ -195,7 +193,6 @@ class TestGoldDescriptor:
                 src_path, source=source_rows, if_exists="replace_force"
             )
         except Exception:
-            # If creating the table fails for some reason, ensure cleanup and re-raise
             try:
                 pxt.drop_table(src_path)
             except Exception:
@@ -213,10 +210,8 @@ class TestGoldDescriptor:
 
         description_table = desc.describe_in_table(src_table)
 
-        # The description table must contain the same number of rows and the new 'features' column
         assert description_table.count() == 2
 
-        # Check that features were written and have expected shape
         for i, row in enumerate(description_table.collect()):
             assert row["idx"] == i
             assert row["label"] == "dummy"
@@ -249,8 +244,7 @@ class TestGoldDescriptor:
             pass
 
         dataset = DummyDataset(dataset_len=10)
-        # Dataset with 10 items, batch_size=2 means 5 batches total
-        # With max_batches=2, only first 2 batches (4 items) should be processed
+
         description_table = desc.describe_in_table(dataset)
 
         assert description_table.count() == 4
@@ -306,7 +300,6 @@ class TestGoldDescriptor:
                 src_path, source=source_rows, if_exists="replace_force"
             )
         except Exception:
-            # If creating the table fails for some reason, ensure cleanup and re-raise
             try:
                 pxt.drop_table(src_path)
             except Exception:
@@ -334,6 +327,6 @@ class TestGoldDescriptor:
         dataset.keep_cache = False
 
         try:
-            pxt.drop_table(desc.src_path)
+            pxt.drop_table(src_path)
         except Exception:
             pass
