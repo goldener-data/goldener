@@ -1,7 +1,8 @@
-from typing import Callable
+from typing import Callable, Any
 
 import numpy as np
 import torch
+from torch.utils.data import IterableDataset, Dataset
 
 
 def make_2d_tensor(x: torch.Tensor) -> torch.Tensor:
@@ -148,3 +149,51 @@ class ResetableTorchIterableDataset(torch.utils.data.IterableDataset):
 
     def reset(self):
         self._data_iterator = iter(self.data_iterable)
+
+
+def get_dataset_sample_dict(
+    dataset: Dataset,
+    collate_fn: Callable | None = None,
+    expected_keys: list[str] | None = None,
+    rejected_keys: list[str] | None = None,
+) -> dict[str, Any]:
+    """Get a sample from a dataset as a dictionary and validate some of its keys.
+
+    Args:
+        dataset: The dataset to get a sample from.
+        collate_fn: An optional collate function to apply to the sample.
+        expected_keys: An optional list of keys that must be present in the sample.
+        rejected_keys: An optional list of keys that must not be present in the sample.
+
+    Returns:
+        A sample from the dataset as a dictionary.
+    """
+
+    if isinstance(dataset, IterableDataset):
+        dataset = ResetableTorchIterableDataset(dataset)
+
+    sample = (
+        next(dataset)
+        if isinstance(dataset, ResetableTorchIterableDataset)
+        else dataset[0]
+    )
+    if isinstance(dataset, ResetableTorchIterableDataset):
+        dataset.reset()
+
+    if collate_fn is not None:
+        sample = collate_fn([sample])
+
+    if not isinstance(sample, dict):
+        raise ValueError("Sample must be a dictionary after applying the collate_fn.")
+
+    if expected_keys is not None:
+        not_present_keys = [key for key in expected_keys if key not in sample]
+        if len(not_present_keys) > 0:
+            raise ValueError(f"Sample is missing expected keys: {not_present_keys}")
+
+    if rejected_keys is not None:
+        present_rejected_keys = [key for key in rejected_keys if key in sample]
+        if len(present_rejected_keys) > 0:
+            raise ValueError(f"Sample contains rejected keys: {present_rejected_keys}")
+
+    return sample
