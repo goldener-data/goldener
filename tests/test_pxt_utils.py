@@ -1,8 +1,7 @@
-import shutil
+import gc
 
 import pytest
 import torch
-import time
 
 import pixeltable as pxt
 
@@ -50,12 +49,8 @@ class TestGoldPxtTorchDataset:
         assert cache_path.is_dir(), "Cache should be a directory"
 
         # Delete the dataset (triggers __del__)
-
-        shutil.rmtree(dataset.path, ignore_errors=True)
         del dataset
-
-        # Give time for cleanup
-        time.sleep(10)
+        gc.collect()
 
         # Verify cache was cleaned up
         assert not cache_path.exists(), (
@@ -78,10 +73,6 @@ class TestGoldPxtTorchDataset:
 
         assert row_count == test_table.count()
 
-        # Cleanup
-        del dataset
-        time.sleep(0.1)
-
     def test_dataset_with_query(self, test_table):
         shapes = get_array_column_shapes_from_table(test_table)
 
@@ -97,7 +88,3 @@ class TestGoldPxtTorchDataset:
             )
 
         assert row_count == test_table.count()
-
-        # Cleanup
-        del dataset
-        time.sleep(0.1)
