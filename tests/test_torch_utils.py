@@ -146,6 +146,20 @@ class TestMake2DTensor:
 
 
 class TestResetableTorchIterableDataset:
+    """Tests for ResetableTorchIterableDataset class."""
+
+    @staticmethod
+    def _create_list_iterable_dataset(data_list):
+        """Helper to create a simple iterable dataset from a list."""
+        class ListIterableDataset(torch.utils.data.IterableDataset):
+            def __init__(self, data):
+                self.data = data
+            
+            def __iter__(self):
+                return iter(self.data)
+        
+        return ListIterableDataset(data_list)
+
     def test_init(self):
         """Test that ResetableTorchIterableDataset initializes correctly."""
         data = [1, 2, 3, 4, 5]
@@ -176,16 +190,7 @@ class TestResetableTorchIterableDataset:
     def test_reset(self):
         """Test that reset() allows re-iteration over the dataset."""
         data = [1, 2, 3, 4]
-        
-        # Create a resetable dataset from a list (which can be iterated multiple times)
-        class ListIterableDataset(torch.utils.data.IterableDataset):
-            def __init__(self, data_list):
-                self.data_list = data_list
-            
-            def __iter__(self):
-                return iter(self.data_list)
-        
-        iterable_data = ListIterableDataset(data)
+        iterable_data = self._create_list_iterable_dataset(data)
         dataset = ResetableTorchIterableDataset(iterable_data)
         
         # First iteration
@@ -200,15 +205,7 @@ class TestResetableTorchIterableDataset:
     def test_multiple_resets(self):
         """Test that multiple resets work correctly."""
         data = [10, 20, 30]
-        
-        class ListIterableDataset(torch.utils.data.IterableDataset):
-            def __init__(self, data_list):
-                self.data_list = data_list
-            
-            def __iter__(self):
-                return iter(self.data_list)
-        
-        iterable_data = ListIterableDataset(data)
+        iterable_data = self._create_list_iterable_dataset(data)
         dataset = ResetableTorchIterableDataset(iterable_data)
         
         # Multiple reset and iteration cycles
@@ -220,15 +217,7 @@ class TestResetableTorchIterableDataset:
     def test_partial_iteration_then_reset(self):
         """Test resetting after partial iteration."""
         data = [1, 2, 3, 4, 5]
-        
-        class ListIterableDataset(torch.utils.data.IterableDataset):
-            def __init__(self, data_list):
-                self.data_list = data_list
-            
-            def __iter__(self):
-                return iter(self.data_list)
-        
-        iterable_data = ListIterableDataset(data)
+        iterable_data = self._create_list_iterable_dataset(data)
         dataset = ResetableTorchIterableDataset(iterable_data)
         
         # Partially iterate
