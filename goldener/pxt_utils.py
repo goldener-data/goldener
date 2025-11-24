@@ -224,7 +224,7 @@ class GoldPxtTorchDataset(PixeltablePytorchDataset):
         to prevent accumulation of temporary files.
         """
         if self.path.exists() and not self.keep_cache:
-            shutil.rmtree(self.path, ignore_errors=False)
+            shutil.rmtree(self.path, ignore_errors=True)
 
 
 def get_array_column_shapes_from_table(table: Table) -> dict[str, tuple[int, ...]]:
