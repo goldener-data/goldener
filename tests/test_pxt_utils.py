@@ -96,18 +96,15 @@ class TestGoldPxtTorchDataset:
 
 class TestGetExprFromColumnName:
     def test_valid_column_name(self, test_table):
-        """Test getting expression from a valid column name."""
         col_expr = get_expr_from_column_name(test_table, "idx")
         assert col_expr is not None
         assert col_expr.display_str() == "idx"
 
     def test_invalid_column_name(self, test_table):
-        """Test that invalid column name raises ValueError."""
         with pytest.raises(ValueError, match="Column 'invalid_column' does not exist"):
             get_expr_from_column_name(test_table, "invalid_column")
 
     def test_data_column_name(self, test_table):
-        """Test getting expression from data column."""
         col_expr = get_expr_from_column_name(test_table, "data")
         assert col_expr is not None
         assert col_expr.display_str() == "data"
@@ -115,7 +112,6 @@ class TestGetExprFromColumnName:
 
 class TestCreatePxtDirsForPath:
     def test_single_level_path(self):
-        """Test creating directories for a single-level path."""
         table_path = "test_create_dirs.table"
         
         # Clean up if exists
@@ -134,7 +130,6 @@ class TestCreatePxtDirsForPath:
         pxt.drop_dir("test_create_dirs", force=True)
 
     def test_multi_level_path(self):
-        """Test creating directories for a multi-level path."""
         table_path = "test_dir1.test_dir2.test_table"
         
         # Clean up if exists
@@ -153,7 +148,6 @@ class TestCreatePxtDirsForPath:
         pxt.drop_dir("test_dir1", force=True)
 
     def test_already_exists(self):
-        """Test that creating existing directories doesn't raise an error."""
         table_path = "test_existing.table"
         
         # Clean up if exists
@@ -174,7 +168,6 @@ class TestCreatePxtDirsForPath:
 
 class TestSetValueToIdxRows:
     def test_set_value_to_single_row(self, test_table):
-        """Test setting a value to a single row by idx."""
         # Add a column to update
         test_table.add_column(status=pxt.String, stored=True)
         test_table.update({"status": "initial"})
@@ -191,7 +184,6 @@ class TestSetValueToIdxRows:
         assert result[0]["status"] == "updated"
 
     def test_set_value_to_multiple_rows(self):
-        """Test setting a value to multiple rows by idx."""
         table_path = "test_set_value.test_table"
         
         # Clean up if exists
@@ -234,7 +226,6 @@ class TestSetValueToIdxRows:
 
 class TestUpdateColumnIfTooMany:
     def test_no_update_when_under_max(self):
-        """Test that no update occurs when count is under max."""
         table_path = "test_update_column.test_table"
         
         # Clean up if exists
@@ -265,7 +256,6 @@ class TestUpdateColumnIfTooMany:
         pxt.drop_dir("test_update_column", force=True)
 
     def test_update_when_over_max(self):
-        """Test that update occurs when count exceeds max."""
         table_path = "test_update_over.test_table"
         
         # Clean up if exists
@@ -302,7 +292,6 @@ class TestUpdateColumnIfTooMany:
 
 class TestPxtTorchDatasetCollateFn:
     def test_collate_numpy_arrays(self):
-        """Test collating numpy arrays."""
         batch = [
             {"image": np.array([1, 2, 3]), "label": 0},
             {"image": np.array([4, 5, 6]), "label": 1},
@@ -318,7 +307,6 @@ class TestPxtTorchDatasetCollateFn:
         assert torch.equal(result["label"], torch.tensor([0, 1], dtype=torch.int64))
 
     def test_collate_integers(self):
-        """Test collating integer values."""
         batch = [
             {"idx": 0, "count": 5},
             {"idx": 1, "count": 10},
@@ -332,7 +320,6 @@ class TestPxtTorchDatasetCollateFn:
         assert torch.equal(result["count"], torch.tensor([5, 10], dtype=torch.int64))
 
     def test_collate_strings_as_list(self):
-        """Test that strings remain as lists."""
         batch = [
             {"text": "hello", "label": 0},
             {"text": "world", "label": 1},
@@ -346,7 +333,6 @@ class TestPxtTorchDatasetCollateFn:
         assert isinstance(result["label"], torch.Tensor)
 
     def test_collate_mixed_types(self):
-        """Test collating mixed data types."""
         batch = [
             {"array": np.array([1.0, 2.0]), "num": 5, "text": "a"},
             {"array": np.array([3.0, 4.0]), "num": 10, "text": "b"},
@@ -360,7 +346,6 @@ class TestPxtTorchDatasetCollateFn:
         assert result["text"] == ["a", "b"]
 
     def test_collate_empty_batch(self):
-        """Test collating an empty batch."""
         batch = []
         
         result = pxt_torch_dataset_collate_fn(batch)
@@ -370,7 +355,6 @@ class TestPxtTorchDatasetCollateFn:
 
 class TestGetDistinctValueAndCountInColumn:
     def test_get_distinct_values(self):
-        """Test getting distinct values and their counts."""
         table_path = "test_distinct.test_table"
         
         # Clean up if exists
@@ -400,7 +384,6 @@ class TestGetDistinctValueAndCountInColumn:
         pxt.drop_dir("test_distinct", force=True)
 
     def test_single_value(self):
-        """Test with a single distinct value."""
         table_path = "test_single_value.test_table"
         
         # Clean up if exists
@@ -428,7 +411,6 @@ class TestGetDistinctValueAndCountInColumn:
 
 class TestGetColumnDistinctRatios:
     def test_get_ratios(self):
-        """Test getting ratios of distinct values."""
         table_path = "test_ratios.test_table"
         
         # Clean up if exists
@@ -459,7 +441,6 @@ class TestGetColumnDistinctRatios:
         pxt.drop_dir("test_ratios", force=True)
 
     def test_unequal_ratios(self):
-        """Test with unequal distribution of values."""
         table_path = "test_unequal_ratios.test_table"
         
         # Clean up if exists
