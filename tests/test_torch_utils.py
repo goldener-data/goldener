@@ -6,6 +6,7 @@ from goldener.torch_utils import (
     numpy_vectors_to_torch_tensor,
     np_transform_from_torch,
     make_2d_tensor,
+    ResetableTorchIterableDataset,
 )
 
 
@@ -142,3 +143,116 @@ class TestMake2DTensor:
         t_moved = t.moveaxis(1, -1)
         t_flat = t_moved.flatten(0, -2)
         assert torch.equal(out, t_flat)
+
+
+class TestResetableTorchIterableDataset:
+    def test_init(self):
+        """Test that ResetableTorchIterableDataset initializes correctly."""
+        data = [1, 2, 3, 4, 5]
+        dataset = ResetableTorchIterableDataset(iter(data))
+        assert dataset.data_iterable is not None
+        assert dataset._data_iterator is not None
+
+    def test_iteration(self):
+        """Test that the dataset can be iterated over."""
+        data = [1, 2, 3, 4, 5]
+        dataset = ResetableTorchIterableDataset(iter(data))
+        result = list(dataset)
+        assert result == data
+
+    def test_iteration_exhaustion(self):
+        """Test that iteration stops after exhausting the dataset."""
+        data = [1, 2, 3]
+        dataset = ResetableTorchIterableDataset(iter(data))
+        
+        # First iteration - exhaust the dataset
+        result1 = list(dataset)
+        assert result1 == data
+        
+        # Second iteration without reset should return empty
+        result2 = list(dataset)
+        assert result2 == []
+
+    def test_reset(self):
+        """Test that reset() allows re-iteration over the dataset."""
+        data = [1, 2, 3, 4]
+        
+        # Create a resetable dataset from a list (which can be iterated multiple times)
+        class ListIterableDataset(torch.utils.data.IterableDataset):
+            def __init__(self, data_list):
+                self.data_list = data_list
+            
+            def __iter__(self):
+                return iter(self.data_list)
+        
+        iterable_data = ListIterableDataset(data)
+        dataset = ResetableTorchIterableDataset(iterable_data)
+        
+        # First iteration
+        result1 = list(dataset)
+        assert result1 == data
+        
+        # Reset and iterate again
+        dataset.reset()
+        result2 = list(dataset)
+        assert result2 == data
+
+    def test_multiple_resets(self):
+        """Test that multiple resets work correctly."""
+        data = [10, 20, 30]
+        
+        class ListIterableDataset(torch.utils.data.IterableDataset):
+            def __init__(self, data_list):
+                self.data_list = data_list
+            
+            def __iter__(self):
+                return iter(self.data_list)
+        
+        iterable_data = ListIterableDataset(data)
+        dataset = ResetableTorchIterableDataset(iterable_data)
+        
+        # Multiple reset and iteration cycles
+        for _ in range(3):
+            result = list(dataset)
+            assert result == data
+            dataset.reset()
+
+    def test_partial_iteration_then_reset(self):
+        """Test resetting after partial iteration."""
+        data = [1, 2, 3, 4, 5]
+        
+        class ListIterableDataset(torch.utils.data.IterableDataset):
+            def __init__(self, data_list):
+                self.data_list = data_list
+            
+            def __iter__(self):
+                return iter(self.data_list)
+        
+        iterable_data = ListIterableDataset(data)
+        dataset = ResetableTorchIterableDataset(iterable_data)
+        
+        # Partially iterate
+        iterator = iter(dataset)
+        assert next(iterator) == 1
+        assert next(iterator) == 2
+        
+        # Reset and iterate fully
+        dataset.reset()
+        result = list(dataset)
+        assert result == data
+
+    def test_next_after_stop_iteration(self):
+        """Test that calling next() after StopIteration resets the iterator to None."""
+        data = [1, 2]
+        dataset = ResetableTorchIterableDataset(iter(data))
+        
+        iterator = iter(dataset)
+        assert next(iterator) == 1
+        assert next(iterator) == 2
+        
+        # Next call should raise StopIteration
+        with pytest.raises(StopIteration):
+            next(iterator)
+        
+        # Internal iterator should be None after StopIteration
+        assert dataset._data_iterator is None
