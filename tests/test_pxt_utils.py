@@ -1,3 +1,5 @@
+import shutil
+
 import pytest
 import torch
 import time
@@ -48,6 +50,8 @@ class TestGoldPxtTorchDataset:
         assert cache_path.is_dir(), "Cache should be a directory"
 
         # Delete the dataset (triggers __del__)
+
+        shutil.rmtree(dataset.path, ignore_errors=True)
         del dataset
 
         # Give time for cleanup
