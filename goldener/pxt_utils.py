@@ -323,35 +323,6 @@ def is_view_of(view: Table, view_of: Table) -> bool:
     )
 
 
-def add_ordering_column_to_table(
-    table: Table,
-    ordering_col_name: str = "idx",
-) -> None:
-    """Add an ordering index column to a PixelTable table.
-
-    Args:
-        table: The PixelTable table.
-        ordering_col_name: The name of the ordering index column to add.
-    """
-    if ordering_col_name in table.columns():
-        raise ValueError(f"Column '{ordering_col_name}' already exists in the table.")
-
-    table.add_column(if_exists="error", **{ordering_col_name: pxt.Int})
-
-    all_indices = [row["idx"] for row in table.select(None).collect()]
-    set_value_to_idx_rows(
-        table,
-        getattr(table, ordering_col_name),
-        set(all_indices),
-        -1,
-    )
-
-    for ordering_idx, row in enumerate(
-        table.select(table.idx).order_by(table.idx).collect()
-    ):
-        table.where(table.idx == row["idx"]).update({ordering_col_name: ordering_idx})
-
-
 def get_sample_row_from_idx(
     table: Table,
     idx: int = 0,
@@ -369,11 +340,15 @@ def get_sample_row_from_idx(
     Returns:
         A dictionary representing a sample row from the table.
     """
-    sample = list(table.where(table.idx == idx).collect())[0]
+    sample_list = list(table.where(table.idx == idx).collect())
 
-    if sample is None:
-        raise ValueError("No sample found at the specified index.")
+    if not sample_list:
+        raise ValueError(f"No sample found at the index {idx}.")
 
+    if len(sample_list) > 1:
+        raise ValueError("Multiple samples found at the specified index.")
+
+    sample = sample_list[0]
     if expected_keys is not None:
         not_present_keys = [key for key in expected_keys if key not in sample]
         if len(not_present_keys) > 0:
