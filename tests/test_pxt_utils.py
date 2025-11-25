@@ -314,12 +314,13 @@ class TestGetColumnDistinctRatios:
 
 class TestIsViewOf:
     def test_is_view_of(self, test_table):
-        view = pxt.create_view("test_view", test_table, if_exists="ignore")
+        pxt.create_dir("is_view_of", if_exists="ignore")
+        view = pxt.create_view("is_view_of.test_view", test_table, if_exists="ignore")
 
         assert is_view_of(view, test_table) is True
         assert is_view_of(test_table, test_table) is False
 
-        pxt.drop_dir("test_view", force=True)
+        pxt.drop_dir("is_view_of", force=True)
 
 
 class TestGetSampleRowFromIdx:
