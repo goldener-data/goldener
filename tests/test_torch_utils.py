@@ -162,7 +162,7 @@ class TestResetableTorchIterableDataset:
 
     def test_reset(self):
         dataset = ResetableTorchIterableDataset(DummyIterableDataset(list(range(10))))
-        start = next(dataset)
+        start = next(iter(dataset))
         dataset.reset()
-        start_after_reset = next(dataset)
+        start_after_reset = next(iter(dataset))
         assert start_after_reset == start

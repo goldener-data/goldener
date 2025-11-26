@@ -126,6 +126,9 @@ class ResetableTorchIterableDataset(torch.utils.data.IterableDataset):
     It is useful for accessing the first element (to set up a table for instance)
     of the dataset before looping over the full dataset.
 
+    Warning, this class is leverying `deepcopy` to reset the underlying iterable dataset.
+    This means that the underlying dataset and its components must be deepcopyable.
+
     Attributes:
         data_iterable: The underlying iterable dataset.
         _data_iterator: The current iterator over the dataset.
