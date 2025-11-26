@@ -40,7 +40,7 @@ class DummyDataset:
 
 
 class TestGoldDescriptor:
-    def test_simple_usage(self, extractor):
+    def test_simple_describe_in_table(self, extractor):
         desc = GoldDescriptor(
             table_path="unit_test.test_describe",
             extractor=extractor,
@@ -50,7 +50,7 @@ class TestGoldDescriptor:
             if_exists="replace_force",
         )
 
-        table = desc.describe(DummyDataset())
+        table = desc.describe_in_table(DummyDataset())
 
         assert table.count() == 2
         for i, row in enumerate(table.collect()):
@@ -64,7 +64,7 @@ class TestGoldDescriptor:
         except Exception:
             pass
 
-    def test_without_idx(self, extractor):
+    def test_describe_in_table_without_idx(self, extractor):
         def collate_fn(batch):
             data = torch.stack([b["data"] for b in batch], dim=0)
             return {"data": data}
@@ -78,7 +78,7 @@ class TestGoldDescriptor:
             if_exists="replace_force",
         )
 
-        table = desc.describe(
+        table = desc.describe_in_table(
             DummyDataset(dataset_len=10),
         )
         assert table.count() == 10
@@ -90,7 +90,7 @@ class TestGoldDescriptor:
         except Exception:
             pass
 
-    def test_describe_with_non_dict_item(self, extractor):
+    def test_describe_in_table_with_non_dict_item(self, extractor):
         # Dataset returning a non-dict should raise
         desc = GoldDescriptor(
             table_path="unit_test.test_describe",
@@ -100,9 +100,9 @@ class TestGoldDescriptor:
             if_exists="replace_force",
         )
         with pytest.raises(ValueError):
-            desc.describe(DummyDataset())
+            desc.describe_in_table(DummyDataset())
 
-    def test_describe_missing_data_key(self, extractor):
+    def test_describe_in_table_with_missing_data_key(self, extractor):
         desc = GoldDescriptor(
             table_path="unit_test.test_describe",
             extractor=extractor,
@@ -111,11 +111,11 @@ class TestGoldDescriptor:
             if_exists="replace_force",
         )
         with pytest.raises(ValueError):
-            desc.describe(
+            desc.describe_in_table(
                 DummyDataset(),
             )
 
-    def test_with_collate_fn(self, extractor):
+    def test_describe_in_table_with_collate_fn(self, extractor):
         def collate_fn(batch):
             data = torch.stack([b["data"] for b in batch], dim=0)
             idxs = [b["idx"] for b in batch]
@@ -131,7 +131,7 @@ class TestGoldDescriptor:
             if_exists="replace_force",
         )
 
-        table = desc.describe(
+        table = desc.describe_in_table(
             DummyDataset(),
         )
         assert table.count() == 2
@@ -156,7 +156,7 @@ class TestGoldDescriptor:
         except Exception:
             pass
 
-    def test_max_batches(self, extractor):
+    def test_describe_in_table_with_max_batches(self, extractor):
         desc = GoldDescriptor(
             table_path="unit_test.test_describe",
             extractor=extractor,
@@ -167,9 +167,7 @@ class TestGoldDescriptor:
             max_batches=2,
         )
 
-        # Dataset with 10 items, batch_size=2 means 5 batches total
-        # With max_batches=2, only first 2 batches (4 items) should be processed
-        table = desc.describe(DummyDataset(dataset_len=10))
+        table = desc.describe_in_table(DummyDataset(dataset_len=10))
 
         assert table.count() == 4
         for i, row in enumerate(table.collect()):
@@ -177,5 +175,158 @@ class TestGoldDescriptor:
 
         try:
             pxt.drop_table(desc.table_path)
+        except Exception:
+            pass
+
+    def test_describe_in_table_with_table_input(self, extractor):
+        src_path = "unit_test.src_table_input"
+        desc_path = "unit_test.test_describe_from_table"
+
+        # Create a source table with 2 rows
+        source_rows = [
+            {"idx": 0, "data": torch.zeros(3, 8, 8).numpy(), "label": "dummy"},
+            {"idx": 1, "data": torch.zeros(3, 8, 8).numpy(), "label": "dummy"},
+        ]
+        try:
+            pxt.create_dir("unit_test", if_exists="ignore")
+            src_table = pxt.create_table(
+                src_path, source=source_rows, if_exists="replace_force"
+            )
+        except Exception:
+            try:
+                pxt.drop_table(src_path)
+            except Exception:
+                pass
+            raise
+
+        desc = GoldDescriptor(
+            table_path=desc_path,
+            extractor=extractor,
+            batch_size=1,
+            collate_fn=None,
+            device=torch.device("cpu"),
+            if_exists="replace_force",
+        )
+
+        description_table = desc.describe_in_table(src_table)
+
+        assert description_table.count() == 2
+
+        for i, row in enumerate(description_table.collect()):
+            assert row["idx"] == i
+            assert row["label"] == "dummy"
+            assert "features" in description_table.columns()
+            assert tuple(row["features"].shape) == (4, 8, 8)
+
+        try:
+            pxt.drop_table(desc_path)
+        except Exception:
+            pass
+        try:
+            pxt.drop_table(src_path)
+        except Exception:
+            pass
+
+    def test_describe_in_table_after_restart(self, extractor):
+        desc = GoldDescriptor(
+            table_path="unit_test.test_describe",
+            extractor=extractor,
+            batch_size=2,
+            collate_fn=None,
+            device=torch.device("cpu"),
+            if_exists="replace_force",
+            max_batches=2,
+        )
+
+        try:
+            pxt.drop_table(desc.table_path)
+        except Exception:
+            pass
+
+        dataset = DummyDataset(dataset_len=10)
+
+        description_table = desc.describe_in_table(dataset)
+
+        assert description_table.count() == 4
+        for i, row in enumerate(description_table.collect()):
+            assert row["idx"] == i
+        desc.max_batches = None
+        description_table = desc.describe_in_table(dataset)
+
+        assert description_table.count() == 10
+        for i, row in enumerate(description_table.collect()):
+            assert row["idx"] == i
+            assert row["label"] == "dummy"
+            assert "features" in description_table.columns()
+            assert tuple(row["features"].shape) == (4, 8, 8)
+
+        try:
+            pxt.drop_table(desc.table_path)
+        except Exception:
+            pass
+
+    def test_describe_in_dataset(self, extractor):
+        desc = GoldDescriptor(
+            table_path="unit_test.test_describe",
+            extractor=extractor,
+            batch_size=2,
+            collate_fn=None,
+            device=torch.device("cpu"),
+            if_exists="replace_force",
+            drop_table=True,
+        )
+
+        dataset = desc.describe_in_dataset(DummyDataset())
+
+        for i, sample in enumerate(iter(dataset)):
+            assert sample["idx"] == i
+            assert (sample["data"] == torch.zeros(3, 8, 8).numpy()).all()
+            assert sample["label"] == "dummy"
+            assert sample["features"].shape == (4, 8, 8)
+
+        dataset.keep_cache = False
+
+    def test_describe_in_dataset_from_table(self, extractor):
+        src_path = "unit_test.src_table_input"
+
+        # Create a source table with 2 rows
+        source_rows = [
+            {"idx": 0, "data": torch.zeros(3, 8, 8).numpy(), "label": "dummy"},
+            {"idx": 1, "data": torch.zeros(3, 8, 8).numpy(), "label": "dummy"},
+        ]
+        try:
+            pxt.create_dir("unit_test", if_exists="ignore")
+            src_table = pxt.create_table(
+                src_path, source=source_rows, if_exists="replace_force"
+            )
+        except Exception:
+            try:
+                pxt.drop_table(src_path)
+            except Exception:
+                pass
+            raise
+
+        desc = GoldDescriptor(
+            table_path="unit_test.test_describe",
+            extractor=extractor,
+            batch_size=2,
+            collate_fn=None,
+            device=torch.device("cpu"),
+            if_exists="replace_force",
+            drop_table=True,
+        )
+
+        dataset = desc.describe_in_dataset(src_table)
+
+        for i, sample in enumerate(iter(dataset)):
+            assert sample["idx"] == i
+            assert (sample["data"] == torch.zeros(3, 8, 8).numpy()).all()
+            assert sample["label"] == "dummy"
+            assert sample["features"].shape == (4, 8, 8)
+
+        dataset.keep_cache = False
+
+        try:
+            pxt.drop_table(src_path)
         except Exception:
             pass
