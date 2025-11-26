@@ -1,15 +1,15 @@
 import torch
 import pytest
-from goldener.vectorize import GoldVectorizer, Filter2DWithCount, FilterLocation
+from goldener.vectorize import TensorVectorizer, Filter2DWithCount, FilterLocation
 
 
-class TestGoldVectorizer:
+class TestTensorVectorizer:
     def make_tensor(self, shape=(2, 5, 2)):
         return torch.randint(0, 100, shape)
 
     def test_vectorize_no_y(self):
         x = self.make_tensor()
-        v = GoldVectorizer()
+        v = TensorVectorizer()
         vec = v.vectorize(x)
         assert vec.vectors.shape == (4, 5)
         assert torch.equal(vec.batch_indices, torch.tensor([0, 0, 1, 1]))
@@ -18,7 +18,7 @@ class TestGoldVectorizer:
         x = self.make_tensor()
         y = torch.ones(2, 1, 2)
         y[0, 0, 0] = 0
-        v = GoldVectorizer()
+        v = TensorVectorizer()
         vec = v.vectorize(x, y)
         assert vec.vectors.shape == (3, 5)
         assert torch.equal(vec.batch_indices, torch.tensor([0, 1, 1]))
@@ -28,7 +28,7 @@ class TestGoldVectorizer:
         keep = Filter2DWithCount(
             filter_count=1, filter_location=FilterLocation.START, keep=True
         )
-        v = GoldVectorizer(keep=keep)
+        v = TensorVectorizer(keep=keep)
         vec = v.vectorize(x)
         assert vec.vectors.shape == (2, 5)
         assert torch.equal(vec.batch_indices, torch.tensor([0, 1]))
@@ -38,7 +38,7 @@ class TestGoldVectorizer:
         remove = Filter2DWithCount(
             filter_count=1, filter_location=FilterLocation.END, keep=False
         )
-        v = GoldVectorizer(remove=remove)
+        v = TensorVectorizer(remove=remove)
         vec = v.vectorize(x)
         assert vec.vectors.shape == (2, 5)
         assert torch.equal(vec.batch_indices, torch.tensor([0, 1]))
@@ -51,7 +51,7 @@ class TestGoldVectorizer:
         remove = Filter2DWithCount(
             filter_count=1, filter_location=FilterLocation.END, keep=False
         )
-        v = GoldVectorizer(keep=keep, remove=remove)
+        v = TensorVectorizer(keep=keep, remove=remove)
         vec = v.vectorize(x)
         assert vec.vectors.shape == (2, 5)
         assert torch.equal(vec.batch_indices, torch.tensor([0, 1]))
@@ -67,7 +67,7 @@ class TestGoldVectorizer:
             # Only keep rows where y > 5
             return (y > 5).to(torch.int64)
 
-        v = GoldVectorizer(transform_y=transform_y)
+        v = TensorVectorizer(transform_y=transform_y)
         vec = v.vectorize(x, y)
         assert vec.vectors.shape == (2, 5)
         assert torch.equal(vec.batch_indices, torch.tensor([0, 1]))
@@ -75,27 +75,27 @@ class TestGoldVectorizer:
     def test_vectorize_shape_mismatch(self):
         x = self.make_tensor()
         y = torch.ones(2, 1, 3)
-        v = GoldVectorizer()
+        v = TensorVectorizer()
         with pytest.raises(ValueError):
             v.vectorize(x, y)
 
     def test_vectorize_2d_input(self):
         x = self.make_tensor((4, 5))
-        v = GoldVectorizer()
+        v = TensorVectorizer()
         with pytest.raises(ValueError):
             v.vectorize(x)
 
     def test_vectorizer_invalid_keep_type(self):
         with pytest.raises(ValueError):
-            GoldVectorizer(keep=Filter2DWithCount())
+            TensorVectorizer(keep=Filter2DWithCount())
 
     def test_vectorizer_invalid_remove_type(self):
         with pytest.raises(ValueError):
-            GoldVectorizer(remove=Filter2DWithCount())
+            TensorVectorizer(remove=Filter2DWithCount())
 
     def test_vectorizer_invalid_random_type(self):
         with pytest.raises(ValueError):
-            GoldVectorizer(
+            TensorVectorizer(
                 random_filter=Filter2DWithCount(filter_location=FilterLocation.START)
             )
 

@@ -11,7 +11,9 @@ from pixeltable.exprs import Expr
 import torch
 from pixeltable.type_system import ArrayType
 from pixeltable.utils.pytorch import PixeltablePytorchDataset
+from torch.utils.data import Dataset
 
+from goldener.torch_utils import get_dataset_sample_dict
 from goldener.utils import get_ratios_for_counts
 
 
@@ -358,3 +360,125 @@ def get_sample_row_from_idx(
         sample = collate_fn([sample])
 
     return sample
+
+
+def get_table_if_column_started(
+    table_path,
+    col_name: str,
+    removes_empty: bool = True,
+) -> Table | None:
+    """Get a PixelTable table if a specified column has any non-None values.
+
+    Args:
+        table_path: The full path of the PixelTable table (e.g., 'dir1.dir2.table_name').
+        col_name: The name of the column to check for non-None values.
+        removes_empty: Whether to remove the table if it is empty (i.e., all values in the specified column are None).
+
+    Returns:
+        The PixelTable table if the specified column has non-None values, None otherwise.
+    """
+
+    create_pxt_dirs_for_path(table_path)
+    table = pxt.get_table(
+        table_path,
+        if_not_exists="ignore",
+    )
+
+    if table is not None:
+        col_expr = get_expr_from_column_name(table, col_name)
+        if table.select(col_expr).where(col_expr != None).count() == 0:  # noqa: E711
+            table = None
+            if removes_empty:
+                pxt.drop_table(table_path)  # remove empty table
+
+    return table
+
+
+def get_valid_view_for_table(
+    table: Table,
+    view: Table | str,
+    expected: list[str] | None = None,
+    excluded: list[str] | None = None,
+) -> Table:
+    """Get a valid PixelTable view for a given table.
+
+    Args:
+        table: The PixelTable table.
+        view: The existing PixelTable view or the path to create a new view.
+        expected: An optional list of expected keys that must be present in the initial table.
+        excluded: An optional list of keys that must not be present in the initial table or view.
+
+    Returns:
+        A valid PixelTable view for the given table.
+
+    Raises:
+        ValueError: If the table is missing expected keys, has excluded keys,
+        or if the existing view does not point to the provided table.
+    """
+    initial_table_columns = table.columns()
+
+    if expected is not None:
+        not_present_keys = [key for key in expected if key not in initial_table_columns]
+        if len(not_present_keys) > 0:
+            raise ValueError(f"Table is missing expected keys: {not_present_keys}")
+
+    if excluded is not None:
+        present_keys = [key for key in excluded if key in initial_table_columns]
+        if len(present_keys) > 0:
+            raise ValueError(f"Table is having excluded keys: {present_keys}")
+
+    if isinstance(view, Table):
+        if not is_view_of(view, table):
+            raise ValueError(
+                "The existing view points to a table that is not the provided table."
+            )
+        assert view is not None
+        valid_view = view
+
+    else:
+        create_pxt_dirs_for_path(view)
+        created_view = pxt.create_view(
+            view,
+            base=table,
+        )
+        assert created_view is not None
+        valid_view = created_view
+
+    return valid_view
+
+
+def get_table_from_dataset(
+    table_path: str,
+    dataset: Dataset,
+    collate_fn: Callable | None,
+    expected: list[str],
+    excluded: list[str],
+    if_exists: Literal["error", "replace_force"] = "error",
+) -> Table:
+    """Initialize a PixelTable table from a PyTorch dataset.
+
+    Args:
+        table_path: The full path of the PixelTable table to create (e.g., 'dir1.dir2.table_name').
+        dataset: The PyTorch dataset to get a sample from.
+        collate_fn: An optional collate function to apply to the sample.
+        expected: A list of keys that must be present in the sample.
+        excluded: A list of keys that must not be present in the sample.
+        if_exists: Behavior if the table already exists. Options are 'error' or 'replace_force'.
+
+    Returns:
+        The created PixelTable table.
+    """
+    sample = get_dataset_sample_dict(
+        dataset,
+        collate_fn=collate_fn,
+        expected=expected,
+        excluded=excluded,
+    )
+
+    return create_pxt_table_from_sample(
+        table_path,
+        sample,
+        unwrap=collate_fn is not None,
+        add={"idx": 0} if "idx" not in sample else None,
+        if_exists=if_exists,
+    )

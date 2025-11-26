@@ -8,7 +8,7 @@ from torch.utils.data import Dataset
 from goldener.describe import GoldDescriptor
 from goldener.extract import TorchGoldFeatureExtractorConfig, TorchGoldFeatureExtractor
 from goldener.split import GoldSplitter, GoldSet
-from goldener.vectorize import GoldVectorizer
+from goldener.vectorize import TensorVectorizer
 from goldener.select import GoldSelector
 
 
@@ -62,7 +62,7 @@ def descriptor(extractor):
 def selector():
     return GoldSelector(
         table_path="unit_test.selector_split",
-        vectorizer=GoldVectorizer(),
+        vectorizer=TensorVectorizer(),
     )
 
 
@@ -249,7 +249,7 @@ class TestGoldSplitter:
         # Create a selector with a non-default select_key
         selector = GoldSelector(
             table_path="unit_test.selector_split_wrong_key",
-            vectorizer=GoldVectorizer(),
+            vectorizer=TensorVectorizer(),
             select_key="wrong_key",
         )
 

@@ -1,15 +1,18 @@
 from dataclasses import dataclass
 from functools import partial
 
-from torch.utils.data import RandomSampler
+from torch.utils.data import RandomSampler, Dataset
 from typing_extensions import assert_never
-from typing import Callable
+from typing import Callable, Literal
 
 from enum import Enum
 
 import torch
 from torch import Generator
 
+from pixeltable.catalog import Table
+
+from goldener.pxt_utils import get_table_if_column_started
 from goldener.torch_utils import make_2d_tensor
 from goldener.utils import check_x_and_y_shapes
 
@@ -154,7 +157,7 @@ class Vectorized:
     batch_indices: torch.Tensor
 
 
-class GoldVectorizer:
+class TensorVectorizer:
     """Transform input as 2D tensor and filter based on target tensor.
 
     Attributes:
@@ -285,3 +288,49 @@ class GoldVectorizer:
             )
 
         return x[y.bool().squeeze(-1)]
+
+
+class GoldVectorizer:
+    def __init__(
+        self,
+        table_path: str,
+        vectorizer: TensorVectorizer,
+        data_key: str = "features",
+        target_key: str = "target",
+        vectorized_key: str = "vectorized",
+        batch_size: int | None = None,
+        num_workers: int | None = None,
+        if_exists: Literal["error", "replace_force"] = "error",
+        distribute: bool = False,
+        drop_table: bool = False,
+        max_batches: int | None = None,
+    ) -> None:
+        self.table_path = table_path
+        self.vectorizer = vectorizer
+        self.data_key = data_key
+        self.target_key = target_key
+        self.vectorized_key = vectorized_key
+        self.if_exists = if_exists
+        self.distribute = distribute
+        self.drop_table = drop_table
+        self.max_batches = max_batches
+
+        self.batch_size: int | None
+        self.num_workers: int | None
+        if not self.distribute:
+            self.batch_size = 1 if batch_size is None else batch_size
+            self.num_workers = 0 if num_workers is None else num_workers
+        else:
+            self.batch_size = batch_size
+            self.num_workers = num_workers
+
+    def vectorize_in_table(
+        self,
+        to_describe: Dataset | Table,
+    ) -> Table:
+        # If the computation was already started or already done, we resume from there
+        old_vectorized_table = get_table_if_column_started(
+            self.table_path, self.vectorized_key, True
+        )
+        assert old_vectorized_table is not None
+        return old_vectorized_table

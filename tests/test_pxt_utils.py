@@ -19,6 +19,8 @@ from goldener.pxt_utils import (
     get_array_column_shapes_from_table,
     is_view_of,
     get_sample_row_from_idx,
+    get_table_if_column_started,
+    get_valid_view_for_table,
 )
 
 
@@ -351,3 +353,124 @@ class TestGetSampleRowFromIdx:
             get_sample_row_from_idx(table, 0)
 
         pxt.drop_dir("test_sample_row", force=True)
+
+
+class TestGetTableIfColumnStarted:
+    def test_returns_none_when_table_does_not_exist(self):
+        table_path = "get_table_if_column.present"
+
+        pxt.create_dir("get_table_if_column")
+        pxt.create_table(
+            table_path, source=[{"idx": 0, "val": 1}, {"idx": None, "val": 1}]
+        )
+
+        result = get_table_if_column_started(table_path, "idx")
+        assert result is not None
+
+        pxt.drop_dir("get_table_if_column", force=True)
+
+    def test_drops_table_when_column_only_none_and_removes_empty_true(self):
+        table_path = "get_table_if_column.not_present"
+
+        pxt.create_dir("get_table_if_column")
+        table = pxt.create_table(table_path, source=[{"val": 1}, {"val": 1}])
+        table.add_column(idx=pxt.Int)
+
+        result = get_table_if_column_started(table_path, "idx", removes_empty=True)
+        assert result is None
+
+        assert pxt.get_table(table_path, if_not_exists="ignore") is None
+        pxt.drop_dir("get_table_if_column", force=True)
+
+    def test_keeps_table_when_column_only_none_and_removes_empty_false(self):
+        table_path = "get_table_if_column.not_present"
+
+        pxt.create_dir("get_table_if_column")
+        table = pxt.create_table(table_path, source=[{"val": 1}, {"val": 1}])
+        table.add_column(idx=pxt.Int)
+
+        result = get_table_if_column_started(table_path, "idx", removes_empty=False)
+        assert result is None
+
+        assert pxt.get_table(table_path, if_not_exists="ignore") is not None
+        pxt.drop_dir("get_table_if_column", force=True)
+
+
+class TestGetValidViewForTable:
+    def test_no_existing_view(self):
+        pxt.create_dir("test_get_valid_view", if_exists="ignore")
+        samples = [{"idx": 0, "a": 1, "b": 2}]
+        table = pxt.create_table("test_get_valid_view.base_table", source=samples)
+
+        # expected present -> should create and return a view
+        view_path = "test_get_valid_view.created_view"
+        out = get_valid_view_for_table(table, view_path, expected=["a"], excluded=["c"])
+        assert out is not None
+        assert out.get_metadata()["is_view"]
+
+        pxt.drop_dir("test_get_valid_view", force=True)
+
+    def test_existing_view_valid(self):
+        base_dir = "test_get_valid_view.base"
+        view_dir = "test_get_valid_view.view"
+
+        pxt.create_dir("test_get_valid_view", if_exists="ignore")
+        samples = [{"idx": 0, "a": 1, "b": 2}]
+        table = pxt.create_table(f"{base_dir}", source=samples)
+
+        table_view = pxt.create_view(f"{view_dir}", base=table)
+        assert table_view is not None
+
+        out = get_valid_view_for_table(
+            table, table_view, expected=["a", "b"], excluded=["c"]
+        )
+        assert out is table_view
+
+        pxt.drop_dir("test_get_valid_view", force=True)
+
+    def test_existing_view_invalid(self):
+        pxt.create_dir("test_get_valid_view", if_exists="ignore")
+        samples = [{"idx": 0, "a": 1}]
+        table1 = pxt.create_table("test_get_valid_view.table1", source=samples)
+        table2 = pxt.create_table("test_get_valid_view.table2", source=samples)
+
+        view2 = pxt.create_view("test_get_valid_view.view2", base=table2)
+
+        with pytest.raises(
+            ValueError,
+            match="The existing view points to a table that is not the provided table",
+        ):
+            get_valid_view_for_table(table1, view2)
+
+        pxt.drop_dir("test_get_valid_view", force=True)
+
+    def test_existing_view_with_missing_expected(self):
+        pxt.create_dir("test_get_valid_view", if_exists="ignore")
+        samples = [{"idx": 0, "keep": 1, "drop": 2}]
+        table = pxt.create_table("test_get_valid_view.base_table", source=samples)
+
+        with pytest.raises(ValueError, match="Table is missing expected keys"):
+            get_valid_view_for_table(
+                table, "test_get_valid_view.view_path", expected=["missing_key"]
+            )
+
+        with pytest.raises(ValueError, match="Table is having excluded keys"):
+            get_valid_view_for_table(
+                table, "test_get_valid_view.bad_view2", excluded=["drop"]
+            )
+
+        pxt.drop_dir("test_get_valid_view", force=True)
+
+
+class TestGetTableFromDataset:
+    def test_get_table_from_dataset(self):
+        pxt.create_dir("test_get_table_from_dataset", if_exists="ignore")
+        samples = [{"idx": 0, "a": 1}, {"idx": 1, "a": 2}]
+        table = pxt.create_table("test_get_table_from_dataset.table", source=samples)
+
+        dataset = GoldPxtTorchDataset(table)
+
+        out_table = GoldPxtTorchDataset.get_table_from_dataset(dataset)
+        assert out_table is table
+
+        pxt.drop_dir("test_get_table_from_dataset", force=True)

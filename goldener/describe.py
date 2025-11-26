@@ -8,15 +8,14 @@ from torch.utils.data import Dataset
 
 from goldener.extract import GoldFeatureExtractor
 from goldener.pxt_utils import (
-    create_pxt_table_from_sample,
-    create_pxt_dirs_for_path,
     GoldPxtTorchDataset,
     get_expr_from_column_name,
-    is_view_of,
     get_sample_row_from_idx,
     pxt_torch_dataset_collate_fn,
+    get_table_if_column_started,
+    get_valid_view_for_table,
+    get_table_from_dataset,
 )
-from goldener.torch_utils import get_dataset_sample_dict
 
 
 class GoldDescriptor:
@@ -141,14 +140,9 @@ class GoldDescriptor:
             A PixelTable Table containing the original data and the extracted features.
         """
         # If the computation was already started or already done, we resume from there
-        create_pxt_dirs_for_path(self.table_path)
-        old_description_table = pxt.get_table(
-            self.table_path,
-            if_not_exists="ignore",
+        old_description_table = get_table_if_column_started(
+            self.table_path, self.description_key, True
         )
-        if old_description_table is not None and old_description_table.count() == 0:
-            pxt.drop_table(old_description_table)  # remove empty table
-            old_description_table = None  # start back without it
 
         # get the table and dataset to execute the description pipeline
         to_describe_dataset: GoldPxtTorchDataset | Dataset
@@ -156,7 +150,6 @@ class GoldDescriptor:
             description_table = self._description_table_from_table(
                 to_describe, old_description_table
             )
-
             description_col = get_expr_from_column_name(
                 description_table, self.description_key
             )
@@ -193,30 +186,14 @@ class GoldDescriptor:
     def _description_table_from_table(
         self, to_describe: Table, old_description_table: Table | None
     ) -> Table:
-        if self.data_key not in to_describe.columns():
-            raise ValueError(f"Table must contain a '{self.data_key}' column.")
-
-        if "idx" not in to_describe.columns():
-            raise ValueError("Table must contain an 'idx' column.")
-
-        if old_description_table is not None:
-            if not is_view_of(old_description_table, to_describe):
-                raise ValueError(
-                    "The existing description table points to an existing table "
-                    "that is not a view of the provided table to describe."
-                )
-            assert old_description_table is not None
-            description_table = old_description_table
-        else:
-            if self.description_key in to_describe.columns():
-                raise ValueError(
-                    f"Table already contains a '{self.description_key}' column."
-                )
-
-            create_pxt_dirs_for_path(self.table_path)
-            table_view = pxt.create_view(self.table_path, base=to_describe)
-            assert table_view is not None
-            description_table = table_view
+        description_table = get_valid_view_for_table(
+            table=to_describe,
+            view=old_description_table
+            if old_description_table is not None
+            else self.table_path,
+            expected=[self.data_key, "idx"],
+            excluded=[self.description_key],
+        )
 
         if self.description_key not in description_table.columns():
             sample = get_sample_row_from_idx(
@@ -227,6 +204,7 @@ class GoldDescriptor:
             sample_data = sample[self.data_key]
             if self.transform is not None:
                 sample_data = self.transform(sample_data)
+
             description = (
                 self.extractor.extract_and_fuse(sample_data.to(device=self.device))
                 .squeeze(0)
@@ -248,24 +226,12 @@ class GoldDescriptor:
         self, dataset: Dataset, old_description_table: Table | None
     ) -> Table:
         if old_description_table is None:
-            sample = get_dataset_sample_dict(
-                dataset,
+            description_table = get_table_from_dataset(
+                table_path=self.table_path,
+                dataset=dataset,
                 collate_fn=self.collate_fn,
-                expected_keys=[self.data_key],
-                rejected_keys=[self.description_key],
-            )
-            if self.transform is not None:
-                sample[self.data_key] = self.transform(sample[self.data_key])
-
-            sample[self.description_key] = self.extractor.extract_and_fuse(
-                sample[self.data_key].to(device=self.device)
-            )
-
-            description_table = create_pxt_table_from_sample(
-                self.table_path,
-                sample,
-                unwrap=self.collate_fn is not None,
-                add={"idx": 0} if "idx" not in sample else None,
+                expected=[self.data_key],
+                excluded=[self.description_key],
                 if_exists=self.if_exists,
             )
         else:
