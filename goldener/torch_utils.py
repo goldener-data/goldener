@@ -1,4 +1,3 @@
-from copy import deepcopy
 from typing import Callable, Any
 
 import numpy as np
@@ -126,9 +125,6 @@ class ResetableTorchIterableDataset(torch.utils.data.IterableDataset):
     It is useful for accessing the first element (to set up a table for instance)
     of the dataset before looping over the full dataset.
 
-    Warning, this class is leverying `deepcopy` to reset the underlying iterable dataset.
-    This means that the underlying dataset and its components must be deepcopyable.
-
     Attributes:
         data_iterable: The underlying iterable dataset.
         _data_iterator: The current iterator over the dataset.
@@ -137,11 +133,11 @@ class ResetableTorchIterableDataset(torch.utils.data.IterableDataset):
     def __init__(self, data_iterable: torch.utils.data.IterableDataset):
         super().__init__()
         self.data_iterable = data_iterable
-        self._data_iterator = iter(deepcopy(self.data_iterable))
+        self._data_iterator = iter(self.data_iterable)
 
     def __iter__(self):
         if self._data_iterator is None:
-            self._data_iterator = iter(deepcopy(self.data_iterable))
+            self._data_iterator = iter(self.data_iterable)
         return self
 
     def __next__(self):
@@ -152,7 +148,7 @@ class ResetableTorchIterableDataset(torch.utils.data.IterableDataset):
             raise
 
     def reset(self):
-        self._data_iterator = iter(deepcopy(self.data_iterable))
+        self._data_iterator = iter(self.data_iterable)
 
 
 def get_dataset_sample_dict(
