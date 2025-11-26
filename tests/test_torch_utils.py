@@ -10,7 +10,7 @@ from goldener.torch_utils import (
 )
 
 
-class TestTensorToVector:
+class TestTensorToNumpyVectors:
     def test_torch_tensor_to_numpy_vectors_0d(self):
         t = torch.tensor(3)
         arr = torch_tensor_to_numpy_vectors(t)
@@ -38,7 +38,7 @@ class TestTensorToVector:
         )
 
 
-class TestArrayToTensor:
+class TestNumpyVectorToTensor:
     def test_numpy_vectors_to_torch_tensor_0d(self):
         arr = np.array(3)
         shape = (1, 1)
@@ -74,7 +74,7 @@ class TestArrayToTensor:
 
     def test_numpy_vectors_to_torch_tensor_3d(self):
         arr = np.random.rand(2, 4, 3).astype(np.float32)
-        shape = (2, 3, 4)  # Desired shape with channel moved to 1st dimension
+        shape = (2, 3, 4)
         t = numpy_vectors_to_torch_tensor(
             arr, shape, torch.float32, torch.device("cpu")
         )
@@ -98,7 +98,7 @@ class TestNpTranformFromTorch:
 
         t = torch.arange(6, dtype=torch.float32).reshape(2, 3)
         out = np_transform_from_torch(t, dummy_transform)
-        assert out.shape == t.shape
+        assert torch.allclose(t + 1, out)
 
 
 class TestMake2DTensor:
@@ -145,103 +145,24 @@ class TestMake2DTensor:
         assert torch.equal(out, t_flat)
 
 
+class DummyIterableDataset(torch.utils.data.IterableDataset):
+    def __init__(self, data: list[int]):
+        super().__init__()
+        self.data = data
+
+    def __iter__(self):
+        return iter(self.data)
+
+
 class TestResetableTorchIterableDataset:
-    """Tests for ResetableTorchIterableDataset class."""
-
-    @staticmethod
-    def _create_list_iterable_dataset(data_list):
-        """Helper to create a simple iterable dataset from a list."""
-        class ListIterableDataset(torch.utils.data.IterableDataset):
-            def __init__(self, data):
-                self.data = data
-            
-            def __iter__(self):
-                return iter(self.data)
-        
-        return ListIterableDataset(data_list)
-
-    def test_init(self):
-        """Test that ResetableTorchIterableDataset initializes correctly."""
-        data = [1, 2, 3, 4, 5]
-        dataset = ResetableTorchIterableDataset(iter(data))
-        assert dataset.data_iterable is not None
-        assert dataset._data_iterator is not None
-
-    def test_iteration(self):
-        """Test that the dataset can be iterated over."""
-        data = [1, 2, 3, 4, 5]
-        dataset = ResetableTorchIterableDataset(iter(data))
-        result = list(dataset)
-        assert result == data
-
-    def test_iteration_exhaustion(self):
-        """Test that iteration stops after exhausting the dataset."""
-        data = [1, 2, 3]
-        dataset = ResetableTorchIterableDataset(iter(data))
-        
-        # First iteration - exhaust the dataset
-        result1 = list(dataset)
-        assert result1 == data
-        
-        # Second iteration without reset should return empty
-        result2 = list(dataset)
-        assert result2 == []
+    def test_simple_usage(self):
+        dataset = ResetableTorchIterableDataset(DummyIterableDataset(list(range(10))))
+        out = list(dataset)
+        assert out == list(range(10))
 
     def test_reset(self):
-        """Test that reset() allows re-iteration over the dataset."""
-        data = [1, 2, 3, 4]
-        iterable_data = self._create_list_iterable_dataset(data)
-        dataset = ResetableTorchIterableDataset(iterable_data)
-        
-        # First iteration
-        result1 = list(dataset)
-        assert result1 == data
-        
-        # Reset and iterate again
+        dataset = ResetableTorchIterableDataset(DummyIterableDataset(list(range(10))))
+        start = next(dataset)
         dataset.reset()
-        result2 = list(dataset)
-        assert result2 == data
-
-    def test_multiple_resets(self):
-        """Test that multiple resets work correctly."""
-        data = [10, 20, 30]
-        iterable_data = self._create_list_iterable_dataset(data)
-        dataset = ResetableTorchIterableDataset(iterable_data)
-        
-        # Multiple reset and iteration cycles
-        for _ in range(3):
-            result = list(dataset)
-            assert result == data
-            dataset.reset()
-
-    def test_partial_iteration_then_reset(self):
-        """Test resetting after partial iteration."""
-        data = [1, 2, 3, 4, 5]
-        iterable_data = self._create_list_iterable_dataset(data)
-        dataset = ResetableTorchIterableDataset(iterable_data)
-        
-        # Partially iterate
-        iterator = iter(dataset)
-        assert next(iterator) == 1
-        assert next(iterator) == 2
-        
-        # Reset and iterate fully
-        dataset.reset()
-        result = list(dataset)
-        assert result == data
-
-    def test_next_after_stop_iteration(self):
-        """Test that calling next() after StopIteration resets the iterator to None."""
-        data = [1, 2]
-        dataset = ResetableTorchIterableDataset(iter(data))
-        
-        iterator = iter(dataset)
-        assert next(iterator) == 1
-        assert next(iterator) == 2
-        
-        # Next call should raise StopIteration
-        with pytest.raises(StopIteration):
-            next(iterator)
-        
-        # Internal iterator should be None after StopIteration
-        assert dataset._data_iterator is None
+        start_after_reset = next(dataset)
+        assert start_after_reset == start

@@ -1,3 +1,4 @@
+from copy import deepcopy
 from typing import Callable
 
 import numpy as np
@@ -132,11 +133,11 @@ class ResetableTorchIterableDataset(torch.utils.data.IterableDataset):
     def __init__(self, data_iterable: torch.utils.data.IterableDataset):
         super().__init__()
         self.data_iterable = data_iterable
-        self._data_iterator = iter(self.data_iterable)
+        self._data_iterator = iter(deepcopy(self.data_iterable))
 
     def __iter__(self):
         if self._data_iterator is None:
-            self._data_iterator = iter(self.data_iterable)
+            self._data_iterator = iter(deepcopy(self.data_iterable))
         return self
 
     def __next__(self):
@@ -147,4 +148,4 @@ class ResetableTorchIterableDataset(torch.utils.data.IterableDataset):
             raise
 
     def reset(self):
-        self._data_iterator = iter(self.data_iterable)
+        self._data_iterator = iter(deepcopy(self.data_iterable))
