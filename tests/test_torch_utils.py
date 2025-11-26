@@ -6,10 +6,11 @@ from goldener.torch_utils import (
     numpy_vectors_to_torch_tensor,
     np_transform_from_torch,
     make_2d_tensor,
+    ResetableTorchIterableDataset,
 )
 
 
-class TestTensorToVector:
+class TestTensorToNumpyVectors:
     def test_torch_tensor_to_numpy_vectors_0d(self):
         t = torch.tensor(3)
         arr = torch_tensor_to_numpy_vectors(t)
@@ -37,7 +38,7 @@ class TestTensorToVector:
         )
 
 
-class TestArrayToTensor:
+class TestNumpyVectorToTensor:
     def test_numpy_vectors_to_torch_tensor_0d(self):
         arr = np.array(3)
         shape = (1, 1)
@@ -73,7 +74,7 @@ class TestArrayToTensor:
 
     def test_numpy_vectors_to_torch_tensor_3d(self):
         arr = np.random.rand(2, 4, 3).astype(np.float32)
-        shape = (2, 3, 4)  # Desired shape with channel moved to 1st dimension
+        shape = (2, 3, 4)
         t = numpy_vectors_to_torch_tensor(
             arr, shape, torch.float32, torch.device("cpu")
         )
@@ -97,7 +98,7 @@ class TestNpTranformFromTorch:
 
         t = torch.arange(6, dtype=torch.float32).reshape(2, 3)
         out = np_transform_from_torch(t, dummy_transform)
-        assert out.shape == t.shape
+        assert torch.allclose(t + 1, out)
 
 
 class TestMake2DTensor:
@@ -142,3 +143,26 @@ class TestMake2DTensor:
         t_moved = t.moveaxis(1, -1)
         t_flat = t_moved.flatten(0, -2)
         assert torch.equal(out, t_flat)
+
+
+class DummyIterableDataset(torch.utils.data.IterableDataset):
+    def __init__(self, data: list[int]):
+        super().__init__()
+        self.data = data
+
+    def __iter__(self):
+        return iter(self.data)
+
+
+class TestResetableTorchIterableDataset:
+    def test_simple_usage(self):
+        dataset = ResetableTorchIterableDataset(DummyIterableDataset(list(range(10))))
+        out = list(dataset)
+        assert out == list(range(10))
+
+    def test_reset(self):
+        dataset = ResetableTorchIterableDataset(DummyIterableDataset(list(range(10))))
+        start = next(iter(dataset))
+        dataset.reset()
+        start_after_reset = next(iter(dataset))
+        assert start_after_reset == start
