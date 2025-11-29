@@ -5,6 +5,7 @@ import torch
 import numpy as np
 
 import pixeltable as pxt
+from pixeltable import Float
 
 from goldener.pxt_utils import (
     create_pxt_table_from_sample,
@@ -19,8 +20,9 @@ from goldener.pxt_utils import (
     get_array_column_shapes_from_table,
     is_view_of,
     get_sample_row_from_idx,
-    get_table_if_column_started,
-    get_valid_view_for_table,
+    get_table_with_column_status,
+    get_valid_table,
+    include_batch_into_table,
 )
 
 
@@ -364,7 +366,7 @@ class TestGetTableIfColumnStarted:
             table_path, source=[{"idx": 0, "val": 1}, {"idx": None, "val": 1}]
         )
 
-        result = get_table_if_column_started(table_path, "idx")
+        result = get_table_with_column_status(table_path, "idx")
         assert result is not None
 
         pxt.drop_dir("get_table_if_column", force=True)
@@ -376,7 +378,7 @@ class TestGetTableIfColumnStarted:
         table = pxt.create_table(table_path, source=[{"val": 1}, {"val": 1}])
         table.add_column(idx=pxt.Int)
 
-        result = get_table_if_column_started(table_path, "idx", removes_empty=True)
+        result = get_table_with_column_status(table_path, "idx", removes_empty=True)
         assert result is None
 
         assert pxt.get_table(table_path, if_not_exists="ignore") is None
@@ -389,88 +391,136 @@ class TestGetTableIfColumnStarted:
         table = pxt.create_table(table_path, source=[{"val": 1}, {"val": 1}])
         table.add_column(idx=pxt.Int)
 
-        result = get_table_if_column_started(table_path, "idx", removes_empty=False)
+        result = get_table_with_column_status(table_path, "idx", removes_empty=False)
         assert result is None
 
         assert pxt.get_table(table_path, if_not_exists="ignore") is not None
         pxt.drop_dir("get_table_if_column", force=True)
 
 
-class TestGetValidViewForTable:
-    def test_no_existing_view(self):
+class TestGetValidTable:
+    def test_with_exising(self):
         pxt.create_dir("test_get_valid_view", if_exists="ignore")
         samples = [{"idx": 0, "a": 1, "b": 2}]
         table = pxt.create_table("test_get_valid_view.base_table", source=samples)
 
-        # expected present -> should create and return a view
-        view_path = "test_get_valid_view.created_view"
-        out = get_valid_view_for_table(table, view_path, expected=["a"], excluded=["c"])
-        assert out is not None
-        assert out.get_metadata()["is_view"]
+        out = get_valid_table(table, minimal_schema={"idx": pxt.Int})
+        assert out is table
 
         pxt.drop_dir("test_get_valid_view", force=True)
 
-    def test_existing_view_valid(self):
-        base_dir = "test_get_valid_view.base"
-        view_dir = "test_get_valid_view.view"
-
+    def test_existing_with_missing(self):
         pxt.create_dir("test_get_valid_view", if_exists="ignore")
         samples = [{"idx": 0, "a": 1, "b": 2}]
-        table = pxt.create_table(f"{base_dir}", source=samples)
+        table = pxt.create_table("test_get_valid_view.base_table", source=samples)
 
-        table_view = pxt.create_view(f"{view_dir}", base=table)
-        assert table_view is not None
-
-        out = get_valid_view_for_table(
-            table, table_view, expected=["a", "b"], excluded=["c"]
-        )
-        assert out is table_view
+        with pytest.raises(ValueError, match="The table is missing required"):
+            get_valid_table(table, minimal_schema={"not present": pxt.Int})
 
         pxt.drop_dir("test_get_valid_view", force=True)
 
-    def test_existing_view_invalid(self):
-        pxt.create_dir("test_get_valid_view", if_exists="ignore")
-        samples = [{"idx": 0, "a": 1}]
-        table1 = pxt.create_table("test_get_valid_view.table1", source=samples)
-        table2 = pxt.create_table("test_get_valid_view.table2", source=samples)
+    def test_with_path(self):
+        table = get_valid_table(
+            "test_get_valid_view.base_table", minimal_schema={"idx": pxt.Int}
+        )
 
-        view2 = pxt.create_view("test_get_valid_view.view2", base=table2)
+        assert table.columns() == ["idx"]
+        pxt.drop_dir("test_get_valid_view", force=True)
 
+
+class TestIncludeBatchIntoTable:
+    def test_with_index_not_present(self):
+        pxt.create_dir("test_include_batch", if_exists="ignore")
+        table = pxt.create_table(
+            "test_include_batch.base_table",
+            schema={"data": pxt.Array[(8, 8), Float], "idx": pxt.Int},
+        )
+
+        batch = {
+            "data": np.random.rand(2, 8, 8).astype(np.float32),
+            "idx": [0, 1],
+            "extra": [10, 20],
+        }
+
+        include_batch_into_table(
+            table,
+            batch,
+            to_insert=["data"],
+            index_key="idx",
+        )
+
+        assert table.count() == 2
+        table_columns = table.columns()
+        assert "data" in table_columns
+        assert "idx" in table_columns
+        assert "extra" not in table_columns
+
+        pxt.drop_dir("test_include_batch", force=True)
+
+    def test_with_index_present(self):
+        pxt.create_dir("test_include_batch", if_exists="ignore")
+        table = pxt.create_table(
+            "test_include_batch.base_table",
+            source=[{"data": np.random.rand(8, 8).astype(np.float32), "idx": 0}],
+        )
+
+        batch = {
+            "data": np.random.rand(2, 8, 8).astype(np.float32),
+            "idx": [0, 1],
+            "extra": [10, 20],
+        }
+
+        include_batch_into_table(
+            table,
+            batch,
+            to_insert=["data"],
+            index_key="idx",
+        )
+
+        assert table.count() == 2
+        table_columns = table.columns()
+        assert "data" in table_columns
+        assert "idx" in table_columns
+        assert "extra" not in table_columns
+
+        pxt.drop_dir("test_include_batch", force=True)
+
+    def test_with_no_index(self):
+        pxt.create_dir("test_include_batch", if_exists="ignore")
+        table = pxt.create_table(
+            "test_include_batch.base_table",
+            schema={"data": pxt.Array[(8, 8), Float]},
+        )
+
+        batch = {"data": np.random.rand(2, 8, 8).astype(np.float32), "extra": [10, 20]}
         with pytest.raises(
             ValueError,
-            match="The existing view points to a table that is not the provided table",
+            match="not found in the batch",
         ):
-            get_valid_view_for_table(table1, view2)
-
-        pxt.drop_dir("test_get_valid_view", force=True)
-
-    def test_existing_view_with_missing_expected(self):
-        pxt.create_dir("test_get_valid_view", if_exists="ignore")
-        samples = [{"idx": 0, "keep": 1, "drop": 2}]
-        table = pxt.create_table("test_get_valid_view.base_table", source=samples)
-
-        with pytest.raises(ValueError, match="Table is missing expected keys"):
-            get_valid_view_for_table(
-                table, "test_get_valid_view.view_path", expected=["missing_key"]
+            include_batch_into_table(
+                table,
+                batch,
+                to_insert=["data"],
+                index_key="idx",
             )
+        pxt.drop_dir("test_include_batch", force=True)
 
-        with pytest.raises(ValueError, match="Table is having excluded keys"):
-            get_valid_view_for_table(
-                table, "test_get_valid_view.bad_view2", excluded=["drop"]
+    def test_with_index_in_insert(self):
+        pxt.create_dir("test_include_batch", if_exists="ignore")
+        table = pxt.create_table(
+            "test_include_batch.base_table",
+            schema={"data": pxt.Array[(8, 8), Float]},
+        )
+
+        batch = {"data": np.random.rand(2, 8, 8).astype(np.float32), "idx": [10, 20]}
+        with pytest.raises(
+            ValueError,
+            match="should not be in the to_insert list",
+        ):
+            include_batch_into_table(
+                table,
+                batch,
+                to_insert=["data", "idx"],
+                index_key="idx",
             )
-
-        pxt.drop_dir("test_get_valid_view", force=True)
-
-
-class TestGetTableFromDataset:
-    def test_get_table_from_dataset(self):
-        pxt.create_dir("test_get_table_from_dataset", if_exists="ignore")
-        samples = [{"idx": 0, "a": 1}, {"idx": 1, "a": 2}]
-        table = pxt.create_table("test_get_table_from_dataset.table", source=samples)
-
-        dataset = GoldPxtTorchDataset(table)
-
-        out_table = GoldPxtTorchDataset.get_table_from_dataset(dataset)
-        assert out_table is table
-
-        pxt.drop_dir("test_get_table_from_dataset", force=True)
+        pxt.drop_dir("test_include_batch", force=True)
