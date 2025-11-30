@@ -8,7 +8,7 @@ from torch.utils.data import Dataset
 
 from goldener.reduce import GoldReducer
 from goldener.select import GoldSelector
-from goldener.vectorize import GoldVectorizer
+from goldener.vectorize import TensorVectorizer
 
 
 class DummyDataset(Dataset):
@@ -39,7 +39,7 @@ class TestGoldSelector:
             ]
         )
 
-        selector = GoldSelector(table_path="tmp.table", vectorizer=GoldVectorizer())
+        selector = GoldSelector(table_path="tmp.table", vectorizer=TensorVectorizer())
         # Should not raise
         selector._check_dataset(dataset)
 
@@ -51,35 +51,35 @@ class TestGoldSelector:
         )
 
         selector = GoldSelector(
-            table_path="tmp.table", vectorizer=GoldVectorizer(), collate_fn=collate_fn
+            table_path="tmp.table", vectorizer=TensorVectorizer(), collate_fn=collate_fn
         )
         # Should not raise
         selector._check_dataset(dataset)
 
     def test_check_dataset_non_dict(self):
         dataset = DummyDataset([1])
-        selector = GoldSelector(table_path="tmp.table", vectorizer=GoldVectorizer())
+        selector = GoldSelector(table_path="tmp.table", vectorizer=TensorVectorizer())
 
         with pytest.raises(ValueError):
             selector._check_dataset(dataset)
 
     def test_check_dataset_missing_select_key(self):
         dataset = DummyDataset([{"not_features": torch.tensor([1.0]), "idx": 0}])
-        selector = GoldSelector(table_path="tmp.table", vectorizer=GoldVectorizer())
+        selector = GoldSelector(table_path="tmp.table", vectorizer=TensorVectorizer())
 
         with pytest.raises(ValueError):
             selector._check_dataset(dataset)
 
     def test_check_dataset_select_not_tensor(self):
         dataset = DummyDataset([{"features": [1, 2, 3], "idx": 0}])
-        selector = GoldSelector(table_path="tmp.table", vectorizer=GoldVectorizer())
+        selector = GoldSelector(table_path="tmp.table", vectorizer=TensorVectorizer())
 
         with pytest.raises(ValueError):
             selector._check_dataset(dataset)
 
     def test_check_dataset_missing_idx(self):
         dataset = DummyDataset([{"features": torch.tensor([1.0])}])
-        selector = GoldSelector(table_path="tmp.table", vectorizer=GoldVectorizer())
+        selector = GoldSelector(table_path="tmp.table", vectorizer=TensorVectorizer())
 
         with pytest.raises(ValueError):
             selector._check_dataset(dataset)
@@ -92,7 +92,7 @@ class TestGoldSelector:
 
         selector = GoldSelector(
             table_path=table_path,
-            vectorizer=GoldVectorizer(),
+            vectorizer=TensorVectorizer(),
             if_exists="replace_force",
         )
 
@@ -136,7 +136,7 @@ class TestGoldSelector:
 
         selector = GoldSelector(
             table_path=table_path,
-            vectorizer=GoldVectorizer(),
+            vectorizer=TensorVectorizer(),
             if_exists="replace_force",
         )
 
@@ -179,7 +179,7 @@ class TestGoldSelector:
 
         selector = GoldSelector(
             table_path=table_path,
-            vectorizer=GoldVectorizer(),
+            vectorizer=TensorVectorizer(),
             collate_fn=collate_fn,
             if_exists="replace_force",
         )
@@ -205,7 +205,7 @@ class TestGoldSelector:
 
         selector = GoldSelector(
             table_path=table_path,
-            vectorizer=GoldVectorizer(),
+            vectorizer=TensorVectorizer(),
             if_exists="replace_force",
         )
 
@@ -232,7 +232,7 @@ class TestGoldSelector:
 
         selector = GoldSelector(
             table_path=table_path,
-            vectorizer=GoldVectorizer(),
+            vectorizer=TensorVectorizer(),
             if_exists="replace_force",
             chunk=21,
         )
@@ -260,7 +260,7 @@ class TestGoldSelector:
 
         selector = GoldSelector(
             table_path=table_path,
-            vectorizer=GoldVectorizer(),
+            vectorizer=TensorVectorizer(),
             reducer=GoldReducer(PCA(n_components=3)),
             if_exists="replace_force",
         )
@@ -296,7 +296,7 @@ class TestGoldSelector:
 
         selector = GoldSelector(
             table_path=table_path,
-            vectorizer=GoldVectorizer(),
+            vectorizer=TensorVectorizer(),
             select_target_key="target",
             if_exists="replace_force",
         )
@@ -331,7 +331,7 @@ class TestGoldSelector:
 
         selector = GoldSelector(
             table_path=table_path,
-            vectorizer=GoldVectorizer(),
+            vectorizer=TensorVectorizer(),
             if_exists="replace_force",
             batch_size=10,
             max_batches=2,  # Only process first 2 batches
