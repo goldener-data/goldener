@@ -135,10 +135,7 @@ class TestGoldSplitter:
             splitter.split(DummyDataset([{"data": torch.rand(3, 8, 8), "idx": 0}]))
 
         for path in (descriptor.table_path, selector.table_path):
-            try:
-                pxt.drop_table(path)
-            except Exception:
-                pass
+            pxt.drop_table(path, if_not_exists="ignore", force=True)
 
     def test_gold_split_class_existing(self, descriptor, selector):
         sets = [GoldSet(name="only", ratio=0.5)]
