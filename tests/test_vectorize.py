@@ -301,6 +301,7 @@ class TestGoldVectorizer:
             {"idx": 1, "features": torch.zeros(4, 3).numpy()},
         ]
 
+        pxt.create_dir("unit_test", if_exists="ignore")
         src_table = pxt.create_table(
             src_path, source=source_rows, if_exists="replace_force"
         )
