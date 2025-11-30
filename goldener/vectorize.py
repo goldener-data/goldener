@@ -330,6 +330,8 @@ class GoldVectorizer:
         data_key: Key in the batch dictionary that contains the data to vectorize.
         target_key: Optional key in the batch containing the target used to filter vectors.
         vectorized_key: Column name to store the resulting vectors in the PixelTable table.
+        to_keep_schema: Optional dictionary defining additional columns to keep from the original dataset/table
+        into the description table. The keys are the column names and the values are the PixelTable types.
         batch_size: Batch size used when iterating over the data.
         num_workers: Number of workers for the PyTorch DataLoader during iteration on data.
         allow_existing: If False, an error will be raised when the table already exists.
@@ -348,6 +350,7 @@ class GoldVectorizer:
         data_key: str = "features",
         target_key: str = "target",
         vectorized_key: str = "vectorized",
+        to_keep_schema: dict[str, type] | None = None,
         batch_size: int | None = None,
         num_workers: int | None = None,
         allow_existing: bool = True,
@@ -361,6 +364,7 @@ class GoldVectorizer:
         self.data_key = data_key
         self.target_key = target_key
         self.vectorized_key = vectorized_key
+        self.to_keep_schema = to_keep_schema
         self.allow_existing = allow_existing
         self.distribute = distribute
         self.drop_table = drop_table
@@ -479,11 +483,15 @@ class GoldVectorizer:
     def _vectorized_table_from_table(
         self, to_vectorize: Table, old_vectorized_table: Table | None
     ) -> Table:
+        minimal_schema = self._MINIMAL_SCHEMA
+        if self.to_keep_schema is not None:
+            minimal_schema |= self.to_keep_schema
+
         vectorized_table = get_valid_table(
             table=old_vectorized_table
             if old_vectorized_table is not None
             else self.table_path,
-            minimal_schema=self._MINIMAL_SCHEMA,
+            minimal_schema=minimal_schema,
         )
 
         if self.vectorized_key not in vectorized_table.columns():
@@ -509,11 +517,15 @@ class GoldVectorizer:
     def _vectorized_table_from_dataset(
         self, to_vectorize: Dataset, old_vectorized_table: Table | None
     ) -> Table:
+        minimal_schema = self._MINIMAL_SCHEMA
+        if self.to_keep_schema is not None:
+            minimal_schema |= self.to_keep_schema
+
         vectorized_table = get_valid_table(
             table=old_vectorized_table
             if old_vectorized_table is not None
             else self.table_path,
-            minimal_schema=self._MINIMAL_SCHEMA,
+            minimal_schema=minimal_schema,
         )
 
         if self.vectorized_key not in vectorized_table.columns():
@@ -632,17 +644,26 @@ class GoldVectorizer:
                     pxtf.max(vectorized_table.idx)  # type: ignore[call-arg]
                 ).collect()
             ][0]
+
+            to_keep_keys = None
+            if self.to_keep_schema is not None:
+                to_keep_keys = list(self.to_keep_schema.keys())
             batch = self._unwrap_vectors_in_batch(
                 vectorized=vectorized,
                 batch=batch,
                 starts=max_idx + 1 if max_idx is not None else 0,
+                to_keep_keys=to_keep_keys,
             )
 
             # insert vectorized in the table
+            to_insert_keys = [self.vectorized_key, "idx_sample"]
+            if to_keep_keys is not None:
+                to_insert_keys.extend(to_keep_keys)
+
             include_batch_into_table(
                 vectorized_table,
                 batch,
-                [self.vectorized_key, "idx_sample"],
+                to_insert_keys,
                 "idx",
             )
 
@@ -653,12 +674,17 @@ class GoldVectorizer:
         vectorized: Vectorized,
         batch: dict[str, Any],
         starts: int = 0,
+        to_keep_keys: list[str] | None = None,
     ) -> dict[str, Any]:
         new_batch: dict[str, Any] = {
             "idx": [],
             self.vectorized_key: [],
             "idx_sample": [],
         }
+        if to_keep_keys is not None:
+            for key in to_keep_keys:
+                new_batch[key] = []
+
         sample_indices = [
             (idx_value.item() if isinstance(idx_value, torch.Tensor) else idx_value)
             for batch_idx, idx_value in enumerate(batch["idx"])
@@ -668,8 +694,11 @@ class GoldVectorizer:
         for vec_idx, vector in enumerate(vectorized.vectors):
             new_batch[self.vectorized_key].append(vector)
             new_batch["idx"].append(starts + vec_idx)
-            vector_idx = vectorized_idx[vec_idx].item()
-            assert isinstance(vector_idx, int)
-            new_batch["idx_sample"].append(sample_indices[vector_idx])
+            batch_idx = vectorized_idx[vec_idx].item()
+            assert isinstance(batch_idx, int)
+            new_batch["idx_sample"].append(sample_indices[batch_idx])
+            if to_keep_keys is not None:
+                for key in to_keep_keys:
+                    new_batch[key].append(batch[key][batch_idx])
 
         return new_batch

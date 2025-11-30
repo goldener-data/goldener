@@ -277,6 +277,7 @@ class TestGoldVectorizer:
             collate_fn=None,
             data_key="features",
             vectorized_key="vectorized",
+            to_keep_schema={"label": pxt.String},
             batch_size=1,
             num_workers=0,
             allow_existing=False,
@@ -289,6 +290,7 @@ class TestGoldVectorizer:
         for row in table.collect():
             assert "vectorized" in row
             assert row["vectorized"].shape == (3,)
+            assert row["label"] == "dummy"
 
         pxt.drop_dir("unit_test", force=True)
 
@@ -297,8 +299,8 @@ class TestGoldVectorizer:
         desc_path = "unit_test.vectorize_from_table"
 
         source_rows = [
-            {"idx": 0, "features": torch.zeros(4, 3).numpy()},
-            {"idx": 1, "features": torch.zeros(4, 3).numpy()},
+            {"idx": 0, "features": torch.zeros(4, 3).numpy(), "label": "dummy"},
+            {"idx": 1, "features": torch.zeros(4, 3).numpy(), "label": "dummy"},
         ]
 
         pxt.create_dir("unit_test", if_exists="ignore")
@@ -312,6 +314,7 @@ class TestGoldVectorizer:
             collate_fn=None,
             data_key="features",
             vectorized_key="vectorized",
+            to_keep_schema={"label": pxt.String},
             batch_size=1,
             num_workers=0,
             allow_existing=False,
@@ -319,6 +322,10 @@ class TestGoldVectorizer:
 
         out_table = gv.vectorize_in_table(src_table)
         assert out_table.count() == 3 * 2
+        for row in out_table.collect():
+            assert "vectorized" in row
+            assert row["vectorized"].shape == (4,)
+            assert row["label"] == "dummy"
 
         pxt.drop_dir("unit_test", force=True)
 

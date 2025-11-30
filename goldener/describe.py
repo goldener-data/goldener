@@ -46,6 +46,8 @@ class GoldDescriptor:
         the value at `data_key` in the format expected by the feature extractor.
         data_key: Key in the batch dictionary that contains the data to extract features from. Default is "data".
         description_key: Key in the table where the extracted features will be stored. Default is "features".
+        to_keep_schema: Optional dictionary defining additional columns to keep from the original dataset/table
+        into the description table. The keys are the column names and the values are the PixelTable types.
         batch_size: Optional batch size for processing the dataset.
         num_workers: Optional number of worker threads for data loading.
         allow_existing: If False, an error will be raised when the table already exists.
@@ -68,6 +70,7 @@ class GoldDescriptor:
         collate_fn: Callable | None = None,
         data_key: str = "data",
         description_key: str = "features",
+        to_keep_schema: dict[str, type] | None = None,
         batch_size: int | None = None,
         num_workers: int | None = None,
         allow_existing: bool = True,
@@ -82,6 +85,7 @@ class GoldDescriptor:
         self.collate_fn = collate_fn
         self.data_key = data_key
         self.description_key = description_key
+        self.to_keep_schema = to_keep_schema
         self.allow_existing = allow_existing
         self.distribute = distribute
         self.drop_table = drop_table
@@ -202,11 +206,15 @@ class GoldDescriptor:
     def _description_table_from_table(
         self, to_describe: Table, old_description_table: Table | None
     ) -> Table:
+        minimal_schema = self._MINIMAL_SCHEMA
+        if self.to_keep_schema is not None:
+            minimal_schema |= self.to_keep_schema
+
         description_table = get_valid_table(
             table=old_description_table
             if old_description_table is not None
             else self.table_path,
-            minimal_schema=self._MINIMAL_SCHEMA,
+            minimal_schema=minimal_schema,
         )
 
         if self.description_key not in description_table.columns():
@@ -239,11 +247,15 @@ class GoldDescriptor:
     def _description_table_from_dataset(
         self, to_describe: Dataset, old_description_table: Table | None
     ) -> Table:
+        minimal_schema = self._MINIMAL_SCHEMA
+        if self.to_keep_schema is not None:
+            minimal_schema |= self.to_keep_schema
+
         description_table = get_valid_table(
             table=old_description_table
             if old_description_table is not None
             else self.table_path,
-            minimal_schema=self._MINIMAL_SCHEMA,
+            minimal_schema=minimal_schema,
         )
 
         if self.description_key not in description_table.columns():
@@ -353,10 +365,14 @@ class GoldDescriptor:
             )
 
             # insert description in the table
+            to_insert_keys = [self.description_key]
+            if self.to_keep_schema is not None:
+                to_insert_keys.extend(self.to_keep_schema.keys())
+
             include_batch_into_table(
                 description_table,
                 batch,
-                [self.description_key],
+                to_insert_keys,
                 "idx",
             )
 

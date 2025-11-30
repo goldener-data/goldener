@@ -42,6 +42,7 @@ class TestGoldDescriptor:
         desc = GoldDescriptor(
             table_path="unit_test.test_describe",
             extractor=extractor,
+            to_keep_schema={"label": pxt.String},
             batch_size=2,
             collate_fn=None,
             device=torch.device("cpu"),
@@ -53,6 +54,7 @@ class TestGoldDescriptor:
         for i, row in enumerate(table.collect()):
             assert row["idx"] == i
             assert row["features"].shape == (4, 8, 8)
+            assert row["label"] == "dummy"
 
         pxt.drop_dir("unit_test", force=True)
 
@@ -178,6 +180,7 @@ class TestGoldDescriptor:
         desc = GoldDescriptor(
             table_path=desc_path,
             extractor=extractor,
+            to_keep_schema={"label": pxt.String},
             batch_size=1,
             collate_fn=None,
             device=torch.device("cpu"),
@@ -191,6 +194,7 @@ class TestGoldDescriptor:
         for i, row in enumerate(description_table.collect()):
             assert row["idx"] == i
             assert row["features"].shape == (4, 8, 8)
+            assert row["label"] == "dummy"
 
         pxt.drop_dir("unit_test", force=True)
 
