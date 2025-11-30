@@ -307,7 +307,6 @@ class TensorVectorizer:
 
 
 class GoldVectorizer:
-    _MINIMAL_SCHEMA: dict[str, type[int]] = {"idx": pxt.Int, "idx_sample": pxt.Int}
     """Vectorize dataset data to flatten them as vector.
 
     The GoldVectorizer runs a `TensorVectorizer` over a dataset or a PixelTable `Table`
@@ -338,6 +337,8 @@ class GoldVectorizer:
         drop_table: Whether to drop the created PixelTable table after creating a dataset.
         max_batches: Optional maximum number of batches to process (useful for testing).
     """
+
+    _MINIMAL_SCHEMA: dict[str, type] = {"idx": pxt.Int, "idx_sample": pxt.Int}
 
     def __init__(
         self,

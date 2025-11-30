@@ -1,4 +1,4 @@
-from typing import Callable, Any
+from typing import Callable
 
 import torch
 
@@ -56,7 +56,7 @@ class GoldDescriptor:
         max_batches: Optional maximum number of batches to process. Useful for testing on a small subset of the dataset.
     """
 
-    _MINIMAL_SCHEMA: dict[str, Any] = {
+    _MINIMAL_SCHEMA: dict[str, type] = {
         "idx": pxt.Int,
     }
 

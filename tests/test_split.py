@@ -54,7 +54,7 @@ def descriptor(extractor):
         batch_size=2,
         collate_fn=None,
         device=torch.device("cpu"),
-        allow_existing="replace_force",
+        allow_existing=False,
     )
 
 

@@ -20,7 +20,6 @@ from goldener.pxt_utils import (
     get_array_column_shapes_from_table,
     is_view_of,
     get_sample_row_from_idx,
-    get_table_with_column_status,
     get_valid_table,
     include_batch_into_table,
 )
@@ -29,8 +28,6 @@ from goldener.pxt_utils import (
 @pytest.fixture
 def test_table():
     table_path = "test_pxt_utils.test_table"
-
-    pxt.drop_dir("test_pxt_utils", force=True)
 
     pxt.create_dir("test_pxt_utils", if_exists="ignore")
     sample = [{"data": np.random.rand(3, 8, 8).astype(np.float32), "idx": 0}]
@@ -44,7 +41,6 @@ def test_table():
 class TestCreatePxtTableFromSample:
     def test_create_table_from_sample_with_torch_tensor(self):
         table_path = "test_create_from_sample.test_table"
-        pxt.drop_dir("test_create_from_sample", force=True)
 
         sample = {"data": torch.ones(3, 8, 8), "idx": 0}
         table = create_pxt_table_from_sample(
@@ -58,7 +54,6 @@ class TestCreatePxtTableFromSample:
 
     def test_create_table_from_sample_with_numpy_array(self):
         table_path = "test_create_from_sample_np.test_table"
-        pxt.drop_dir("test_create_from_sample_np", force=True)
 
         sample = {"data": np.zeros((3, 8, 8), dtype=np.float32), "idx": 0}
         table = create_pxt_table_from_sample(
@@ -72,7 +67,6 @@ class TestCreatePxtTableFromSample:
 
     def test_create_table_from_sample_with_add(self):
         table_path = "test_create_from_sample_np.test_table"
-        pxt.drop_dir("test_create_from_sample_np", force=True)
 
         sample = {"data": np.zeros((3, 8, 8), dtype=np.float32), "idx": 0}
         table = create_pxt_table_from_sample(
@@ -86,7 +80,6 @@ class TestCreatePxtTableFromSample:
 
     def test_create_table_from_sample_with_unwrap(self):
         table_path = "test_create_from_sample_np.test_table"
-        pxt.drop_dir("test_create_from_sample_np", force=True)
 
         sample = {"data": np.zeros((3, 8, 8), dtype=np.float32), "idx": [0]}
         table = create_pxt_table_from_sample(
@@ -175,7 +168,6 @@ class TestCreatePxtDirsForPath:
 class TestSetValueToIdxRows:
     def test_set_value_to_multiple_rows(self):
         table_path = "test_set_value.test_table"
-        pxt.drop_dir("test_set_value", force=True)
 
         pxt.create_dir("test_set_value", if_exists="ignore")
         samples = [
@@ -204,7 +196,6 @@ class TestSetValueToIdxRows:
 class TestUpdateColumnIfTooMany:
     def test_no_update_when_under_max(self):
         table_path = "test_update_column.test_table"
-        pxt.drop_dir("test_update_column", force=True)
 
         pxt.create_dir("test_update_column", if_exists="ignore")
         samples = [
@@ -245,7 +236,6 @@ class TestUpdateColumnIfTooMany:
         assert count_a == 2
         assert count_c == 2
 
-        # Cleanup
         pxt.drop_dir("test_update_over", force=True)
 
 
@@ -292,13 +282,14 @@ class TestGetDistinctValueAndCountInColumn:
         result = get_distinct_value_and_count_in_column(table, col_expr)
 
         assert result == {"A": 2, "B": 1, "C": 3}
+        pxt.drop_dir("test_distinct", force=True)
 
 
 class TestGetColumnDistinctRatios:
     def test_get_ratios(self):
         table_path = "test_ratios.test_table"
-
         pxt.create_dir("test_ratios", if_exists="ignore")
+
         samples = [
             {"idx": 0, "category": "A"},
             {"idx": 1, "category": "A"},
@@ -314,6 +305,8 @@ class TestGetColumnDistinctRatios:
         assert "B" in result
         assert result["A"] == 0.5
         assert result["B"] == 0.5
+
+        pxt.drop_dir("test_ratios", force=True)
 
 
 class TestIsViewOf:
@@ -357,49 +350,8 @@ class TestGetSampleRowFromIdx:
         pxt.drop_dir("test_sample_row", force=True)
 
 
-class TestGetTableIfColumnStarted:
-    def test_returns_none_when_table_does_not_exist(self):
-        table_path = "get_table_if_column.present"
-
-        pxt.create_dir("get_table_if_column")
-        pxt.create_table(
-            table_path, source=[{"idx": 0, "val": 1}, {"idx": None, "val": 1}]
-        )
-
-        result = get_table_with_column_status(table_path, "idx")
-        assert result is not None
-
-        pxt.drop_dir("get_table_if_column", force=True)
-
-    def test_drops_table_when_column_only_none_and_removes_empty_true(self):
-        table_path = "get_table_if_column.not_present"
-
-        pxt.create_dir("get_table_if_column")
-        table = pxt.create_table(table_path, source=[{"val": 1}, {"val": 1}])
-        table.add_column(idx=pxt.Int)
-
-        result = get_table_with_column_status(table_path, "idx", removes_empty=True)
-        assert result is None
-
-        assert pxt.get_table(table_path, if_not_exists="ignore") is None
-        pxt.drop_dir("get_table_if_column", force=True)
-
-    def test_keeps_table_when_column_only_none_and_removes_empty_false(self):
-        table_path = "get_table_if_column.not_present"
-
-        pxt.create_dir("get_table_if_column")
-        table = pxt.create_table(table_path, source=[{"val": 1}, {"val": 1}])
-        table.add_column(idx=pxt.Int)
-
-        result = get_table_with_column_status(table_path, "idx", removes_empty=False)
-        assert result is None
-
-        assert pxt.get_table(table_path, if_not_exists="ignore") is not None
-        pxt.drop_dir("get_table_if_column", force=True)
-
-
 class TestGetValidTable:
-    def test_with_exising(self):
+    def test_with_existing(self):
         pxt.create_dir("test_get_valid_view", if_exists="ignore")
         samples = [{"idx": 0, "a": 1, "b": 2}]
         table = pxt.create_table("test_get_valid_view.base_table", source=samples)

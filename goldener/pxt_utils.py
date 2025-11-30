@@ -362,37 +362,6 @@ def get_sample_row_from_idx(
     return sample
 
 
-def get_table_with_column_status(
-    table_path,
-    col_name: str,
-) -> tuple[Table | None, bool]:
-    """Get a PixelTable table and check if a specified column has non-None values.
-
-    Args:
-        table_path: The full path of the PixelTable table (e.g., 'dir1.dir2.table_name').
-        col_name: The name of the column to check for non-None values.
-
-    Returns:
-        The PixelTable table if it exists, and a boolean indicating if the column has non-None values.
-        The boolean is False if the table does not exist.
-    """
-    table = pxt.get_table(
-        table_path,
-        if_not_exists="ignore",
-    )
-
-    if table is None:
-        create_pxt_dirs_for_path(table_path)
-
-    col_started = False
-    if table is not None:
-        col_expr = get_expr_from_column_name(table, col_name)
-        if table.select(col_expr).where(col_expr != None).count() > 0:  # noqa: E711
-            col_started = True
-
-    return table, col_started
-
-
 def get_valid_table(
     table: Table | str,
     minimal_schema: dict[str, type],
@@ -401,9 +370,8 @@ def get_valid_table(
 
     Args:
         table: The PixelTable table.
-        view: The existing PixelTable view or the path to create a new view.
-        expected: An optional list of expected keys that must be present in the initial table.
-        excluded: An optional list of keys that must not be present in the initial table or view.
+        minimal_schema: A dictionary representing the minimal expected schema
+            (keys are column names, values are expected types).
 
     Returns:
         A valid PixelTable view for the given table.
@@ -442,7 +410,8 @@ def get_table_from_dataset(
 ) -> Table:
     """Initialize a PixelTable table from a PyTorch dataset.
 
-    A  table_path: The full path of the PixelTable table to create (e.g., 'dir1.dir2.table_name').
+    Args:
+        table_path: The full path of the PixelTable table to create (e.g., 'dir1.dir2.table_name').
         dataset: The PyTorch dataset to get a sample from.
         collate_fn: An optional collate function to apply to the sample.
         expected: A list of keys that must be present in the sample.
@@ -506,7 +475,7 @@ def include_batch_into_table(
             key: (
                 (
                     batch[key][batch_idx].item()
-                    if batch[key][batch_idx].numel == 1
+                    if batch[key][batch_idx].numel() == 1
                     else batch[key][batch_idx].detach().cpu().numpy()
                 )
                 if isinstance(batch[key][batch_idx], torch.Tensor)

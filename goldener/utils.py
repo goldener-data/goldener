@@ -79,7 +79,7 @@ def filter_batch_from_indices(
 
     Args:
         batch: A dictionary representing a batch of data (each key corresponds to stacked information).
-        to_remove: A list of indices to filter out from the batch.
+        to_remove: A set of indices to filter out from the batch.
 
     Returns:
         A filtered batch dictionary without the specified indices.
