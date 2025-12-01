@@ -208,7 +208,7 @@ class GoldSplitter:
             )
 
         class_key = self.class_key if self.class_key is not None else "gold_split_class"
-        if self.class_key is None:
+        if self.class_key is None and class_key not in described_table.columns():
             described_table.add_column(**{class_key: pxt.String}, if_exists="error")
 
         return get_expr_from_column_name(described_table, class_key)

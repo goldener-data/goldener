@@ -2,7 +2,6 @@ import pytest
 import torch
 
 import pixeltable as pxt
-from pixeltable import Error
 from torch.utils.data import Dataset
 
 from goldener.describe import GoldDescriptor
@@ -49,7 +48,7 @@ class DummyDataset(Dataset):
 @pytest.fixture(scope="function")
 def descriptor(extractor):
     return GoldDescriptor(
-        table_path="unit_test.test_split",
+        table_path="unit_test.descriptor_split",
         extractor=extractor,
         to_keep_schema={"label": pxt.String},
         batch_size=2,
@@ -77,7 +76,10 @@ class TestGoldSplitter:
     def test_basic_split(self, basic_splitter):
         splitted = basic_splitter.split(
             dataset=DummyDataset(
-                [{"data": torch.rand(3, 8, 8), "idx": idx} for idx in range(10)]
+                [
+                    {"data": torch.rand(3, 8, 8), "idx": idx, "label": "dummy"}
+                    for idx in range(10)
+                ]
             )
         )
 
@@ -124,36 +126,9 @@ class TestGoldSplitter:
         )
 
         with pytest.raises(ValueError):
-            splitter.split(DummyDataset([{"data": torch.rand(3, 8, 8), "idx": 0}]))
-
-        pxt.drop_dir("unit_test", if_not_exists="ignore", force=True)
-
-    def test_gold_split_class_existing(self, extractor, selector):
-        sets = [GoldSet(name="only", ratio=0.5)]
-        splitter = GoldSplitter(
-            sets=sets,
-            descriptor=GoldDescriptor(
-                table_path="unit_test.test_split",
-                extractor=extractor,
-                to_keep_schema={"gold_split_class": pxt.String},
-                batch_size=2,
-                collate_fn=None,
-                device=torch.device("cpu"),
-                allow_existing=False,
-            ),
-            selector=selector,
-        )
-
-        with pytest.raises(Error):
             splitter.split(
                 DummyDataset(
-                    [
-                        {
-                            "data": torch.rand(3, 8, 8),
-                            "idx": 0,
-                            "gold_split_class": "useless",
-                        }
-                    ]
+                    [{"data": torch.rand(3, 8, 8), "idx": 0, "label": "dummy"}]
                 )
             )
 
@@ -166,7 +141,10 @@ class TestGoldSplitter:
         with pytest.raises(ValueError):
             splitter.split(
                 dataset=DummyDataset(
-                    [{"data": torch.rand(3, 8, 8), "idx": idx} for idx in range(1)]
+                    [
+                        {"data": torch.rand(3, 8, 8), "idx": idx, "label": "dummy"}
+                        for idx in range(1)
+                    ]
                 )
             )
 
@@ -195,7 +173,6 @@ class TestGoldSplitter:
         pxt.drop_dir("unit_test", if_not_exists="ignore", force=True)
 
     def test_max_batches(self, descriptor, selector):
-        pxt.drop_dir("unit_test", if_not_exists="ignore", force=True)
         sets = [GoldSet(name="train", ratio=0.5), GoldSet(name="val", ratio=0.5)]
         splitter = GoldSplitter(
             sets=sets,
@@ -209,7 +186,10 @@ class TestGoldSplitter:
 
         splitted = splitter.split(
             dataset=DummyDataset(
-                [{"data": torch.rand(3, 8, 8), "idx": idx} for idx in range(10)]
+                [
+                    {"data": torch.rand(3, 8, 8), "idx": idx, "label": "dummy"}
+                    for idx in range(10)
+                ]
             )
         )
 
@@ -235,7 +215,10 @@ class TestGoldSplitter:
         # And the split should work correctly
         splitted = splitter.split(
             dataset=DummyDataset(
-                [{"data": torch.rand(3, 8, 8), "idx": idx} for idx in range(10)]
+                [
+                    {"data": torch.rand(3, 8, 8), "idx": idx, "label": "dummy"}
+                    for idx in range(10)
+                ]
             )
         )
 
