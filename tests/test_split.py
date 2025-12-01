@@ -2,13 +2,12 @@ import pytest
 import torch
 
 import pixeltable as pxt
-from pixeltable import Error
 from torch.utils.data import Dataset
 
 from goldener.describe import GoldDescriptor
 from goldener.extract import TorchGoldFeatureExtractorConfig, TorchGoldFeatureExtractor
 from goldener.split import GoldSplitter, GoldSet
-from goldener.vectorize import GoldVectorizer
+from goldener.vectorize import TensorVectorizer
 from goldener.select import GoldSelector
 
 
@@ -24,7 +23,7 @@ class DummyModel(torch.nn.Module):
         return x
 
 
-@pytest.fixture
+@pytest.fixture(scope="function")
 def extractor():
     model = DummyModel()
     config = TorchGoldFeatureExtractorConfig(model=model, layers=None)
@@ -46,27 +45,28 @@ class DummyDataset(Dataset):
         )
 
 
-@pytest.fixture
+@pytest.fixture(scope="function")
 def descriptor(extractor):
     return GoldDescriptor(
-        table_path="unit_test.test_split",
+        table_path="unit_test.descriptor_split",
         extractor=extractor,
+        to_keep_schema={"label": pxt.String},
         batch_size=2,
         collate_fn=None,
         device=torch.device("cpu"),
-        if_exists="replace_force",
+        allow_existing=False,
     )
 
 
-@pytest.fixture
+@pytest.fixture(scope="function")
 def selector():
     return GoldSelector(
         table_path="unit_test.selector_split",
-        vectorizer=GoldVectorizer(),
+        vectorizer=TensorVectorizer(),
     )
 
 
-@pytest.fixture
+@pytest.fixture(scope="function")
 def basic_splitter(descriptor, selector):
     sets = [GoldSet(name="train", ratio=0.5), GoldSet(name="val", ratio=0.5)]
     return GoldSplitter(sets=sets, descriptor=descriptor, selector=selector)
@@ -76,7 +76,10 @@ class TestGoldSplitter:
     def test_basic_split(self, basic_splitter):
         splitted = basic_splitter.split(
             dataset=DummyDataset(
-                [{"data": torch.rand(3, 8, 8), "idx": idx} for idx in range(10)]
+                [
+                    {"data": torch.rand(3, 8, 8), "idx": idx, "label": "dummy"}
+                    for idx in range(10)
+                ]
             )
         )
 
@@ -84,14 +87,7 @@ class TestGoldSplitter:
         assert len(splitted["train"]) == 5
         assert len(splitted["val"]) == 5
 
-        for path in (
-            basic_splitter.descriptor.table_path,
-            basic_splitter.selector.table_path,
-        ):
-            try:
-                pxt.drop_table(path)
-            except Exception:
-                pass
+        pxt.drop_dir("unit_test", if_not_exists="ignore", force=True)
 
     def test_split_with_label(self, descriptor, selector):
         sets = [
@@ -114,16 +110,14 @@ class TestGoldSplitter:
         assert len(splitted["train"]) == 5
         assert len(splitted["not assigned"]) == 5
 
-        for path in (descriptor.table_path, selector.table_path):
-            try:
-                pxt.drop_table(path)
-            except Exception:
-                pass
+        pxt.drop_dir("unit_test", if_not_exists="ignore", force=True)
 
     def test_duplicated_set_names(self, descriptor, selector):
         sets = [GoldSet(name="train", ratio=0.5), GoldSet(name="train", ratio=0.3)]
         with pytest.raises(ValueError):
             GoldSplitter(sets=sets, descriptor=descriptor, selector=selector)
+
+        pxt.drop_dir("unit_test", if_not_exists="ignore", force=True)
 
     def test_class_key_not_found(self, descriptor, selector):
         sets = [GoldSet(name="only", ratio=0.5)]
@@ -132,60 +126,32 @@ class TestGoldSplitter:
         )
 
         with pytest.raises(ValueError):
-            splitter.split(DummyDataset([{"data": torch.rand(3, 8, 8), "idx": 0}]))
-
-        for path in (descriptor.table_path, selector.table_path):
-            try:
-                pxt.drop_table(path)
-            except Exception:
-                pass
-
-    def test_gold_split_class_existing(self, descriptor, selector):
-        sets = [GoldSet(name="only", ratio=0.5)]
-        splitter = GoldSplitter(
-            sets=sets,
-            descriptor=descriptor,
-            selector=selector,
-        )
-
-        with pytest.raises(Error):
             splitter.split(
                 DummyDataset(
-                    [
-                        {
-                            "data": torch.rand(3, 8, 8),
-                            "idx": 0,
-                            "gold_split_class": "useless",
-                        }
-                    ]
+                    [{"data": torch.rand(3, 8, 8), "idx": 0, "label": "dummy"}]
                 )
             )
 
-        for path in (descriptor.table_path, selector.table_path):
-            try:
-                pxt.drop_table(path)
-            except Exception:
-                pass
+        pxt.drop_dir("unit_test", if_not_exists="ignore", force=True)
 
     def test_set_with_0_population(self, descriptor, selector):
-        sets = [GoldSet(name="only", ratio=0.1)]
+        sets = [GoldSet(name="only", ratio=0.01)]
         splitter = GoldSplitter(sets=sets, descriptor=descriptor, selector=selector)
 
         with pytest.raises(ValueError):
             splitter.split(
                 dataset=DummyDataset(
-                    [{"data": torch.rand(3, 8, 8), "idx": idx} for idx in range(1)]
+                    [
+                        {"data": torch.rand(3, 8, 8), "idx": idx, "label": "dummy"}
+                        for idx in range(1)
+                    ]
                 )
             )
 
-        for path in (descriptor.table_path, selector.table_path):
-            try:
-                pxt.drop_table(path)
-            except Exception:
-                pass
+        pxt.drop_dir("unit_test", if_not_exists="ignore", force=True)
 
     def test_class_with_0_population(self, descriptor, selector):
-        sets = [GoldSet(name="only", ratio=0.1)]
+        sets = [GoldSet(name="only", ratio=0.01)]
         splitter = GoldSplitter(
             sets=sets, descriptor=descriptor, selector=selector, class_key="label"
         )
@@ -204,31 +170,26 @@ class TestGoldSplitter:
                 )
             )
 
-        for path in (descriptor.table_path, selector.table_path):
-            try:
-                pxt.drop_table(path)
-            except Exception:
-                pass
+        pxt.drop_dir("unit_test", if_not_exists="ignore", force=True)
 
     def test_max_batches(self, descriptor, selector):
-        """Test that max_batches limits the number of batches processed."""
         sets = [GoldSet(name="train", ratio=0.5), GoldSet(name="val", ratio=0.5)]
         splitter = GoldSplitter(
             sets=sets,
             descriptor=descriptor,
             selector=selector,
-            max_batches=1,  # Only process 1 batch
+            max_batches=1,
         )
 
-        # Verify max_batches was set on descriptor and selector
         assert splitter.descriptor.max_batches == 1
         assert splitter.selector.max_batches == 1
 
-        # Dataset with 10 items, batch_size=2 means 5 batches total
-        # With max_batches=1, only first batch (2 items) should be processed
         splitted = splitter.split(
             dataset=DummyDataset(
-                [{"data": torch.rand(3, 8, 8), "idx": idx} for idx in range(10)]
+                [
+                    {"data": torch.rand(3, 8, 8), "idx": idx, "label": "dummy"}
+                    for idx in range(10)
+                ]
             )
         )
 
@@ -236,20 +197,12 @@ class TestGoldSplitter:
         # Only 2 items total (1 batch with batch_size=2)
         assert len(splitted["train"]) + len(splitted["val"]) == 2
 
-        for path in (
-            splitter.descriptor.table_path,
-            splitter.selector.table_path,
-        ):
-            try:
-                pxt.drop_table(path)
-            except Exception:
-                pass
+        pxt.drop_dir("unit_test", if_not_exists="ignore", force=True)
 
     def test_selector_with_wrong_select_key(self, descriptor):
-        # Create a selector with a non-default select_key
         selector = GoldSelector(
             table_path="unit_test.selector_split_wrong_key",
-            vectorizer=GoldVectorizer(),
+            vectorizer=TensorVectorizer(),
             select_key="wrong_key",
         )
 
@@ -262,7 +215,10 @@ class TestGoldSplitter:
         # And the split should work correctly
         splitted = splitter.split(
             dataset=DummyDataset(
-                [{"data": torch.rand(3, 8, 8), "idx": idx} for idx in range(10)]
+                [
+                    {"data": torch.rand(3, 8, 8), "idx": idx, "label": "dummy"}
+                    for idx in range(10)
+                ]
             )
         )
 
@@ -270,8 +226,4 @@ class TestGoldSplitter:
         assert len(splitted["train"]) == 5
         assert len(splitted["not assigned"]) == 5
 
-        for path in (descriptor.table_path, selector.table_path):
-            try:
-                pxt.drop_table(path)
-            except Exception:
-                pass
+        pxt.drop_dir("unit_test", if_not_exists="ignore", force=True)

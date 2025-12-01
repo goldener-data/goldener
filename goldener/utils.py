@@ -1,4 +1,6 @@
-from typing import Iterable
+from typing import Iterable, Any
+
+import torch
 
 
 def check_x_and_y_shapes(x_shape: tuple[int, ...], y_shape: tuple[int, ...]) -> None:
@@ -68,3 +70,44 @@ def get_ratios_for_counts(counts: Iterable[int]) -> list[float]:
     """
     total = sum(counts)
     return [count / total for count in counts]
+
+
+def filter_batch_from_indices(
+    batch: dict[str, Any], to_remove: set[int]
+) -> dict[str, Any]:
+    """Filter a batch dictionary to only include items at specified indices.
+
+    Args:
+        batch: A dictionary representing a batch of data (each key corresponds to stacked information).
+        to_remove: A set of indices to filter out from the batch.
+
+    Returns:
+        A filtered batch dictionary without the specified indices.
+    """
+    keep_in_batch = [
+        idx_position
+        for idx_position, idx_value in enumerate(batch["idx"])
+        if (idx_value.item() if isinstance(idx_value, torch.Tensor) else idx_value)
+        not in to_remove
+    ]
+    if not keep_in_batch:
+        return {}  # all samples already described
+
+    def filter_batched_values(
+        batched_value: list | torch.Tensor,
+    ) -> list | torch.Tensor:
+        """Inner function to remove already described samples from the batch."""
+        filtered = [
+            value
+            for idx_value, value in enumerate(batched_value)
+            if idx_value in keep_in_batch
+        ]
+        if isinstance(batched_value, torch.Tensor):
+            return torch.stack(filtered, dim=0)
+        else:
+            return filtered
+
+    return {
+        key: filter_batched_values(batched_value)
+        for key, batched_value in batch.items()
+    }

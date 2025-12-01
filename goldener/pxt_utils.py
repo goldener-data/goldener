@@ -11,7 +11,9 @@ from pixeltable.exprs import Expr
 import torch
 from pixeltable.type_system import ArrayType
 from pixeltable.utils.pytorch import PixeltablePytorchDataset
+from torch.utils.data import Dataset
 
+from goldener.torch_utils import get_dataset_sample_dict
 from goldener.utils import get_ratios_for_counts
 
 
@@ -358,3 +360,138 @@ def get_sample_row_from_idx(
         sample = collate_fn([sample])
 
     return sample
+
+
+def get_valid_table(
+    table: Table | str,
+    minimal_schema: dict[str, type],
+) -> Table:
+    """Get a valid PixelTable view for a given table.
+
+    Args:
+        table: The PixelTable table.
+        minimal_schema: A dictionary representing the minimal expected schema
+            (keys are column names, values are expected types).
+
+    Returns:
+        A valid PixelTable view for the given table.
+
+    Raises:
+        ValueError: If the table is missing expected keys, has excluded keys,
+        or if the existing view does not point to the provided table.
+    """
+
+    if isinstance(table, Table):
+        table_columns = set(table.columns())
+        expected_columns = set(minimal_schema.keys())
+
+        if missing := expected_columns.difference(table_columns):
+            raise ValueError(f"The table is missing required keys: {missing}")
+
+    else:
+        create_pxt_dirs_for_path(table)
+        created_table = pxt.create_table(
+            table,
+            schema=minimal_schema,
+        )
+        assert isinstance(created_table, Table)
+        table = created_table
+
+    return table
+
+
+def get_table_from_dataset(
+    table_path: str,
+    dataset: Dataset,
+    collate_fn: Callable | None = None,
+    expected: list[str] | None = None,
+    excluded: list[str] | None = None,
+    if_exists: Literal["error", "replace_force"] = "error",
+) -> Table:
+    """Initialize a PixelTable table from a PyTorch dataset.
+
+    Args:
+        table_path: The full path of the PixelTable table to create (e.g., 'dir1.dir2.table_name').
+        dataset: The PyTorch dataset to get a sample from.
+        collate_fn: An optional collate function to apply to the sample.
+        expected: A list of keys that must be present in the sample.
+        excluded: A list of keys that must not be present in the sample.
+        if_exists: Behavior if the table already exists. Options are 'error' or 'replace_force'.
+
+    Returns:
+        The created PixelTable table.
+    """
+    sample = get_dataset_sample_dict(
+        dataset,
+        collate_fn=collate_fn,
+        expected=expected,
+        excluded=excluded,
+    )
+
+    return create_pxt_table_from_sample(
+        table_path,
+        sample,
+        unwrap=collate_fn is not None,
+        add={"idx": 0} if "idx" not in sample else None,
+        if_exists=if_exists,
+    )
+
+
+def include_batch_into_table(
+    table: Table,
+    batch: dict[str, Any],
+    to_insert: list[str],
+    index_key: str = "idx",
+) -> None:
+    """Include a batch of data into a PixelTable table.
+
+    The inclusion is either an insertion of new rows or an update of existing rows
+    based on the index key.
+
+    Args:
+        table: The PixelTable table to include the batch into.
+        batch: A dictionary representing a batch of data (each key corresponds to stacked information).
+        to_insert: A list of keys from the batch to insert or update in the table.
+        index_key: The key in the batch that represents the index for matching rows in the table.
+
+    Raises:
+        ValueError: If the index key is not found in the batch or if it is included in the to_insert list.
+    """
+    if index_key not in batch:
+        raise ValueError(f"Index key '{index_key}' not found in the batch.")
+
+    if index_key in to_insert:
+        raise ValueError(
+            f"Index key '{index_key}' should not be in the to_insert list."
+        )
+
+    for batch_idx, idx_value in enumerate(batch[index_key]):
+        sample_idx = (
+            idx_value.item() if isinstance(idx_value, torch.Tensor) else idx_value
+        )
+
+        idx_query = table.where(table.idx == sample_idx)
+        to_insert_dict = {
+            key: (
+                (
+                    batch[key][batch_idx].item()
+                    if batch[key][batch_idx].numel() == 1
+                    else batch[key][batch_idx].detach().cpu().numpy()
+                )
+                if isinstance(batch[key][batch_idx], torch.Tensor)
+                else batch[key][batch_idx]
+            )
+            for key in to_insert
+        }
+
+        if idx_query.count() == 0:
+            table.insert(
+                [
+                    {
+                        "idx": sample_idx,
+                    }
+                    | to_insert_dict
+                ]
+            )
+        else:
+            idx_query.update(to_insert_dict)

@@ -1,17 +1,30 @@
 from dataclasses import dataclass
 from functools import partial
 
-from torch.utils.data import RandomSampler
+from pixeltable import Error
+from torch.utils.data import RandomSampler, Dataset
 from typing_extensions import assert_never
-from typing import Callable
+from typing import Callable, Any
 
 from enum import Enum
 
 import torch
 from torch import Generator
 
-from goldener.torch_utils import make_2d_tensor
-from goldener.utils import check_x_and_y_shapes
+import pixeltable as pxt
+from pixeltable.catalog import Table
+import pixeltable.functions as pxtf
+
+from goldener.pxt_utils import (
+    GoldPxtTorchDataset,
+    get_valid_table,
+    get_sample_row_from_idx,
+    pxt_torch_dataset_collate_fn,
+    get_expr_from_column_name,
+    include_batch_into_table,
+)
+from goldener.torch_utils import make_2d_tensor, get_dataset_sample_dict
+from goldener.utils import check_x_and_y_shapes, filter_batch_from_indices
 
 
 class FilterLocation(Enum):
@@ -154,7 +167,7 @@ class Vectorized:
     batch_indices: torch.Tensor
 
 
-class GoldVectorizer:
+class TensorVectorizer:
     """Transform input as 2D tensor and filter based on target tensor.
 
     Attributes:
@@ -163,6 +176,7 @@ class GoldVectorizer:
         random_filter: Random Filter2DWithCount instance to randomly filter vectors randomly after
         applying `keep`, `remove` and the target `y` on the input `x` of filter.
         transform_y: Optional callable to transform the target tensor before transforming it to 2D.
+        channel_pos: position of the channel dimension in the input tensor to vectorize.
     """
 
     def __init__(
@@ -171,9 +185,10 @@ class GoldVectorizer:
         remove: Filter2DWithCount | None = None,
         random_filter: Filter2DWithCount | None = None,
         transform_y: Callable[[torch.Tensor], torch.Tensor] | None = None,
+        channel_pos: int = 1,
     ) -> None:
-        """Initialize the Vectorizer."""
         self.transform_y = transform_y
+        self.channel_pos = channel_pos
 
         if keep is not None and keep.is_random:
             raise ValueError("The 'keep' filter cannot be random.")
@@ -213,6 +228,10 @@ class GoldVectorizer:
 
         if y is not None and self.transform_y is not None:
             y = self.transform_y(y)
+
+        if self.channel_pos != 1:
+            # Move channel dimension to position 1
+            x = x.movedim(self.channel_pos, 1)
 
         filtered_x = []
         filtered_batch_info = []
@@ -285,3 +304,401 @@ class GoldVectorizer:
             )
 
         return x[y.bool().squeeze(-1)]
+
+
+class GoldVectorizer:
+    """Vectorize dataset data to flatten them as vector.
+
+    The GoldVectorizer runs a `TensorVectorizer` over a dataset or a PixelTable `Table`
+    to extract and flatten vectors from each sample. The computed vectors are stored
+    in a local PixelTable table column (specified by `vectorized_key`) so that the
+    vectorization process is idempotent: calling the same operation multiple times will
+    not duplicate or recompute vectors that are already present in the table.
+
+    The vectorization can operate in a sequential (single-process) mode or a
+    distributed mode (not implemented). When provided a PyTorch `Dataset`, a
+    `collate_fn` can be used to control how samples are batched prior to
+    vectorization. The table schema is created/validated automatically and will include
+    minimal indexing columns (`idx`, `idx_sample`) required to link vectors back to
+    their originating samples.
+
+    Attributes:
+        table_path: Path to the PixelTable table where vectorized outputs will be stored.
+        vectorizer: A `TensorVectorizer` instance responsible for transforming batched
+        inputs into vectors and optional batch-index information.
+        collate_fn: Optional collate function to prepare dataset items into batches.
+        data_key: Key in the batch dictionary that contains the data to vectorize.
+        target_key: Optional key in the batch containing the target used to filter vectors.
+        vectorized_key: Column name to store the resulting vectors in the PixelTable table.
+        to_keep_schema: Optional dictionary defining additional columns to keep from the original dataset/table
+        into the description table. The keys are the column names and the values are the PixelTable types.
+        batch_size: Batch size used when iterating over the data.
+        num_workers: Number of workers for the PyTorch DataLoader during iteration on data.
+        allow_existing: If False, an error will be raised when the table already exists.
+        distribute: Whether to run a distributed vectorization pipeline (not implemented).
+        drop_table: Whether to drop the created PixelTable table after creating a dataset.
+        max_batches: Optional maximum number of batches to process (useful for testing).
+    """
+
+    _MINIMAL_SCHEMA: dict[str, type] = {"idx": pxt.Int, "idx_sample": pxt.Int}
+
+    def __init__(
+        self,
+        table_path: str,
+        vectorizer: TensorVectorizer,
+        collate_fn: Callable | None = None,
+        data_key: str = "features",
+        target_key: str = "target",
+        vectorized_key: str = "vectorized",
+        to_keep_schema: dict[str, type] | None = None,
+        batch_size: int | None = None,
+        num_workers: int | None = None,
+        allow_existing: bool = True,
+        distribute: bool = False,
+        drop_table: bool = False,
+        max_batches: int | None = None,
+    ) -> None:
+        self.table_path = table_path
+        self.vectorizer = vectorizer
+        self.collate_fn = collate_fn
+        self.data_key = data_key
+        self.target_key = target_key
+        self.vectorized_key = vectorized_key
+        self.to_keep_schema = to_keep_schema
+        self.allow_existing = allow_existing
+        self.distribute = distribute
+        self.drop_table = drop_table
+        self.max_batches = max_batches
+
+        self.batch_size: int | None
+        self.num_workers: int | None
+        if not self.distribute:
+            self.batch_size = 1 if batch_size is None else batch_size
+            self.num_workers = 0 if num_workers is None else num_workers
+        else:
+            self.batch_size = batch_size
+            self.num_workers = num_workers
+
+    def vectorize_in_dataset(
+        self,
+        to_vectorize: Dataset | Table,
+    ) -> GoldPxtTorchDataset:
+        """Vectorize a dataset or table and return a GoldPxtTorchDataset.
+
+        This is a convenience wrapper that runs `vectorize_in_table` to populate
+        (or resume populating) the PixelTable table, then wraps the table into a
+        `GoldPxtTorchDataset` for downstream consumption. If `drop_table` is True,
+        the table will be removed after the dataset is created.
+
+        Args:
+            to_vectorize: A PyTorch `Dataset` or a PixelTable `Table` to vectorize.
+
+        Returns:
+            A `GoldPxtTorchDataset` backed by the PixelTable table containing the vectors.
+        """
+        vectorized_table = self.vectorize_in_table(to_vectorize)
+
+        vectorized_dataset = GoldPxtTorchDataset(vectorized_table, keep_cache=True)
+
+        if self.drop_table:
+            pxt.drop_table(vectorized_table)
+
+        return vectorized_dataset
+
+    def vectorize_in_table(
+        self,
+        to_vectorize: Dataset | Table,
+    ) -> Table:
+        """Vectorize data and store vectors in a PixelTable `Table`.
+
+        The method is idempotent: if the target `vectorized_key` column already
+        exists and contains entries for all samples, the method will return the
+        existing table without recomputing anything. When called on a `Table`,
+        the method will create a view of the table containing only rows that are
+        not yet vectorized and process those. When called on a `Dataset`, a new
+        table (or a validated existing one) is prepared and the dataset is
+        iterated to compute and insert vectors batch-by-batch.
+
+        Args:
+            to_vectorize: A PyTorch `Dataset` or a PixelTable `Table` containing
+                the data to vectorize.
+
+        Returns:
+            A PixelTable `Table` where the `vectorized_key` column contains the
+            computed vectors for the dataset.
+        """
+
+        # If the computation was already started or already done, we resume from there
+        try:
+            old_vectorized_table = pxt.get_table(
+                self.table_path,
+                if_not_exists="ignore",
+            )
+        except Error:
+            old_vectorized_table = None
+
+        if not self.allow_existing and old_vectorized_table is not None:
+            raise ValueError(
+                f"Table at path {self.table_path} already exists and "
+                "allow_existing is set to False."
+            )
+
+        # get the table and dataset to execute the vectorize pipeline
+        to_vectorize_dataset: Dataset | GoldPxtTorchDataset
+        if isinstance(to_vectorize, Table):
+            vectorized_table = self._vectorized_table_from_table(
+                to_vectorize=to_vectorize,
+                old_vectorized_table=old_vectorized_table,
+            )
+            vectorized_col = get_expr_from_column_name(
+                vectorized_table, self.vectorized_key
+            )
+
+            if vectorized_table.count() > 0:
+                with_no_vectorized = vectorized_table.where(vectorized_col == None)  # noqa: E711
+                if with_no_vectorized.count() == 0:
+                    return vectorized_table
+
+                to_vectorize_dataset = GoldPxtTorchDataset(with_no_vectorized)
+            else:
+                to_vectorize_dataset = GoldPxtTorchDataset(to_vectorize)
+        else:
+            to_vectorize_dataset = to_vectorize
+            vectorized_table = self._vectorized_table_from_dataset(
+                to_vectorize, old_vectorized_table
+            )
+
+        # run the vectorization process
+        if self.distribute:
+            vectorized = self._distributed_vectorize(
+                vectorized_table, to_vectorize_dataset
+            )
+        else:
+            vectorized = self._sequential_vectorize(
+                vectorized_table, to_vectorize_dataset
+            )
+
+        return vectorized
+
+    def _vectorized_table_from_table(
+        self, to_vectorize: Table, old_vectorized_table: Table | None
+    ) -> Table:
+        minimal_schema = self._MINIMAL_SCHEMA
+        if self.to_keep_schema is not None:
+            minimal_schema |= self.to_keep_schema
+
+        vectorized_table = get_valid_table(
+            table=old_vectorized_table
+            if old_vectorized_table is not None
+            else self.table_path,
+            minimal_schema=minimal_schema,
+        )
+
+        if self.vectorized_key not in vectorized_table.columns():
+            sample = get_sample_row_from_idx(
+                to_vectorize,
+                collate_fn=pxt_torch_dataset_collate_fn,
+                expected_keys=[self.data_key],
+            )
+            vectorized = self.vectorizer.vectorize(
+                sample[self.data_key],
+                sample.get(self.target_key, None),
+            ).vectors[0]
+            vectorized_table.add_column(
+                **{
+                    self.vectorized_key: pxt.Array[  # type: ignore[misc]
+                        vectorized.shape, pxt.Float
+                    ]
+                }
+            )
+
+        return vectorized_table
+
+    def _vectorized_table_from_dataset(
+        self, to_vectorize: Dataset, old_vectorized_table: Table | None
+    ) -> Table:
+        minimal_schema = self._MINIMAL_SCHEMA
+        if self.to_keep_schema is not None:
+            minimal_schema |= self.to_keep_schema
+
+        vectorized_table = get_valid_table(
+            table=old_vectorized_table
+            if old_vectorized_table is not None
+            else self.table_path,
+            minimal_schema=minimal_schema,
+        )
+
+        if self.vectorized_key not in vectorized_table.columns():
+            sample = get_dataset_sample_dict(
+                to_vectorize,
+                collate_fn=self.collate_fn,
+                expected=[self.data_key],
+                excluded=[self.vectorized_key],
+            )
+
+            target = sample.get(self.target_key, None)
+            if target is not None and self.collate_fn is not None:
+                assert isinstance(target, torch.Tensor)
+                target = target.unsqueeze(0)
+
+            vectorized = (
+                self.vectorizer.vectorize(
+                    sample[self.data_key].unsqueeze(0)
+                    if self.collate_fn is None
+                    else sample[self.data_key],
+                    target,
+                )
+                .vectors[0]
+                .detach()
+                .cpu()
+                .numpy()
+            )
+            vectorized_table.add_column(
+                **{
+                    self.vectorized_key: pxt.Array[  # type: ignore[misc]
+                        vectorized.shape, pxt.Float
+                    ]
+                }
+            )
+
+        return vectorized_table
+
+    def _distributed_vectorize(
+        self,
+        vectorized_table: Table,
+        to_vectorize_dataset: Dataset,
+    ) -> Table:
+        raise NotImplementedError("Distributed Vectorization is not implemented yet.")
+
+    def _sequential_vectorize(
+        self,
+        vectorized_table: Table,
+        to_vectorize_dataset: Dataset,
+    ) -> Table:
+        assert self.batch_size is not None
+        assert self.num_workers is not None
+
+        not_empty = (
+            vectorized_table.count() > 0
+        )  # allow to filter out already described samples
+
+        vectorized_col = get_expr_from_column_name(
+            vectorized_table, self.vectorized_key
+        )
+        already_vectorized = set(
+            [
+                row["idx_sample"]
+                for row in vectorized_table.where(
+                    vectorized_col != None  # noqa: E711
+                )
+                .select(vectorized_table.idx_sample)
+                .collect()
+            ]
+        )
+
+        dataloader = torch.utils.data.DataLoader(
+            to_vectorize_dataset,
+            batch_size=self.batch_size,
+            num_workers=self.num_workers,
+            collate_fn=self.collate_fn,
+        )
+
+        for batch_idx, batch in enumerate(dataloader):
+            # Stop if we've processed enough batches
+            if self.max_batches is not None and batch_idx >= self.max_batches:
+                break
+
+            # add idx if it is not provided by the dataset
+            if "idx" not in batch:
+                starts = 0 if not already_vectorized else max(already_vectorized) + 1
+                batch["idx"] = [
+                    starts + idx for idx in range(len(batch[self.data_key]))
+                ]
+
+            # Keep only not yet described samples in the batch
+            if not_empty:
+                batch = filter_batch_from_indices(
+                    batch,
+                    already_vectorized,
+                )
+
+            if len(batch) == 0:
+                continue  # all samples already described
+
+            already_vectorized.update(
+                [
+                    idx.item() if isinstance(idx, torch.Tensor) else idx
+                    for idx in batch["idx"]
+                ]
+            )
+
+            # describe data
+            vectorized = self.vectorizer.vectorize(
+                batch[self.data_key],
+                batch.get(self.target_key, None),
+            )
+
+            max_idx = [
+                row["max"]
+                for row in vectorized_table.select(
+                    pxtf.max(vectorized_table.idx)  # type: ignore[call-arg]
+                ).collect()
+            ][0]
+
+            to_keep_keys = None
+            if self.to_keep_schema is not None:
+                to_keep_keys = list(self.to_keep_schema.keys())
+            batch = self._unwrap_vectors_in_batch(
+                vectorized=vectorized,
+                batch=batch,
+                starts=max_idx + 1 if max_idx is not None else 0,
+                to_keep_keys=to_keep_keys,
+            )
+
+            # insert vectorized in the table
+            to_insert_keys = [self.vectorized_key, "idx_sample"]
+            if to_keep_keys is not None:
+                to_insert_keys.extend(to_keep_keys)
+
+            include_batch_into_table(
+                vectorized_table,
+                batch,
+                to_insert_keys,
+                "idx",
+            )
+
+        return vectorized_table
+
+    def _unwrap_vectors_in_batch(
+        self,
+        vectorized: Vectorized,
+        batch: dict[str, Any],
+        starts: int = 0,
+        to_keep_keys: list[str] | None = None,
+    ) -> dict[str, Any]:
+        new_batch: dict[str, Any] = {
+            "idx": [],
+            self.vectorized_key: [],
+            "idx_sample": [],
+        }
+        if to_keep_keys is not None:
+            for key in to_keep_keys:
+                new_batch[key] = []
+
+        sample_indices = [
+            (idx_value.item() if isinstance(idx_value, torch.Tensor) else idx_value)
+            for batch_idx, idx_value in enumerate(batch["idx"])
+        ]
+
+        vectorized_idx = vectorized.batch_indices
+        for vec_idx, vector in enumerate(vectorized.vectors):
+            new_batch[self.vectorized_key].append(vector)
+            new_batch["idx"].append(starts + vec_idx)
+            batch_idx = vectorized_idx[vec_idx].item()
+            assert isinstance(batch_idx, int)
+            new_batch["idx_sample"].append(sample_indices[batch_idx])
+            if to_keep_keys is not None:
+                for key in to_keep_keys:
+                    new_batch[key].append(batch[key][batch_idx])
+
+        return new_batch

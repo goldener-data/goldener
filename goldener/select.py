@@ -14,7 +14,7 @@ from torch.utils.data import Dataset
 from goldener.pxt_utils import create_pxt_table_from_sample, set_value_to_idx_rows
 from goldener.reduce import GoldReducer
 from goldener.torch_utils import ResetableTorchIterableDataset
-from goldener.vectorize import GoldVectorizer
+from goldener.vectorize import TensorVectorizer
 
 
 class GoldSelector:
@@ -53,7 +53,7 @@ class GoldSelector:
     def __init__(
         self,
         table_path: str,
-        vectorizer: GoldVectorizer,
+        vectorizer: TensorVectorizer,
         select_key: str = "features",
         select_target_key: str | None = None,
         drop_table: bool = False,
