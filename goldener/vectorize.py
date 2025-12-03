@@ -385,16 +385,22 @@ class GoldVectorizer:
     ) -> GoldPxtTorchDataset:
         """Vectorize a dataset or table and return a GoldPxtTorchDataset.
 
+        The vectorization process extracts and flattens vectors from the provided dataset or table
+        in the `table_path` attribute using the `TensorVectorizer` instance. The resulting vectors
+        are stored in the PixelTable table under the column specified by `vectorized_key`.
+
         This is a convenience wrapper that runs `vectorize_in_table` to populate
         (or resume populating) the PixelTable table, then wraps the table into a
-        `GoldPxtTorchDataset` for downstream consumption. If `drop_table` is True,
-        the table will be removed after the dataset is created.
+        `GoldPxtTorchDataset` for downstream consumption.
+
+        If `drop_table` is True, the vectorized table will be removed after the dataset is created.
 
         Args:
             to_vectorize: A PyTorch `Dataset` or a PixelTable `Table` to vectorize.
 
         Returns:
-            A `GoldPxtTorchDataset` backed by the PixelTable table containing the vectors.
+            A GoldPxtTorchDataset dataset containing the information from the vectorized table.
+            See `vectorize_in_table` for more details.
         """
         vectorized_table = self.vectorize_in_table(to_vectorize)
 
@@ -411,21 +417,23 @@ class GoldVectorizer:
     ) -> Table:
         """Vectorize data and store vectors in a PixelTable `Table`.
 
-        The method is idempotent: if the target `vectorized_key` column already
-        exists and contains entries for all samples, the method will return the
-        existing table without recomputing anything. When called on a `Table`,
-        the method will create a view of the table containing only rows that are
-        not yet vectorized and process those. When called on a `Dataset`, a new
-        table (or a validated existing one) is prepared and the dataset is
-        iterated to compute and insert vectors batch-by-batch.
+        The vectorization process extracts and flattens vectors from the provided dataset or table
+        in the `table_path` attribute using the `TensorVectorizer` instance. The resulting vectors
+        are stored in the PixelTable table under the column specified by `vectorized_key`.
+
+        This method is idempotent (e.g. failure proof), meaning that if it is called
+        multiple times on the same dataset or table, it will not duplicate or recompute the vectorization
+        already present in the PixelTable table.
 
         Args:
-            to_vectorize: A PyTorch `Dataset` or a PixelTable `Table` containing
-                the data to vectorize.
+            to_vectorize: Dataset or Table to be vectorized. If a Dataset is provided, each item should be a
+            dictionary with at least the key specified by `data_key` after applying the collate_fn.
+            If the collate_fn is None, the dataset is expected to directly provide such batches. If a Table is provided,
+            it should contain both 'idx' and `data_key` column.
 
         Returns:
-            A PixelTable `Table` where the `vectorized_key` column contains the
-            computed vectors for the dataset.
+            A PixelTable Table containing at least the vectorized features in the `description_key` column
+            and `idx` and `idx_sample` column as well.
         """
 
         # If the computation was already started or already done, we resume from there
@@ -459,7 +467,9 @@ class GoldVectorizer:
                 if with_no_vectorized.count() == 0:
                     return vectorized_table
 
-                to_vectorize_dataset = GoldPxtTorchDataset(with_no_vectorized)
+                to_vectorize_dataset = GoldPxtTorchDataset(
+                    vectorized_table.where(vectorized_col == None)  # noqa: E711
+                )
             else:
                 to_vectorize_dataset = GoldPxtTorchDataset(to_vectorize)
         else:
@@ -468,8 +478,12 @@ class GoldVectorizer:
                 to_vectorize, old_vectorized_table
             )
 
-        # run the vectorization process
-        if self.distribute:
+        vectorized_col = get_expr_from_column_name(
+            vectorized_table, self.vectorized_key
+        )
+        if vectorized_table.where(vectorized_col == None).count() == 0:  # noqa: E711
+            vectorized = vectorized_table
+        elif self.distribute:
             vectorized = self._distributed_vectorize(
                 vectorized_table, to_vectorize_dataset
             )
@@ -622,8 +636,8 @@ class GoldVectorizer:
                     already_vectorized,
                 )
 
-            if len(batch) == 0:
-                continue  # all samples already described
+                if len(batch) == 0:
+                    continue  # all samples already described
 
             already_vectorized.update(
                 [
@@ -648,6 +662,7 @@ class GoldVectorizer:
             to_keep_keys = None
             if self.to_keep_schema is not None:
                 to_keep_keys = list(self.to_keep_schema.keys())
+
             batch = self._unwrap_vectors_in_batch(
                 vectorized=vectorized,
                 batch=batch,

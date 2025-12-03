@@ -110,21 +110,12 @@ class GoldSplitter:
 
         # The descriptor always stores features in the "features" column,
         # so we must ensure the selector looks for features there.
-        if self.selector.select_key != "features":
+        if self.selector.vectorized_key != "features":
             logger.warning(
                 f"Forcing `selector.select_key` to 'features' in the splitter "
-                f"(was '{self.selector.select_key}'). The descriptor stores features in the 'features' column."
+                f"(was '{self.selector.vectorized_key}'). The descriptor stores features in the 'features' column."
             )
-            self.selector.select_key = "features"
-
-        # The selector might be called multiple times for different sets and classes,
-        # so we need to ensure it can handle replacing existing selections.
-        if self.selector.if_exists != "replace_force":
-            logger.warning(
-                "Forcing `selector.if_exists` to `replace_force` in the splitter "
-                "(allows selection for multiple sets or classes)."
-            )
-            self.selector.if_exists = "replace_force"
+            self.selector.vectorized_key = "features"
 
     def split(self, dataset: Dataset) -> dict[str, set[int]]:
         """Split the dataset into multiple sets based on the configured ratios.
@@ -244,7 +235,19 @@ class GoldSplitter:
                 GoldPxtTorchDataset(class_table)
             )
 
-            selected_indices = self.selector.select(torch_dataset, class_count)
+            selection_table = self.selector.select_in_table(
+                torch_dataset, class_count, value=set_name
+            )
+            selection_col = get_expr_from_column_name(
+                selection_table, self.selector.selection_key
+            )
+            selected_indices = set(
+                row["idx_sample"]
+                for row in selection_table.where(selection_col == set_name)
+                .select(selection_table.idx_sample)
+                .distinct()
+                .collect()
+            )
             described_table.where(described_table.idx.isin(selected_indices)).update(
                 {"gold_set": set_name}
             )

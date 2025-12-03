@@ -110,18 +110,24 @@ class GoldDescriptor:
     ) -> GoldPxtTorchDataset:
         """Describe the data by extracting features and returning them within a new dataset.
 
-        This method is idempotent (e.g. failure proof), meaning that if it is called
-        multiple times on the same dataset or table, it will not duplicate or recompute the descriptions
-        already present in the PixelTable table.
+        The description process extracts features from the data using the provided feature extractor
+        and stores them in a PixelTable table specified by `table_path`. The description of each data
+        will be stored in the column specified by `description_key`.
+
+        This is a convenience wrapper that runs `describe_in_table` to populate
+        (or resume populating) the PixelTable table, then wraps the table into a
+        `GoldPxtTorchDataset` for downstream consumption. If `drop_table` is True,
+        the table will be removed after the dataset is created.
 
         Args:
             to_describe: Dataset or Table to be described. If a Dataset is provided, each item should be a
             dictionary with at least the key specified by `data_key` after applying the collate_fn.
             If the collate_fn is None, the dataset is expected to directly provide such batches. If a Table is provided,
-            it should contain both 'idx' and `data_key` columns.
+            it should contain both 'idx' and `data_key` column.
 
         Returns:
-            A GoldPxtTorchDataset containing the original data and the extracted features.
+            A GoldPxtTorchDataset dataset containing at least the extracted features in the `description_key` key
+            and an `idx` key as well.
         """
 
         description_table = self.describe_in_table(to_describe)
@@ -139,6 +145,10 @@ class GoldDescriptor:
     ) -> Table:
         """Describe the data by extracting features and storing them in a PixelTable table.
 
+        The description process extracts features from the data using the provided feature extractor
+        and stores them in a PixelTable table specified by `table_path`. The description of each data
+        will be stored in the column specified by `description_key`.
+
         This method is idempotent (e.g. failure proof), meaning that if it is called
         multiple times on the same dataset or table, it will not duplicate or recompute the descriptions
         already present in the PixelTable table.
@@ -147,11 +157,11 @@ class GoldDescriptor:
             to_describe: Dataset or Table to be described. If a Dataset is provided, each item should be a
             dictionary with at least the key specified by `data_key` after applying the collate_fn.
             If the collate_fn is None, the dataset is expected to directly provide such batches. If a Table is provided,
-            it should contain both 'idx' and `data_key` column. The table containing
-            the description of the data will be created as a view of this table.
+            it should contain both 'idx' and `data_key` column.
 
         Returns:
-            A PixelTable Table containing the original data and the extracted features.
+            A PixelTable Table containing at least the extracted features in the `description_key` column
+            and an `idx` column as well.
         """
         # If the computation was already started or already done, we resume from there
         try:
@@ -191,8 +201,12 @@ class GoldDescriptor:
                 to_describe_dataset, old_description_table
             )
 
-        # run the description process
-        if self.distribute:
+        description_col = get_expr_from_column_name(
+            description_table, self.description_key
+        )
+        if description_table.where(description_col == None).count() == 0:  # noqa: E711
+            described = description_table
+        elif self.distribute:
             described = self._distributed_describe(
                 description_table, to_describe_dataset
             )

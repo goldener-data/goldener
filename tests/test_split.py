@@ -210,7 +210,7 @@ class TestGoldSplitter:
         splitter = GoldSplitter(sets=sets, descriptor=descriptor, selector=selector)
 
         # The selector's select_key should be forced to "features"
-        assert splitter.selector.select_key == "features"
+        assert splitter.selector.vectorized_key == "features"
 
         # And the split should work correctly
         splitted = splitter.split(
