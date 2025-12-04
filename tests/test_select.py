@@ -343,8 +343,6 @@ class TestGoldSelector:
 
         pxt.drop_dir("unit_test", force=True)
 
-        pxt.drop_dir("unit_test", force=True)
-
     def test_select_in_table_from_table(self):
         pxt.drop_dir("unit_test", force=True)
 

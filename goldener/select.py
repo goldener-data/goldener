@@ -115,7 +115,7 @@ class GoldSelector:
     ) -> GoldPxtTorchDataset:
         """Select a subset of data points in a dataset.
 
-        The selection is done from a coresubset selection algorithm applied on alreaty vectorized
+        The selection is done from a coresubset selection algorithm applied on already vectorized
         representation of the data points. When the chunk attribute is set, the selection is performed in chunks
         to reduce memory consumption. As well, if a reducer is provided,
         the vectors are reduced in dimension before applying the coresubset selection.
@@ -133,9 +133,8 @@ class GoldSelector:
             dictionary with at least the `vectorized_key` and `idx_sample` keys after applying the collate_fn.
             If the collate_fn is None, the dataset is expected to directly provide such batches.
             If a table is provided, it should contain at least the `vectorized_key`, `idx` and `idx_sample` columns.
-            select_count: Number of data points to select. If a table is provided, it should contain at least
-            the `vectorized_key` and `idx_sample` columns.
-            value: Value to set in the `vectorized_key` column for selected samples.
+            select_count: Number of data points to select.
+            value: Value to set in the `selection_key` column for selected samples.
 
         Returns:
             A GoldPxtTorchDataset dataset containing the information of the selection table.
@@ -386,10 +385,11 @@ class GoldSelector:
             )
 
     def _get_selected_indices(self, table: Table, value: str) -> set[int]:
+        selection_col = get_expr_from_column_name(table, self.selection_key)
         return set(
             [
                 row["idx_sample"]
-                for row in table.where(table.selected == value)  # noqa: E712
+                for row in table.where(selection_col == value)  # noqa: E712
                 .select(table.idx_sample)
                 .distinct()
                 .collect()
@@ -428,7 +428,7 @@ class GoldSelector:
         # To achieve select_count of unique data points, we loop until we have enough unique data points selected.
         while selection_count < select_count:
             # select only rows still not selected
-            to_chunk_from = selection_table.where(selection_table.selected == None)  # noqa: E711
+            to_chunk_from = selection_table.where(selection_col == None)  # noqa: E711
             to_chunk_from.update(
                 {"chunked": False}
             )  # unchunk all rows not yet selected
@@ -455,7 +455,7 @@ class GoldSelector:
                     row["idx"]
                     for row in selection_table.where(
                         (selection_table.chunked == False)  # noqa: E712
-                        & (selection_table.selected == None)  # noqa: E711
+                        & (selection_col == None)  # noqa: E711
                     )
                     .select(selection_table.idx)
                     .collect()
