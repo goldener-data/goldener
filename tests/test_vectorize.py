@@ -266,6 +266,8 @@ class DummyDataset:
 
 class TestGoldVectorizer:
     def test_vectorize_in_table_from_dataset(self):
+        pxt.drop_dir("unit_test", force=True)
+
         pxt.create_dir("unit_test", if_exists="ignore")
         table_path = "unit_test.vectorize_from_dataset"
 
@@ -295,6 +297,8 @@ class TestGoldVectorizer:
         pxt.drop_dir("unit_test", force=True)
 
     def test_vectorize_in_table_from_table(self):
+        pxt.drop_dir("unit_test", force=True)
+
         src_path = "unit_test.src_table_vectorize"
         desc_path = "unit_test.vectorize_from_table"
 
@@ -332,6 +336,8 @@ class TestGoldVectorizer:
     def test_vectorize_in_table_without_idx(
         self,
     ):
+        pxt.drop_dir("unit_test", force=True)
+
         def collate_fn(batch):
             data = torch.stack([b["features"] for b in batch], dim=0)
             return {"features": data}
@@ -364,6 +370,8 @@ class TestGoldVectorizer:
     def test_vectorize_in_table_with_non_dict_item(
         self,
     ):
+        pxt.drop_dir("unit_test", force=True)
+
         gv = GoldVectorizer(
             table_path="unit_test.vectorize",
             vectorizer=TensorVectorizer(),
@@ -382,6 +390,8 @@ class TestGoldVectorizer:
     def test_vectorize_in_table_with_missing_data_key(
         self,
     ):
+        pxt.drop_dir("unit_test", force=True)
+
         gv = GoldVectorizer(
             table_path="unit_test.vectorize",
             vectorizer=TensorVectorizer(),
@@ -400,6 +410,8 @@ class TestGoldVectorizer:
     def test_vectorize_in_table_with_max_batches(
         self,
     ):
+        pxt.drop_dir("unit_test", force=True)
+
         gv = GoldVectorizer(
             table_path="unit_test.vectorize",
             vectorizer=TensorVectorizer(),
@@ -422,6 +434,8 @@ class TestGoldVectorizer:
         pxt.drop_dir("unit_test", force=True)
 
     def test_vectorize_in_dataset(self):
+        pxt.drop_dir("unit_test", force=True)
+
         pxt.create_dir("unit_test", if_exists="ignore")
         table_path = "unit_test.vectorize_dataset"
 
@@ -452,6 +466,7 @@ class TestGoldVectorizer:
 
     def test_vectorize_in_dataset_from_table(self):
         pxt.drop_dir("unit_test", force=True)
+
         src_path = "unit_test.src_table_vectorize"
         desc_path = "unit_test.vectorize_from_table"
 
@@ -490,6 +505,8 @@ class TestGoldVectorizer:
     def test_vectorize_in_table_after_restart(
         self,
     ):
+        pxt.drop_dir("unit_test", force=True)
+
         gv = GoldVectorizer(
             table_path="unit_test.vectorize",
             vectorizer=TensorVectorizer(),
@@ -521,6 +538,8 @@ class TestGoldVectorizer:
     def test_vectorize_in_table_after_restart_with_restart_disallowed(
         self,
     ):
+        pxt.drop_dir("unit_test", force=True)
+
         gv = GoldVectorizer(
             table_path="unit_test.vectorize",
             vectorizer=TensorVectorizer(),

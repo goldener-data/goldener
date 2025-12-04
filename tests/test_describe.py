@@ -39,6 +39,7 @@ class DummyDataset:
 
 class TestGoldDescriptor:
     def test_simple_describe_in_table(self, extractor):
+        pxt.drop_dir("unit_test", force=True)
         desc = GoldDescriptor(
             table_path="unit_test.test_describe",
             extractor=extractor,
@@ -59,6 +60,8 @@ class TestGoldDescriptor:
         pxt.drop_dir("unit_test", force=True)
 
     def test_describe_in_table_without_idx(self, extractor):
+        pxt.drop_dir("unit_test", force=True)
+
         def collate_fn(batch):
             data = torch.stack([b["data"] for b in batch], dim=0)
             return {"data": data}
@@ -83,6 +86,8 @@ class TestGoldDescriptor:
         pxt.drop_dir("unit_test", force=True)
 
     def test_describe_in_table_with_non_dict_item(self, extractor):
+        pxt.drop_dir("unit_test", force=True)
+
         desc = GoldDescriptor(
             table_path="unit_test.test_describe",
             extractor=extractor,
@@ -96,6 +101,8 @@ class TestGoldDescriptor:
         pxt.drop_dir("unit_test", force=True)
 
     def test_describe_in_table_with_missing_data_key(self, extractor):
+        pxt.drop_dir("unit_test", force=True)
+
         desc = GoldDescriptor(
             table_path="unit_test.test_describe",
             extractor=extractor,
@@ -111,6 +118,8 @@ class TestGoldDescriptor:
         pxt.drop_dir("unit_test", force=True)
 
     def test_describe_in_table_with_collate_fn(self, extractor):
+        pxt.drop_dir("unit_test", force=True)
+
         def collate_fn(batch):
             data = torch.stack([b["data"] for b in batch], dim=0)
             idxs = [b["idx"] for b in batch]
@@ -145,6 +154,8 @@ class TestGoldDescriptor:
         pxt.drop_dir("unit_test", force=True)
 
     def test_describe_in_table_with_max_batches(self, extractor):
+        pxt.drop_dir("unit_test", force=True)
+
         desc = GoldDescriptor(
             table_path="unit_test.test_describe",
             extractor=extractor,
@@ -164,6 +175,8 @@ class TestGoldDescriptor:
         pxt.drop_dir("unit_test", force=True)
 
     def test_describe_in_table_with_table_input(self, extractor):
+        pxt.drop_dir("unit_test", force=True)
+
         src_path = "unit_test.src_table_input"
         desc_path = "unit_test.test_describe_from_table"
 
@@ -199,6 +212,8 @@ class TestGoldDescriptor:
         pxt.drop_dir("unit_test", force=True)
 
     def test_describe_in_table_after_restart(self, extractor):
+        pxt.drop_dir("unit_test", force=True)
+
         desc = GoldDescriptor(
             table_path="unit_test.test_describe",
             extractor=extractor,
@@ -225,6 +240,8 @@ class TestGoldDescriptor:
         pxt.drop_dir("unit_test", force=True)
 
     def test_describe_in_table_after_restart_with_restart_disallowed(self, extractor):
+        pxt.drop_dir("unit_test", force=True)
+
         desc = GoldDescriptor(
             table_path="unit_test.test_describe",
             extractor=extractor,
@@ -245,6 +262,8 @@ class TestGoldDescriptor:
         pxt.drop_dir("unit_test", force=True)
 
     def test_describe_in_dataset(self, extractor):
+        pxt.drop_dir("unit_test", force=True)
+
         desc = GoldDescriptor(
             table_path="unit_test.test_describe",
             extractor=extractor,
@@ -266,6 +285,8 @@ class TestGoldDescriptor:
         pxt.drop_dir("unit_test", force=True)
 
     def test_describe_in_dataset_from_table(self, extractor):
+        pxt.drop_dir("unit_test", force=True)
+
         src_path = "unit_test.src_table_input"
 
         source_rows = [
