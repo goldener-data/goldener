@@ -17,7 +17,7 @@ from goldener.pxt_utils import (
 from goldener.select import GoldSelector
 from goldener.torch_utils import ResetableTorchIterableDataset
 from goldener.utils import get_ratio_list_sum
-
+from goldener.vectorize import GoldVectorizer
 
 logger = getLogger(__name__)
 
@@ -61,6 +61,7 @@ class GoldSplitter:
         self,
         sets: list[GoldSet],
         descriptor: GoldDescriptor,
+        vectorizer: GoldVectorizer,
         selector: GoldSelector,
         class_key: str | None = None,
         drop_table: bool = False,
@@ -85,6 +86,7 @@ class GoldSplitter:
 
         """
         self.descriptor = descriptor
+        self.vectorizer = vectorizer
         self.selector = selector
         self.drop_table = drop_table
         self.class_key = class_key
@@ -93,6 +95,7 @@ class GoldSplitter:
         if max_batches is not None:
             self.descriptor.max_batches = max_batches
             self.selector.max_batches = max_batches
+            self.vectorizer.max_batches = max_batches
 
         ratios_sum = get_ratio_list_sum([s.ratio for s in sets])
         set_names = [s.name for s in sets]
@@ -107,15 +110,6 @@ class GoldSplitter:
         # the selection will be done on a dataset built from
         # the described table computed from the descriptor
         self.selector.collate_fn = pxt_torch_dataset_collate_fn
-
-        # The descriptor always stores features in the "features" column,
-        # so we must ensure the selector looks for features there.
-        if self.selector.vectorized_key != "features":
-            logger.warning(
-                f"Forcing `selector.select_key` to 'features' in the splitter "
-                f"(was '{self.selector.vectorized_key}'). The descriptor stores features in the 'features' column."
-            )
-            self.selector.vectorized_key = "features"
 
     def split(self, dataset: Dataset) -> dict[str, set[int]]:
         """Split the dataset into multiple sets based on the configured ratios.
@@ -212,6 +206,7 @@ class GoldSplitter:
         set_count: int,
         class_expr: Expr,
     ) -> None:
+        already_selected = 0
         for class_idx, (class_label, class_ratio) in enumerate(class_ratios.items()):
             if class_idx < len(class_ratios) - 1:
                 class_count = int(set_count * class_ratio)
@@ -234,9 +229,11 @@ class GoldSplitter:
             torch_dataset = ResetableTorchIterableDataset(
                 GoldPxtTorchDataset(class_table)
             )
-
+            vectorized_table = self.vectorizer.vectorize_in_table(
+                torch_dataset,
+            )
             selection_table = self.selector.select_in_table(
-                torch_dataset, class_count, value=set_name
+                vectorized_table, already_selected + class_count, value=set_name
             )
             selection_col = get_expr_from_column_name(
                 selection_table, self.selector.selection_key
@@ -248,6 +245,7 @@ class GoldSplitter:
                 .distinct()
                 .collect()
             )
+            already_selected += len(selected_indices)
             described_table.where(described_table.idx.isin(selected_indices)).update(
                 {"gold_set": set_name}
             )

@@ -32,6 +32,8 @@ class DummyDataset(Dataset):
 
 class TestGoldSelector:
     def test_selection_table_creation_from_table(self):
+        pxt.drop_dir("unit_test", force=True)
+
         src_path = "unit_test.src_table_input"
         desc_path = "unit_test.test_select_from_table"
 
@@ -73,6 +75,8 @@ class TestGoldSelector:
         pxt.drop_dir("unit_test", force=True)
 
     def test_selection_table_from_table_when_missing_vectorized(self):
+        pxt.drop_dir("unit_test", force=True)
+
         src_path = "unit_test.src_table_invalid"
         pxt.create_dir("unit_test", if_exists="ignore")
 
@@ -92,6 +96,8 @@ class TestGoldSelector:
         pxt.drop_dir("unit_test", force=True)
 
     def test_selection_table_from_table_when_invalid_old(self):
+        pxt.drop_dir("unit_test", force=True)
+
         src_path = "unit_test.src_table_invalid"
         pxt.create_dir("unit_test", if_exists="ignore")
 
@@ -115,6 +121,8 @@ class TestGoldSelector:
         pxt.drop_dir("unit_test", force=True)
 
     def test_selection_table_from_dataset(self):
+        pxt.drop_dir("unit_test", force=True)
+
         table_path = "unit_test.test_select_initialize"
 
         sample = {
@@ -142,6 +150,8 @@ class TestGoldSelector:
         pxt.drop_dir("unit_test", force=True)
 
     def test_select_in_table_from_dataset(self):
+        pxt.drop_dir("unit_test", force=True)
+
         table_path = "unit_test.test_select_from_dataset"
 
         dataset = DummyDataset(
@@ -167,6 +177,8 @@ class TestGoldSelector:
         pxt.drop_dir("unit_test", force=True)
 
     def test_select_in_table_with_chunk(self):
+        pxt.drop_dir("unit_test", force=True)
+
         table_path = "unit_test.test_select_chunk"
 
         dataset = DummyDataset(
@@ -200,6 +212,8 @@ class TestGoldSelector:
         pxt.drop_dir("unit_test", force=True)
 
     def test_select_in_table_with_reducer(self):
+        pxt.drop_dir("unit_test", force=True)
+
         table_path = "unit_test.test_select_reducer"
 
         dataset = DummyDataset(
@@ -228,6 +242,8 @@ class TestGoldSelector:
         pxt.drop_dir("unit_test", force=True)
 
     def test_select_in_table_with_max_batches(self):
+        pxt.drop_dir("unit_test", force=True)
+
         table_path = "unit_test.test_select_max_batches"
 
         dataset = DummyDataset(
@@ -253,6 +269,8 @@ class TestGoldSelector:
         pxt.drop_dir("unit_test", force=True)
 
     def test_select_in_table_with_restart(self):
+        pxt.drop_dir("unit_test", force=True)
+
         table_path = "unit_test.test_select_max_batches"
 
         dataset = DummyDataset(
@@ -281,6 +299,8 @@ class TestGoldSelector:
         pxt.drop_dir("unit_test", force=True)
 
     def test_select_in_table_with_restart_disallowed(self):
+        pxt.drop_dir("unit_test", force=True)
+
         table_path = "unit_test.test_select_max_batches"
 
         dataset = DummyDataset(
@@ -304,6 +324,8 @@ class TestGoldSelector:
         pxt.drop_dir("unit_test", force=True)
 
     def test_select_in_table_with_not_enough_sample(self):
+        pxt.drop_dir("unit_test", force=True)
+
         table_path = "unit_test.test_select_not_enough"
         dataset = DummyDataset(
             [{"vectorized": torch.rand(5), "idx_sample": idx} for idx in range(100)]
@@ -324,6 +346,8 @@ class TestGoldSelector:
         pxt.drop_dir("unit_test", force=True)
 
     def test_select_in_table_from_table(self):
+        pxt.drop_dir("unit_test", force=True)
+
         src_path = "unit_test.test_select_in_table"
 
         pxt.create_dir("unit_test", if_exists="ignore")
@@ -360,6 +384,8 @@ class TestGoldSelector:
         pxt.drop_dir("unit_test", force=True)
 
     def test_select_in_dataset_from_dataset(self):
+        pxt.drop_dir("unit_test", force=True)
+
         table_path = "unit_test.test_select_from_dataset"
 
         dataset = DummyDataset(
@@ -394,6 +420,8 @@ class TestGoldSelector:
         pxt.drop_dir("unit_test", force=True)
 
     def test_select_in_dataset_with_drop_table(self):
+        pxt.drop_dir("unit_test", force=True)
+
         table_path = "unit_test.test_select_from_dataset"
 
         dataset = DummyDataset(

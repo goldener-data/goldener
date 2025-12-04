@@ -478,12 +478,7 @@ class GoldVectorizer:
                 to_vectorize, old_vectorized_table
             )
 
-        vectorized_col = get_expr_from_column_name(
-            vectorized_table, self.vectorized_key
-        )
-        if vectorized_table.where(vectorized_col == None).count() == 0:  # noqa: E711
-            vectorized = vectorized_table
-        elif self.distribute:
+        if self.distribute:
             vectorized = self._distributed_vectorize(
                 vectorized_table, to_vectorize_dataset
             )

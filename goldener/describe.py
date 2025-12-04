@@ -201,12 +201,7 @@ class GoldDescriptor:
                 to_describe_dataset, old_description_table
             )
 
-        description_col = get_expr_from_column_name(
-            description_table, self.description_key
-        )
-        if description_table.where(description_col == None).count() == 0:  # noqa: E711
-            described = description_table
-        elif self.distribute:
+        if self.distribute:
             described = self._distributed_describe(
                 description_table, to_describe_dataset
             )

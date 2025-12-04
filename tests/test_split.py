@@ -6,8 +6,9 @@ from torch.utils.data import Dataset
 
 from goldener.describe import GoldDescriptor
 from goldener.extract import TorchGoldFeatureExtractorConfig, TorchGoldFeatureExtractor
+from goldener.pxt_utils import pxt_torch_dataset_collate_fn
 from goldener.split import GoldSplitter, GoldSet
-from goldener.vectorize import TensorVectorizer
+from goldener.vectorize import TensorVectorizer, GoldVectorizer
 from goldener.select import GoldSelector
 
 
@@ -62,18 +63,35 @@ def descriptor(extractor):
 def selector():
     return GoldSelector(
         table_path="unit_test.selector_split",
-        vectorizer=TensorVectorizer(),
+        to_keep_schema={"label": pxt.String},
+        vectorized_key="vectorized",
+        batch_size=2,
     )
 
 
 @pytest.fixture(scope="function")
-def basic_splitter(descriptor, selector):
+def vectorizer():
+    return GoldVectorizer(
+        table_path="unit_test.vectorizer_split",
+        vectorizer=TensorVectorizer(),
+        to_keep_schema={"label": pxt.String},
+        collate_fn=pxt_torch_dataset_collate_fn,
+        batch_size=2,
+    )
+
+
+@pytest.fixture(scope="function")
+def basic_splitter(descriptor, vectorizer, selector):
     sets = [GoldSet(name="train", ratio=0.5), GoldSet(name="val", ratio=0.5)]
-    return GoldSplitter(sets=sets, descriptor=descriptor, selector=selector)
+    return GoldSplitter(
+        sets=sets, descriptor=descriptor, selector=selector, vectorizer=vectorizer
+    )
 
 
 class TestGoldSplitter:
     def test_basic_split(self, basic_splitter):
+        pxt.drop_dir("unit_test", force=True)
+
         splitted = basic_splitter.split(
             dataset=DummyDataset(
                 [
@@ -89,12 +107,19 @@ class TestGoldSplitter:
 
         pxt.drop_dir("unit_test", if_not_exists="ignore", force=True)
 
-    def test_split_with_label(self, descriptor, selector):
+    def test_split_with_label(self, descriptor, selector, vectorizer):
+        pxt.drop_dir("unit_test", force=True)
+
         sets = [
             GoldSet(name="train", ratio=0.5),
         ]
+
         splitter = GoldSplitter(
-            sets=sets, descriptor=descriptor, selector=selector, class_key="label"
+            sets=sets,
+            descriptor=descriptor,
+            selector=selector,
+            vectorizer=vectorizer,
+            class_key="label",
         )
 
         splitted = splitter.split(
@@ -112,17 +137,30 @@ class TestGoldSplitter:
 
         pxt.drop_dir("unit_test", if_not_exists="ignore", force=True)
 
-    def test_duplicated_set_names(self, descriptor, selector):
+    def test_duplicated_set_names(self, descriptor, selector, vectorizer):
+        pxt.drop_dir("unit_test", force=True)
+
         sets = [GoldSet(name="train", ratio=0.5), GoldSet(name="train", ratio=0.3)]
         with pytest.raises(ValueError):
-            GoldSplitter(sets=sets, descriptor=descriptor, selector=selector)
+            GoldSplitter(
+                sets=sets,
+                descriptor=descriptor,
+                selector=selector,
+                vectorizer=vectorizer,
+            )
 
         pxt.drop_dir("unit_test", if_not_exists="ignore", force=True)
 
-    def test_class_key_not_found(self, descriptor, selector):
+    def test_class_key_not_found(self, descriptor, selector, vectorizer):
+        pxt.drop_dir("unit_test", force=True)
+
         sets = [GoldSet(name="only", ratio=0.5)]
         splitter = GoldSplitter(
-            sets=sets, descriptor=descriptor, selector=selector, class_key="nonexistent"
+            sets=sets,
+            descriptor=descriptor,
+            selector=selector,
+            vectorizer=vectorizer,
+            class_key="nonexistent",
         )
 
         with pytest.raises(ValueError):
@@ -134,9 +172,13 @@ class TestGoldSplitter:
 
         pxt.drop_dir("unit_test", if_not_exists="ignore", force=True)
 
-    def test_set_with_0_population(self, descriptor, selector):
+    def test_set_with_0_population(self, descriptor, selector, vectorizer):
+        pxt.drop_dir("unit_test", force=True)
+
         sets = [GoldSet(name="only", ratio=0.01)]
-        splitter = GoldSplitter(sets=sets, descriptor=descriptor, selector=selector)
+        splitter = GoldSplitter(
+            sets=sets, descriptor=descriptor, selector=selector, vectorizer=vectorizer
+        )
 
         with pytest.raises(ValueError):
             splitter.split(
@@ -150,10 +192,16 @@ class TestGoldSplitter:
 
         pxt.drop_dir("unit_test", if_not_exists="ignore", force=True)
 
-    def test_class_with_0_population(self, descriptor, selector):
+    def test_class_with_0_population(self, descriptor, selector, vectorizer):
+        pxt.drop_dir("unit_test", force=True)
+
         sets = [GoldSet(name="only", ratio=0.01)]
         splitter = GoldSplitter(
-            sets=sets, descriptor=descriptor, selector=selector, class_key="label"
+            sets=sets,
+            descriptor=descriptor,
+            selector=selector,
+            vectorizer=vectorizer,
+            class_key="label",
         )
 
         with pytest.raises(ValueError):
@@ -172,17 +220,21 @@ class TestGoldSplitter:
 
         pxt.drop_dir("unit_test", if_not_exists="ignore", force=True)
 
-    def test_max_batches(self, descriptor, selector):
+    def test_max_batches(self, descriptor, selector, vectorizer):
+        pxt.drop_dir("unit_test", force=True)
+
         sets = [GoldSet(name="train", ratio=0.5), GoldSet(name="val", ratio=0.5)]
         splitter = GoldSplitter(
             sets=sets,
             descriptor=descriptor,
             selector=selector,
+            vectorizer=vectorizer,
             max_batches=1,
         )
 
         assert splitter.descriptor.max_batches == 1
         assert splitter.selector.max_batches == 1
+        assert splitter.vectorizer.max_batches == 1
 
         splitted = splitter.split(
             dataset=DummyDataset(
@@ -196,34 +248,5 @@ class TestGoldSplitter:
         assert len(splitted) == 2
         # Only 2 items total (1 batch with batch_size=2)
         assert len(splitted["train"]) + len(splitted["val"]) == 2
-
-        pxt.drop_dir("unit_test", if_not_exists="ignore", force=True)
-
-    def test_selector_with_wrong_select_key(self, descriptor):
-        selector = GoldSelector(
-            table_path="unit_test.selector_split_wrong_key",
-            vectorizer=TensorVectorizer(),
-            select_key="wrong_key",
-        )
-
-        sets = [GoldSet(name="train", ratio=0.5)]
-        splitter = GoldSplitter(sets=sets, descriptor=descriptor, selector=selector)
-
-        # The selector's select_key should be forced to "features"
-        assert splitter.selector.vectorized_key == "features"
-
-        # And the split should work correctly
-        splitted = splitter.split(
-            dataset=DummyDataset(
-                [
-                    {"data": torch.rand(3, 8, 8), "idx": idx, "label": "dummy"}
-                    for idx in range(10)
-                ]
-            )
-        )
-
-        assert len(splitted) == 2
-        assert len(splitted["train"]) == 5
-        assert len(splitted["not assigned"]) == 5
 
         pxt.drop_dir("unit_test", if_not_exists="ignore", force=True)

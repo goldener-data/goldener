@@ -204,8 +204,7 @@ class GoldSelector:
 
         assert isinstance(select_from, Table)
 
-        selection_col = get_expr_from_column_name(selection_table, self.selection_key)
-        if selection_table.where(selection_col == value).count() == select_count:  # noqa: E712
+        if len(self._get_selected_indices(selection_table, value)) == select_count:
             return selection_table
         elif self.distribute:
             self._distributed_select(select_from, selection_table, select_count, value)
