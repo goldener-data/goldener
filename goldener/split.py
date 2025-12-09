@@ -3,20 +3,15 @@ from logging import getLogger
 
 import pixeltable as pxt
 from pixeltable.catalog import Table
-from pixeltable.exprs import Expr
 from torch.utils.data import Dataset
 
 from goldener.describe import GoldDescriptor
 from goldener.pxt_utils import (
     get_expr_from_column_name,
-    pxt_torch_dataset_collate_fn,
-    GoldPxtTorchDataset,
-    get_column_distinct_ratios,
     set_value_to_idx_rows,
+    GoldPxtTorchDataset,
 )
 from goldener.select import GoldSelector
-from goldener.torch_utils import ResetableTorchIterableDataset
-from goldener.utils import get_ratio_list_sum
 from goldener.vectorize import GoldVectorizer
 
 logger = getLogger(__name__)
@@ -27,12 +22,12 @@ class GoldSet:
     """Configuration for a gold set used for splitting.
 
     Attributes:
-        name: Name of the gold set.
+        name: Name of the gold set (None if the set is for not selected data).
         ratio: Ratio of samples to assign to this set (between 0 and 1). This value
         cannot be one of 0 or 1 (goal is to select a subset of the full dataset).
     """
 
-    name: str
+    name: str | None
     ratio: float
 
     def __post_init__(self) -> None:
@@ -41,18 +36,26 @@ class GoldSet:
 
 
 class GoldSplitter:
-    """Splitter that divides a dataset into multiple sets based on features.
+    """Split a dataset into multiple sets based on features.
 
-    When the sum of ratios of the provided sets during initialization is less than 1,
-    an additional set named "not assigned" is added to cover the remaining samples.
+    The GoldSplitter leverages a GoldDescriptor to extract features from the dataset,
+    a GoldVectorizer to vectorize these features, and a GoldSelector to select samples
+    for each set based on specified ratios.
+
+    The splitting can operate in a sequential (single-process) mode or a
+    distributed mode (not implemented).
+
+    See GoldDescriptor, GoldVectorizer, and GoldSelector for more details on each component.
 
     Attributes:
-        sets: List of GoldSet configurations defining the splits.
+        _sets: List of GoldSet configurations defining the splits.
         descriptor: GoldDescriptor used to describe the dataset.
+        vectorizer: GoldVectorizer used to vectorize the described dataset.
         selector: GoldSelector used to select samples for each set. The collate_fn of the selector
         will be set to `pxt_torch_dataset_collate_fn`, and the select_key will be forced to "features"
         to match the descriptor's output column.
-        class_key: Optional key for class-based stratification.
+        in_described_table: Whether to return the splitting in the described table or the selected table.
+        Allow_existing: Whether to allow existing tables in all components.
         drop_table: Whether to drop the described table after splitting.
         max_batches: Optional maximum number of batches to process in both descriptor and selector. Useful for testing on a small subset of the dataset.
     """
@@ -63,194 +66,241 @@ class GoldSplitter:
         descriptor: GoldDescriptor,
         vectorizer: GoldVectorizer,
         selector: GoldSelector,
-        class_key: str | None = None,
+        in_described_table: bool = False,
+        allow_existing: bool = True,
         drop_table: bool = False,
         max_batches: int | None = None,
     ) -> None:
-        """Initialize the GoldSplitter.
-
-        Args:
-            sets: List of GoldSet configurations defining the splits. When the sum of ratios is less than 1,
-            an additional set named "not assigned" will be created to cover the remaining samples.
-            descriptor: GoldDescriptor used to describe the dataset.
-            selector: GoldSelector used to select samples for each set. The collate_fn of the selector
-            will be set to `pxt_torch_dataset_collate_fn`, and the select_key will be forced to "features"
-            to match the descriptor's output column.
-            class_key: Optional key for class-based stratification.
-            drop_table: Whether to drop the described table after splitting.
-            max_batches: Optional maximum number of batches to process in both descriptor and selector.
-            If provided, overrides the max_batches setting in descriptor and selector. Useful for testing on a small subset of the dataset.
-
-        Raises:
-            ValueError: If set names are not unique or ratios do not sum to 1.
-
-        """
         self.descriptor = descriptor
         self.vectorizer = vectorizer
         self.selector = selector
+        self.in_described_table = in_described_table
         self.drop_table = drop_table
-        self.class_key = class_key
 
-        # Override max_batches if provided
+        # override allow_existing in all components
+        if allow_existing:
+            self.descriptor.allow_existing = True
+            self.vectorizer.allow_existing = True
+            self.selector.allow_existing = True
+        else:
+            self.descriptor.allow_existing = False
+            self.vectorizer.allow_existing = False
+            self.selector.allow_existing = False
+
+        # Override max_batches in the descriptor if provided
         if max_batches is not None:
             self.descriptor.max_batches = max_batches
-            self.selector.max_batches = max_batches
-            self.vectorizer.max_batches = max_batches
+        else:
+            self.descriptor.max_batches = None
 
-        ratios_sum = get_ratio_list_sum([s.ratio for s in sets])
+        self.update_sets(sets)
+
+    def _check_sets_validity(self, sets: list[GoldSet], ratios_sum: float) -> None:
+        if not (0 < ratios_sum <= 1.0):
+            raise ValueError("Sum of split ratios must be 1.0")
+
         set_names = [s.name for s in sets]
         if len(set_names) != len(set(set_names)):
             raise ValueError(f"Set names must be unique, got {set_names}")
 
-        if ratios_sum != 1.0:
-            sets.append(GoldSet(name="not assigned", ratio=1.0 - ratios_sum))
-
-        self.sets = sets
-
-        # the selection will be done on a dataset built from
-        # the described table computed from the descriptor
-        self.selector.collate_fn = pxt_torch_dataset_collate_fn
-
-    def split(self, dataset: Dataset) -> dict[str, set[int]]:
-        """Split the dataset into multiple sets based on the configured ratios.
-
-        The dataset is first described using the gold descriptor (extracts features), and then samples are selected
-        for each set based on the specified ratios. If a class_key is provided, stratified sampling is performed
-        to maintain class distribution across sets.
-
-        The last set and potentially the last class of each set in case of stratification will take the remaining samples
-        to avoid rounding issues.
+    def update_sets(self, sets: list[GoldSet]) -> None:
+        """Update the sets configuration for the splitter.
 
         Args:
-            dataset: Dataset to be split.
+            sets: New list of GoldSet configurations defining the splits.
+        """
+        ratios_sum = sum([s.ratio for s in sets])
+
+        self._check_sets_validity(sets, ratios_sum)
+
+        self._sets = sets
+        if ratios_sum < 1.0:
+            self._sets.append(
+                GoldSet(
+                    name=None,
+                    ratio=1.0 - ratios_sum,
+                )
+            )
+
+    @staticmethod
+    def get_split_indices(
+        split_table: Table,
+        selection_key: str,
+        idx_key: str = "idx",
+    ) -> dict[str, set[int]]:
+        """Get the indices of samples for each set from a split table.
+
+        Args:
+            split_table: PixelTable Table containing the split information.
+            selection_key: Column name in the table indicating the set assignment.
+            idx_key: Column name in the table indicating the sample indices.
 
         Returns:
-            A dictionary mapping set names to sets of sample indices assigned to each set.
+            A dictionary mapping each set name to a set of sample indices.
+        """
+        selection_col = get_expr_from_column_name(split_table, selection_key)
+
+        set_indices: dict[str, set[int]] = {}
+        for row in split_table.select(selection_col).distinct().collect():
+            set_name = row[selection_key]
+            if set_name is None:
+                continue
+
+            set_indices[set_name] = GoldSelector.get_selected_sample_indices(
+                split_table,
+                selection_key=selection_key,
+                value=set_name,
+            )
+
+        return set_indices
+
+    def split_in_dataset(
+        self,
+        to_split: Dataset | Table,
+    ) -> GoldPxtTorchDataset:
+        """Split the dataset into multiple sets in a PixelTable table.
+
+        The dataset is first described using the gold descriptor (extracts features), and then samples are selected
+        for each set based on the specified ratios after vectorization.
+
+        This method is idempotent (e.g. failure proof), meaning that if it is called
+        multiple times on the same dataset or table, it will not duplicate or recompute the splitting decisions
+        already present in the PixelTable table.
+
+        Args:
+            to_split: Dataset or Table to be split. If a Dataset is provided, each item should be a
+            dictionary with at least the key specified by descriptor `data_key` after applying the collate_fn.
+            If the collate_fn is None, the dataset is expected to directly provide such batches. If a Table is provided,
+            it should contain both 'idx' and `data_key` column for the descriptor.
+
+        Returns:
+            A GoldPxtTorchDataset dataset containing at least the set assignation in the `selection_key` column. Then
+            the other columns are either from the described table (if `in_described_table` is True)
+            or from the selected table (if `in_described_table` is False).
+        """
+
+        split_table = self.split_in_table(to_split)
+
+        split_dataset = GoldPxtTorchDataset(split_table, keep_cache=True)
+
+        if self.drop_table:
+            self._drop_tables()
+
+        return split_dataset
+
+    def split_in_table(self, to_split: Dataset | Table) -> Table:
+        """Split the dataset into multiple sets in a PixelTable table.
+
+        The dataset is first described using the gold descriptor (extracts features), and then samples are selected
+        for each set based on the specified ratios after vectorization.
+
+        This method is idempotent (e.g. failure proof), meaning that if it is called
+        multiple times on the same dataset or table, it will not duplicate or recompute the splitting decisions
+        already present in the PixelTable table.
+
+        See describe_in_table, vectorize_in_table, and select_in_table for more details on each step.
+
+        Args:
+            to_split: Dataset or Table to be split. If a Dataset is provided, each item should be a
+            dictionary with at least the key specified by descriptor `data_key` after applying the collate_fn.
+            If the collate_fn is None, the dataset is expected to directly provide such batches. If a Table is provided,
+            it should contain both 'idx' and `data_key` column for the descriptor.
+
+        Returns:
+            A PixelTable Table containing at least the set assignation in the `selection_key` column. Then
+            the other columns are either from the described table (if `in_described_table` is True)
+            or from the selected table (if `in_described_table` is False).
 
         Raises:
             ValueError: If any set results in zero samples due to its ratio, if class_key is not found,
             or if class stratification results in zero samples for any class in a set.
         """
-        described_table = self.descriptor.describe_in_table(dataset)
-        described_table.add_column(gold_set=pxt.String, if_exists="error")
-
-        class_expr = self._get_class_expr(described_table)
-        class_ratios = get_column_distinct_ratios(described_table, class_expr)
-
+        described_table = self.descriptor.describe_in_table(to_split)
         sample_count = described_table.count()
 
+        vectorized_table = self.vectorizer.vectorize_in_table(described_table)
+
         # select data for all sets except the last one
-        for idx_set, gold_set in enumerate(self.sets[:-1]):
+        for idx_set, gold_set in enumerate(self._sets[:-1]):
             set_count = int(gold_set.ratio * sample_count)
             if set_count == 0:
                 raise ValueError(
                     f"Set '{gold_set.name}' has ratio {gold_set.ratio} which results "
                     f"in zero samples for dataset of size {sample_count}."
                 )
-            self._select_for_set(
-                described_table,
-                class_ratios,
-                gold_set.name,
-                set_count,
-                class_expr,
+            selected_table = self.selector.select_in_table(
+                vectorized_table, set_count, value=gold_set.name
             )
 
         # remaining samples are assigned to the last set
-        remaining_idx_list = [
-            row["idx"]
-            for row in described_table.select(described_table.idx)
-            .where(described_table.gold_set == None)  # noqa: E711
-            .collect()
-        ]
-        set_value_to_idx_rows(
-            described_table,
-            described_table.gold_set,
-            set(remaining_idx_list),
-            self.sets[-1].name,
+        already_selected = self.selector.get_selected_sample_indices(
+            selected_table,
+            selection_key=self.selector.selection_key,
+            value=self._sets[-1].name,
         )
-
-        self._drop_tables()
-
-        return {
-            gold_set.name: set(
-                row["idx"]
-                for row in described_table.where(
-                    described_table.gold_set == gold_set.name
-                )
-                .select(described_table.idx)
-                .collect()
-            )
-            for gold_set in self.sets
-        }
-
-    def _get_class_expr(self, described_table: pxt.Table) -> Expr:
-        if (
-            self.class_key is not None
-            and self.class_key not in described_table.columns()
-        ):
+        remaining_idx_list = self.selector.get_selected_sample_indices(
+            selected_table,
+            selection_key=self.selector.selection_key,
+            value=None,
+        )
+        if len(remaining_idx_list) == 0 and already_selected == 0:
             raise ValueError(
-                f"Class key '{self.class_key}' not found in described table columns: {described_table.columns()}"
+                f"Set '{self._sets[-1].name}' has ratio {self._sets[-1].ratio} which results "
+                f"in zero samples for dataset of size {len(remaining_idx_list)}."
             )
-
-        class_key = self.class_key if self.class_key is not None else "gold_split_class"
-        if self.class_key is None and class_key not in described_table.columns():
-            described_table.add_column(**{class_key: pxt.String}, if_exists="error")
-
-        return get_expr_from_column_name(described_table, class_key)
-
-    def _select_for_set(
-        self,
-        described_table: Table,
-        class_ratios: dict[str, float],
-        set_name: str,
-        set_count: int,
-        class_expr: Expr,
-    ) -> None:
-        already_selected = 0
-        for class_idx, (class_label, class_ratio) in enumerate(class_ratios.items()):
-            if class_idx < len(class_ratios) - 1:
-                class_count = int(set_count * class_ratio)
-                if class_count == 0:
-                    raise ValueError(
-                        f"Class '{class_label}' has ratio {class_ratio} which results "
-                        f"in zero samples for set '{set_name}' with size {set_count}."
+        selection_col = get_expr_from_column_name(
+            selected_table,
+            self.selector.selection_key,
+        )
+        set_value_to_idx_rows(
+            table=selected_table,
+            value=self._sets[-1].name,
+            col_expr=selection_col,
+            idx_expr=selected_table.idx_sample,
+            indices=remaining_idx_list,
+        )
+        split_table = selected_table
+        if self.in_described_table:
+            for set_cfg in self._sets:
+                set_name = set_cfg.name
+                set_indices = self.selector.get_selected_sample_indices(
+                    selected_table,
+                    selection_key=self.selector.selection_key,
+                    value=set_name,
+                )
+                if self.selector.selection_key not in described_table.columns():
+                    described_table.add_column(
+                        if_exists="error",
+                        **{self.selector.selection_key: pxt.String},
                     )
+                set_value_to_idx_rows(
+                    described_table,
+                    col_expr=get_expr_from_column_name(
+                        described_table, self.selector.selection_key
+                    ),
+                    idx_expr=described_table.idx,
+                    indices=set_indices,
+                    value=set_name,
+                )
+            split_table = described_table
+
+        if self.drop_table:
+            to_drop = [self.vectorizer.table_path]
+            if self.in_described_table:
+                to_drop.append(self.selector.table_path)
             else:
-                # The last class takes the missing samples count to avoid rounding issues
-                existing_count = described_table.where(
-                    described_table.gold_set == set_name
-                ).count()
-                class_count = set_count - existing_count
+                to_drop.append(self.descriptor.table_path)
 
-            class_table = described_table.where(
-                (class_expr == class_label) & (described_table.gold_set == None)  # noqa: E711
-            ).select()
+            for table_name in to_drop:
+                pxt.drop_table(table_name)
 
-            torch_dataset = ResetableTorchIterableDataset(
-                GoldPxtTorchDataset(class_table)
-            )
-            vectorized_table = self.vectorizer.vectorize_in_table(
-                torch_dataset,
-            )
-            selection_table = self.selector.select_in_table(
-                vectorized_table, already_selected + class_count, value=set_name
-            )
-            selection_col = get_expr_from_column_name(
-                selection_table, self.selector.selection_key
-            )
-            selected_indices = set(
-                row["idx_sample"]
-                for row in selection_table.where(selection_col == set_name)
-                .select(selection_table.idx_sample)
-                .distinct()
-                .collect()
-            )
-            already_selected += len(selected_indices)
-            described_table.where(described_table.idx.isin(selected_indices)).update(
-                {"gold_set": set_name}
-            )
+        return split_table
 
     def _drop_tables(self) -> None:
         if self.drop_table:
-            for table_name in (self.descriptor.table_path, self.selector.table_path):
+            for table_name in (
+                self.descriptor.table_path,
+                self.vectorizer.table_path,
+                self.selector.table_path,
+            ):
                 pxt.drop_table(table_name)

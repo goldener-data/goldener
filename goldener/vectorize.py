@@ -467,11 +467,8 @@ class GoldVectorizer:
                 if with_no_vectorized.count() == 0:
                     return vectorized_table
 
-                to_vectorize_dataset = GoldPxtTorchDataset(
-                    vectorized_table.where(vectorized_col == None)  # noqa: E711
-                )
-            else:
-                to_vectorize_dataset = GoldPxtTorchDataset(to_vectorize)
+            to_vectorize_dataset = GoldPxtTorchDataset(to_vectorize)
+
         else:
             to_vectorize_dataset = to_vectorize
             vectorized_table = self._vectorized_table_from_dataset(
