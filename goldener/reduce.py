@@ -19,14 +19,32 @@ class GoldReducer:
         self.reducer = reducer
 
     def fit(self, x: torch.Tensor) -> None:
-        """Fit the dimensionality reduction model to the data."""
+        """Fit the dimensionality reduction model to the data.
+        
+        Args:
+            x: Input tensor to fit the model on.
+        """
         x_np = torch_tensor_to_numpy_vectors(x)
         self.reducer.fit(x_np)
 
     def fit_transform(self, x: torch.Tensor) -> torch.Tensor:
-        """Fit the dimensionality reduction model to the data."""
+        """Fit the dimensionality reduction model to the data and transform it.
+        
+        Args:
+            x: Input tensor to fit and transform.
+            
+        Returns:
+            Transformed tensor with reduced dimensionality.
+        """
         return np_transform_from_torch(x, self.reducer.fit_transform)
 
     def transform(self, x: torch.Tensor) -> torch.Tensor:
-        """Transform the data using the fitted dimensionality reduction model."""
+        """Transform the data using the fitted dimensionality reduction model.
+        
+        Args:
+            x: Input tensor to transform.
+            
+        Returns:
+            Transformed tensor with reduced dimensionality.
+        """
         return np_transform_from_torch(x, self.reducer.transform)

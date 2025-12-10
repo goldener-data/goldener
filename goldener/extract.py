@@ -9,6 +9,13 @@ import torch
 
 
 class GoldFeatureExtractor:
+    """Abstract base class for feature extraction from models.
+    
+    This class defines the interface for feature extractors that can extract and optionally
+    fuse features from models. Implementations should provide specific mechanisms for
+    extracting features from different types of models (e.g., PyTorch, multimodal).
+    """
+    
     @abstractmethod
     def extract(self, *args: Any, **kwargs: Any) -> dict[str, torch.Tensor]:
         """Extract features from the model for the given input data.
@@ -284,6 +291,12 @@ class MultiModalTorchGoldFeatureExtractor(GoldFeatureExtractor):
     """Feature extractor for multimodal data using PyTorch.
 
     Each modality has its own TorchFeatureExtractor defined by its own configuration.
+    This allows for processing different types of input data (e.g., images, text, audio)
+    with different models and then fusing their features.
+    
+    Attributes:
+        extractors: Dictionary mapping modality names to their TorchGoldFeatureExtractor instances.
+        strategy: Strategy for fusing features from different modalities.
     """
 
     def __init__(
@@ -291,6 +304,12 @@ class MultiModalTorchGoldFeatureExtractor(GoldFeatureExtractor):
         configs: Dict[str, TorchGoldFeatureExtractorConfig],
         strategy: FeatureFusionStrategy = FeatureFusionStrategy.CONCAT,
     ) -> None:
+        """Initialize the multimodal feature extractor.
+        
+        Args:
+            configs: Dictionary mapping modality names to their TorchGoldFeatureExtractorConfig.
+            strategy: Strategy to use for fusing features from different modalities. Defaults to CONCAT.
+        """
         self.extractors = {
             modality: TorchGoldFeatureExtractor(config)
             for modality, config in configs.items()
@@ -298,6 +317,14 @@ class MultiModalTorchGoldFeatureExtractor(GoldFeatureExtractor):
         self.strategy = strategy
 
     def extract_and_fuse(self, x: Dict[str, torch.Tensor]) -> torch.Tensor:
+        """Extract and fuse features from multimodal input data.
+        
+        Args:
+            x: Dictionary mapping modality names to their input tensors.
+            
+        Returns:
+            Fused feature tensor combining all modalities.
+        """
         return GoldFeatureFusion.fuse_tensors(
             [
                 extractor.extract_and_fuse(x[modality])
@@ -307,6 +334,14 @@ class MultiModalTorchGoldFeatureExtractor(GoldFeatureExtractor):
         )
 
     def extract(self, x: Dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
+        """Extract features from multimodal input data without fusing.
+        
+        Args:
+            x: Dictionary mapping modality names to their input tensors.
+            
+        Returns:
+            Dictionary mapping "{modality}.{layer}" to their extracted feature tensors.
+        """
         per_modality = {
             modality: extractor.extract(x[modality])
             for modality, extractor in self.extractors.items()
