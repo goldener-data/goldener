@@ -184,17 +184,28 @@ class GoldDescriptor:
             description_table = self._description_table_from_table(
                 to_describe, old_description_table
             )
-            description_col = get_expr_from_column_name(
-                description_table, self.description_key
-            )
 
             if description_table.count() > 0:
-                with_no_description = description_table.where(description_col == None)  # noqa: E711
-                if with_no_description.count() == 0:
-                    return description_table
-                to_describe_dataset = GoldPxtTorchDataset(with_no_description)
-            else:
-                to_describe_dataset = GoldPxtTorchDataset(to_describe)
+                if "idx" in to_describe.columns():
+                    to_describe_indices = set(
+                        [
+                            row["idx"]
+                            for row in to_describe.select(to_describe.idx).collect()
+                        ]
+                    )
+                    already_described = set(
+                        [
+                            row["idx_sample"]
+                            for row in description_table.select(
+                                description_table.idx
+                            ).collect()
+                        ]
+                    )
+                    if not to_describe_indices.difference(already_described):
+                        return description_table
+
+            to_describe_dataset = GoldPxtTorchDataset(to_describe)
+
         else:
             to_describe_dataset = to_describe
             description_table = self._description_table_from_dataset(

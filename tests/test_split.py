@@ -408,7 +408,6 @@ class TestGoldSplitter:
         basic_splitter.split_in_table(to_split=dataset)
 
         basic_splitter.max_batches = None
-
         split_table = basic_splitter.split_in_table(to_split=dataset)
         splitted = basic_splitter.get_split_indices(
             split_table,

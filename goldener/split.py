@@ -265,10 +265,10 @@ class GoldSplitter:
             ValueError: If any set results in zero samples due to its ratio, if class_key is not found,
             or if class stratification results in zero samples for any class in a set.
         """
-        described_table = self.descriptor.describe_in_table(to_split)
-        sample_count = described_table.count()
+        description_table = self.descriptor.describe_in_table(to_split)
+        sample_count = description_table.count()
 
-        vectorized_table = self.vectorizer.vectorize_in_table(described_table)
+        vectorized_table = self.vectorizer.vectorize_in_table(description_table)
 
         # select data for all sets except the last one
         for idx_set, gold_set in enumerate(self._sets[:-1]):
@@ -318,21 +318,21 @@ class GoldSplitter:
                     selection_key=self.selector.selection_key,
                     value=set_name,
                 )
-                if self.selector.selection_key not in described_table.columns():
-                    described_table.add_column(
+                if self.selector.selection_key not in description_table.columns():
+                    description_table.add_column(
                         if_exists="error",
                         **{self.selector.selection_key: pxt.String},
                     )
                 set_value_to_idx_rows(
-                    described_table,
+                    description_table,
                     col_expr=get_expr_from_column_name(
-                        described_table, self.selector.selection_key
+                        description_table, self.selector.selection_key
                     ),
-                    idx_expr=described_table.idx,
+                    idx_expr=description_table.idx,
                     indices=set_indices,
                     value=set_name,
                 )
-            split_table = described_table
+            split_table = description_table
 
         if self.drop_table:
             to_drop = []
