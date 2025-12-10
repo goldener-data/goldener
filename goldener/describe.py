@@ -149,7 +149,7 @@ class GoldDescriptor:
         and stores them in a PixelTable table specified by `table_path`. The description of each data
         will be stored in the column specified by `description_key`.
 
-        This method is idempotent (e.g. failure proof), meaning that if it is called
+        This method is idempotent (i.e. failure proof), meaning that if it is called
         multiple times on the same dataset or table, it will not duplicate or recompute the descriptions
         already present in the PixelTable table.
 

@@ -421,7 +421,7 @@ class GoldVectorizer:
         in the `table_path` attribute using the `TensorVectorizer` instance. The resulting vectors
         are stored in the PixelTable table under the column specified by `vectorized_key`.
 
-        This method is idempotent (e.g. failure proof), meaning that if it is called
+        This method is idempotent (i.e. failure proof), meaning that if it is called
         multiple times on the same dataset or table, it will not duplicate or recompute the vectorization
         already present in the PixelTable table.
 

@@ -303,7 +303,7 @@ class TestGoldSplitter:
 
         pxt.drop_dir("unit_test", if_not_exists="ignore", force=True)
 
-    def test_with_not_remaining_indices(self, descriptor, selector, vectorizer):
+    def test_with_no_remaining_indices(self, descriptor, selector, vectorizer):
         pxt.drop_dir("unit_test", force=True)
 
         sets = [GoldSet(name="train", ratio=0.5), GoldSet(name="val", ratio=0.5)]

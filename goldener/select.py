@@ -162,7 +162,7 @@ class GoldSelector:
         to reduce memory consumption. As well, if a reducer is provided,
         the vectors are reduced in dimension before applying the coresubset selection.
 
-        This method is idempotent (e.g. failure proof), meaning that if it is called
+        This method is idempotent (i.e. failure proof), meaning that if it is called
         multiple times on the same dataset or table, it will restart the selection process
         based on the vectors already present in the PixelTable table.
 
@@ -495,7 +495,7 @@ class GoldSelector:
 
                 if class_count == 0:
                     raise ValueError(
-                        f"Class '{class_value}' has ratio {class_ratio} which results in zero samples"
+                        f"Class '{class_value}' has ratio {class_ratio} which results in zero samples "
                         f"for the requested select_count of {select_count}. "
                     )
 

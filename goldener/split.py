@@ -51,14 +51,14 @@ class GoldSplitter:
     See GoldDescriptor, GoldVectorizer, and GoldSelector for more details on each component.
 
     Attributes:
-        _sets: List of GoldSet configurations defining the splits.
+        sets: List of GoldSet configurations defining the splits.
         descriptor: GoldDescriptor used to describe the dataset.
         vectorizer: GoldVectorizer used to vectorize the described dataset.
         selector: GoldSelector used to select samples for each set. The collate_fn of the selector
         will be set to `pxt_torch_dataset_collate_fn`, and the select_key will be forced to "features"
         to match the descriptor's output column.
         in_described_table: Whether to return the splitting in the described table or the selected table.
-        Allow_existing: Whether to allow existing tables in all components.
+        allow_existing: Whether to allow existing tables in all components.
         drop_table: Whether to drop the described table after splitting.
         max_batches: Optional maximum number of batches to process in both descriptor and selector. Useful for testing on a small subset of the dataset.
     """
@@ -74,40 +74,58 @@ class GoldSplitter:
         drop_table: bool = False,
         max_batches: int | None = None,
     ) -> None:
+        self.sets = sets
         self.descriptor = descriptor
         self.vectorizer = vectorizer
         self.selector = selector
         self.in_described_table = in_described_table
         self.drop_table = drop_table
+        self._max_batches = max_batches
+        self.allow_existing = allow_existing
+        self.max_batches = max_batches
 
-        # override allow_existing in all components
-        if allow_existing:
-            self.descriptor.allow_existing = True
-            self.vectorizer.allow_existing = True
-            self.selector.allow_existing = True
-        else:
-            self.descriptor.allow_existing = False
-            self.vectorizer.allow_existing = False
-            self.selector.allow_existing = False
+    @property
+    def max_batches(self) -> int | None:
+        """Get the maximum number of batches to process."""
+        return self._max_batches
 
-        # Override max_batches in the descriptor if provided
-        if max_batches is not None:
-            self.descriptor.max_batches = max_batches
-        else:
-            self.descriptor.max_batches = None
+    @max_batches.setter
+    def max_batches(self, value: int | None) -> None:
+        """Set the maximum number of batches to process in both descriptor and selector."""
+        self._max_batches = value
+        self.descriptor.max_batches = value
 
-        self.update_sets(sets)
+    @property
+    def allow_existing(self) -> bool:
+        """Get whether existing tables are allowed in all components."""
+        return self._allow_existing
+
+    @allow_existing.setter
+    def allow_existing(self, value: bool) -> None:
+        """Set whether existing tables are allowed in all components."""
+        self._allow_existing = value
+        self.descriptor.allow_existing = value
+        self.vectorizer.allow_existing = value
+        self.selector.allow_existing = value
 
     def _check_sets_validity(self, sets: list[GoldSet], ratios_sum: float) -> None:
         if not (0 < ratios_sum <= 1.0):
-            raise ValueError("Sum of split ratios must be 1.0")
+            raise ValueError(
+                "Sum of split ratios must be greater than 0.0 and at most 1.0"
+            )
 
         set_names = [s.name for s in sets]
         if len(set_names) != len(set(set_names)):
             raise ValueError(f"Set names must be unique, got {set_names}")
 
-    def update_sets(self, sets: list[GoldSet]) -> None:
-        """Update the sets configuration for the splitter.
+    @property
+    def sets(self) -> list[GoldSet]:
+        """Get the current sets configuration for the splitter."""
+        return self._sets
+
+    @sets.setter
+    def sets(self, sets: list[GoldSet]) -> None:
+        """Set the sets configuration for the splitter.
 
         Args:
             sets: New list of GoldSet configurations defining the splits.
@@ -195,7 +213,7 @@ class GoldSplitter:
         The dataset is first described using the gold descriptor (extracts features), and then samples are selected
         for each set based on the specified ratios after vectorization.
 
-        This method is idempotent (e.g. failure proof), meaning that if it is called
+        This method is idempotent (i.e. failure proof), meaning that if it is called
         multiple times on the same dataset or table, it will not duplicate or recompute the splitting decisions
         already present in the PixelTable table.
 
@@ -226,7 +244,7 @@ class GoldSplitter:
         The dataset is first described using the gold descriptor (extracts features), and then samples are selected
         for each set based on the specified ratios after vectorization.
 
-        This method is idempotent (e.g. failure proof), meaning that if it is called
+        This method is idempotent (i.e. failure proof), meaning that if it is called
         multiple times on the same dataset or table, it will not duplicate or recompute the splitting decisions
         already present in the PixelTable table.
 
@@ -286,10 +304,10 @@ class GoldSplitter:
         )
         set_value_to_idx_rows(
             table=selected_table,
-            value=self._sets[-1].name,
             col_expr=selection_col,
             idx_expr=selected_table.idx_sample,
             indices=remaining_idx_list,
+            value=self._sets[-1].name,
         )
         split_table = selected_table
         if self.in_described_table:
