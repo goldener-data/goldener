@@ -605,6 +605,14 @@ class GoldVectorizer:
             ]
         )
 
+        # Get the maximum idx from the table for automatic idx generation when restarting
+        max_idx_in_table = [
+            row["max"]
+            for row in vectorized_table.select(
+                pxtf.max(vectorized_table.idx)  # type: ignore[call-arg]
+            ).collect()
+        ][0]
+
         dataloader = torch.utils.data.DataLoader(
             to_vectorize_dataset,
             batch_size=self.batch_size,
@@ -619,6 +627,7 @@ class GoldVectorizer:
 
             # add idx if it is not provided by the dataset
             if "idx" not in batch:
+                # Generate idx_sample values (not the final vector idx which is created in _unwrap_vectors_in_batch)
                 starts = 0 if not already_vectorized else max(already_vectorized) + 1
                 batch["idx"] = [
                     starts + idx for idx in range(len(batch[self.data_key]))
@@ -647,23 +656,19 @@ class GoldVectorizer:
                 batch.get(self.target_key, None),
             )
 
-            max_idx = [
-                row["max"]
-                for row in vectorized_table.select(
-                    pxtf.max(vectorized_table.idx)  # type: ignore[call-arg]
-                ).collect()
-            ][0]
-
             to_keep_keys = None
             if self.to_keep_schema is not None:
                 to_keep_keys = list(self.to_keep_schema.keys())
 
+            starts_for_unwrap = 0 if max_idx_in_table is None else max_idx_in_table + 1
             batch = self._unwrap_vectors_in_batch(
                 vectorized=vectorized,
                 batch=batch,
-                starts=max_idx + 1 if max_idx is not None else 0,
+                starts=starts_for_unwrap,
                 to_keep_keys=to_keep_keys,
             )
+            # Update max_idx_in_table after unwrapping (each sample can produce multiple vectors)
+            max_idx_in_table = starts_for_unwrap + len(vectorized.vectors) - 1
 
             # insert vectorized in the table
             to_insert_keys = [self.vectorized_key, "idx_sample"]

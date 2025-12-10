@@ -5,6 +5,7 @@ import torch
 import pixeltable as pxt
 from pixeltable import Error
 from pixeltable.catalog import Table
+import pixeltable.functions as pxtf
 from torch.utils.data import Dataset
 
 from goldener.extract import GoldFeatureExtractor
@@ -328,6 +329,14 @@ class GoldDescriptor:
             ]
         )
 
+        # Get the maximum idx from the table for automatic idx generation when restarting
+        max_idx_in_table = [
+            row["max"]
+            for row in description_table.select(
+                pxtf.max(description_table.idx)  # type: ignore[call-arg]
+            ).collect()
+        ][0]
+
         dataloader = torch.utils.data.DataLoader(
             to_describe_dataset,
             batch_size=self.batch_size,
@@ -342,10 +351,12 @@ class GoldDescriptor:
 
             # add idx if it is not provided by the dataset
             if "idx" not in batch:
-                starts = 0 if not already_described else max(already_described) + 1
+                starts = 0 if max_idx_in_table is None else max_idx_in_table + 1
                 batch["idx"] = [
                     starts + idx for idx in range(len(batch[self.data_key]))
                 ]
+                # Update max_idx_in_table for next batch
+                max_idx_in_table = starts + len(batch[self.data_key]) - 1
 
             # Keep only not yet described samples in the batch
             if not_empty:
