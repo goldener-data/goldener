@@ -28,6 +28,12 @@ from goldener.utils import check_x_and_y_shapes, filter_batch_from_indices
 
 
 class FilterLocation(Enum):
+    """Enum defining filter location strategies for filtering 2D tensor rows.
+    
+    START: Filter from the start of the tensor.
+    END: Filter from the end of the tensor.
+    RANDOM: Filter randomly from the tensor.
+    """
     START = "start"
     END = "end"
     RANDOM = "random"
@@ -202,6 +208,18 @@ class TensorVectorizer:
         transform_y: Callable[[torch.Tensor], torch.Tensor] | None = None,
         channel_pos: int = 1,
     ) -> None:
+        """Initialize the TensorVectorizer.
+        
+        Args:
+            keep: Optional filter to keep specific rows in the input.
+            remove: Optional filter to remove specific rows from the input.
+            random_filter: Optional random filter to apply after keep/remove filters.
+            transform_y: Optional transformation to apply to the target tensor.
+            channel_pos: Position of the channel dimension in the input tensor. Defaults to 1.
+            
+        Raises:
+            ValueError: If keep or remove filters are random, or if random_filter is not random.
+        """
         self.transform_y = transform_y
         self.channel_pos = channel_pos
 
@@ -382,6 +400,23 @@ class GoldVectorizer:
         drop_table: bool = False,
         max_batches: int | None = None,
     ) -> None:
+        """Initialize the GoldVectorizer.
+        
+        Args:
+            table_path: Path to the PixelTable table for storing vectors.
+            vectorizer: TensorVectorizer instance for transforming tensors.
+            collate_fn: Optional collate function for preparing batches.
+            data_key: Key for data in the batch dictionary. Defaults to "features".
+            target_key: Key for target in the batch dictionary. Defaults to "target".
+            vectorized_key: Column name for storing vectors. Defaults to "vectorized".
+            to_keep_schema: Optional schema for additional columns to preserve.
+            batch_size: Batch size for processing. Defaults to 1 if not distributed.
+            num_workers: Number of workers. Defaults to 0 if not distributed.
+            allow_existing: Whether to allow using an existing table. Defaults to True.
+            distribute: Whether to use distributed processing. Defaults to False.
+            drop_table: Whether to drop the table after dataset creation. Defaults to False.
+            max_batches: Optional maximum number of batches to process.
+        """
         self.table_path = table_path
         self.vectorizer = vectorizer
         self.collate_fn = collate_fn

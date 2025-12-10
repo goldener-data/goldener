@@ -16,6 +16,11 @@ class GoldReducer:
     """
 
     def __init__(self, reducer: UMAP | PCA | TSNE | GaussianRandomProjection):
+        """Initialize the GoldReducer.
+        
+        Args:
+            reducer: An instance of UMAP, PCA, TSNE, or GaussianRandomProjection for dimensionality reduction.
+        """
         self.reducer = reducer
 
     def fit(self, x: torch.Tensor) -> None:

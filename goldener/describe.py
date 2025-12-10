@@ -79,6 +79,24 @@ class GoldDescriptor:
         device: torch.device | None = None,
         max_batches: int | None = None,
     ):
+        """Initialize the GoldDescriptor.
+        
+        Args:
+            table_path: Path to the PixelTable table where descriptions will be saved.
+            extractor: FeatureExtractor instance for extracting features.
+            transform: Optional transformation to apply before feature extraction.
+            collate_fn: Optional function to collate dataset samples into batches.
+            data_key: Key in the batch dictionary containing the data. Defaults to "data".
+            description_key: Key for storing extracted features. Defaults to "features".
+            to_keep_schema: Optional schema for additional columns to preserve.
+            batch_size: Batch size for processing. Defaults to 1 if not distributed.
+            num_workers: Number of worker threads. Defaults to 0 if not distributed.
+            allow_existing: Whether to allow using an existing table. Defaults to True.
+            distribute: Whether to use distributed processing. Defaults to False.
+            drop_table: Whether to drop the table after dataset creation. Defaults to False.
+            device: Torch device for feature extraction. Auto-detected if None.
+            max_batches: Optional maximum number of batches to process.
+        """
         self.table_path = table_path
         self.extractor = extractor
         self.transform = transform

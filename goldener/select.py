@@ -89,6 +89,24 @@ class GoldSelector:
         drop_table: bool = False,
         max_batches: int | None = None,
     ) -> None:
+        """Initialize the GoldSelector.
+        
+        Args:
+            table_path: Path to store the PixelTable table.
+            reducer: Optional dimensionality reducer to apply before selection.
+            chunk: Optional chunk size for processing data in chunks.
+            collate_fn: Optional collate function for the DataLoader.
+            vectorized_key: Key pointing to the vector for selection. Defaults to "vectorized".
+            selection_key: Key for storing selection values. Defaults to "selected".
+            class_key: Optional key for class stratification.
+            to_keep_schema: Optional schema for additional columns to preserve.
+            batch_size: Batch size for processing. Defaults to 1 if not distributed.
+            num_workers: Number of workers. Defaults to 0 if not distributed.
+            allow_existing: Whether to allow using an existing table. Defaults to True.
+            distribute: Whether to use distributed selection. Defaults to False.
+            drop_table: Whether to drop the table after dataset creation. Defaults to False.
+            max_batches: Optional maximum number of batches to process.
+        """
         self.table_path = table_path
         self.reducer = reducer
         self.chunk = chunk

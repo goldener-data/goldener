@@ -78,6 +78,13 @@ class GoldFeatureFusion:
         layer_fusion: FeatureFusionStrategy = FeatureFusionStrategy.CONCAT,
         group_fusion: FeatureFusionStrategy = FeatureFusionStrategy.CONCAT,
     ) -> None:
+        """Initialize the GoldFeatureFusion.
+        
+        Args:
+            layer_fusion: Strategy to fuse features from multiple layers within the same group.
+                Defaults to CONCAT.
+            group_fusion: Strategy to fuse features from different groups. Defaults to CONCAT.
+        """
         self.layer_fusion = layer_fusion
         self.group_fusion = group_fusion
 
@@ -188,6 +195,11 @@ class TorchGoldFeatureExtractor(GoldFeatureExtractor):
         self,
         config: TorchGoldFeatureExtractorConfig,
     ) -> None:
+        """Initialize the TorchGoldFeatureExtractor.
+        
+        Args:
+            config: Configuration object containing the model, layers, and fusion strategies.
+        """
         self._model = config.model
         self.fusion = GoldFeatureFusion(
             layer_fusion=config.layer_fusion,

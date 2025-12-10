@@ -34,6 +34,11 @@ class GoldSet:
     ratio: float
 
     def __post_init__(self) -> None:
+        """Validate the GoldSet configuration after initialization.
+        
+        Raises:
+            ValueError: If ratio is not between 0 and 1 (exclusive).
+        """
         if not (0 < self.ratio < 1):
             raise ValueError("Ratio must be between 0 and 1.")
 
@@ -74,6 +79,18 @@ class GoldSplitter:
         drop_table: bool = False,
         max_batches: int | None = None,
     ) -> None:
+        """Initialize the GoldSplitter.
+        
+        Args:
+            sets: List of GoldSet configurations defining the splits.
+            descriptor: GoldDescriptor for extracting features from the dataset.
+            vectorizer: GoldVectorizer for vectorizing described features.
+            selector: GoldSelector for selecting samples for each set.
+            in_described_table: Whether to return splits in the described table. Defaults to False.
+            allow_existing: Whether to allow existing tables. Defaults to True.
+            drop_table: Whether to drop intermediate tables. Defaults to False.
+            max_batches: Optional maximum number of batches to process.
+        """
         self.sets = sets
         self.descriptor = descriptor
         self.vectorizer = vectorizer
