@@ -257,16 +257,14 @@ class GoldSelector:
         if selection_table.count() > 0:
             to_select_indices = set(
                 [
-                    row["idx_sample"]
-                    for row in select_from.select(select_from.idx_sample)
-                    .distinct()
-                    .collect()
+                    row["idx"]
+                    for row in select_from.select(select_from.idx).distinct().collect()
                 ]
             )
             already_in_selection = set(
                 [
-                    row["idx_sample"]
-                    for row in selection_table.select(selection_table.idx_sample)
+                    row["idx"]
+                    for row in selection_table.select(selection_table.idx)
                     .distinct()
                     .collect()
                 ]
