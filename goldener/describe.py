@@ -5,7 +5,7 @@ import torch
 import pixeltable as pxt
 from pixeltable import Error
 from pixeltable.catalog import Table
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader
 
 from goldener.extract import GoldFeatureExtractor
 from goldener.pxt_utils import (
@@ -149,7 +149,7 @@ class GoldDescriptor:
         and stores them in a PixelTable table specified by `table_path`. The description of each data
         will be stored in the column specified by `description_key`.
 
-        This method is idempotent (e.g. failure proof), meaning that if it is called
+        This method is idempotent (i.e. failure proof), meaning that if it is called
         multiple times on the same dataset or table, it will not duplicate or recompute the descriptions
         already present in the PixelTable table.
 
@@ -184,17 +184,27 @@ class GoldDescriptor:
             description_table = self._description_table_from_table(
                 to_describe, old_description_table
             )
-            description_col = get_expr_from_column_name(
-                description_table, self.description_key
-            )
 
-            if description_table.count() > 0:
-                with_no_description = description_table.where(description_col == None)  # noqa: E711
-                if with_no_description.count() == 0:
+            if description_table.count() > 0 and "idx" in to_describe.columns():
+                to_describe_indices = set(
+                    [
+                        row["idx"]
+                        for row in to_describe.select(to_describe.idx).collect()
+                    ]
+                )
+                already_described = set(
+                    [
+                        row["idx"]
+                        for row in description_table.select(
+                            description_table.idx
+                        ).collect()
+                    ]
+                )
+                if not to_describe_indices.difference(already_described):
                     return description_table
-                to_describe_dataset = GoldPxtTorchDataset(with_no_description)
-            else:
-                to_describe_dataset = GoldPxtTorchDataset(to_describe)
+
+            to_describe_dataset = GoldPxtTorchDataset(to_describe)
+
         else:
             to_describe_dataset = to_describe
             description_table = self._description_table_from_dataset(
@@ -328,7 +338,7 @@ class GoldDescriptor:
             ]
         )
 
-        dataloader = torch.utils.data.DataLoader(
+        dataloader = DataLoader(
             to_describe_dataset,
             batch_size=self.batch_size,
             num_workers=self.num_workers,

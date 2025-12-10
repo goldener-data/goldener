@@ -13,12 +13,10 @@ from goldener.pxt_utils import (
     get_expr_from_column_name,
     create_pxt_dirs_for_path,
     set_value_to_idx_rows,
-    update_column_if_too_many,
     pxt_torch_dataset_collate_fn,
     get_distinct_value_and_count_in_column,
     get_column_distinct_ratios,
     get_array_column_shapes_from_table,
-    is_view_of,
     get_sample_row_from_idx,
     get_valid_table,
     include_batch_into_table,
@@ -167,6 +165,7 @@ class TestCreatePxtDirsForPath:
 
 class TestSetValueToIdxRows:
     def test_set_value_to_multiple_rows(self):
+        pxt.drop_dir("test_set_value", force=True)
         table_path = "test_set_value.test_table"
 
         pxt.create_dir("test_set_value", if_exists="ignore")
@@ -180,7 +179,13 @@ class TestSetValueToIdxRows:
         table.add_column(label=pxt.String)
         table.update({"label": "A"})
 
-        set_value_to_idx_rows(table, table.label, {0, 2}, "B")
+        set_value_to_idx_rows(
+            table=table,
+            col_expr=table.label,
+            idx_expr=table.idx,
+            indices={0, 2},
+            value="B",
+        )
 
         result_b = table.where(table.label == "B").select(table.idx).collect()
         idx_values = sorted([row["idx"] for row in result_b])
@@ -191,52 +196,6 @@ class TestSetValueToIdxRows:
         assert result_a[0]["idx"] == 1
 
         pxt.drop_dir("test_set_value", force=True)
-
-
-class TestUpdateColumnIfTooMany:
-    def test_no_update_when_under_max(self):
-        table_path = "test_update_column.test_table"
-
-        pxt.create_dir("test_update_column", if_exists="ignore")
-        samples = [
-            {"idx": 0, "category": "A"},
-            {"idx": 1, "category": "A"},
-            {"idx": 2, "category": "B"},
-        ]
-        table = pxt.create_table(table_path, source=samples)
-
-        update_column_if_too_many(table, table.category, "A", 3, "C")
-
-        result = table.where(table.category == "A").count()
-        assert result == 2
-
-        result = table.where(table.category == "C").count()
-        assert result == 0
-
-        pxt.drop_dir("test_update_column", force=True)
-
-    def test_update_when_over_max(self):
-        table_path = "test_update_over.test_table"
-
-        pxt.create_dir("test_update_over", if_exists="ignore")
-        samples = [
-            {"idx": 0, "category": "A"},
-            {"idx": 1, "category": "A"},
-            {"idx": 2, "category": "A"},
-            {"idx": 3, "category": "A"},
-            {"idx": 4, "category": "B"},
-        ]
-        table = pxt.create_table(table_path, source=samples)
-
-        update_column_if_too_many(table, table.category, "A", 2, "C")
-
-        # Verify changes: should have 2 A's and 2 C's
-        count_a = table.where(table.category == "A").count()
-        count_c = table.where(table.category == "C").count()
-        assert count_a == 2
-        assert count_c == 2
-
-        pxt.drop_dir("test_update_over", force=True)
 
 
 class TestPxtTorchDatasetCollateFn:
@@ -307,17 +266,6 @@ class TestGetColumnDistinctRatios:
         assert result["B"] == 0.5
 
         pxt.drop_dir("test_ratios", force=True)
-
-
-class TestIsViewOf:
-    def test_is_view_of(self, test_table):
-        pxt.create_dir("is_view_of", if_exists="ignore")
-        view = pxt.create_view("is_view_of.test_view", test_table, if_exists="ignore")
-
-        assert is_view_of(view, test_table) is True
-        assert is_view_of(test_table, test_table) is False
-
-        pxt.drop_dir("is_view_of", force=True)
 
 
 class TestGetSampleRowFromIdx:

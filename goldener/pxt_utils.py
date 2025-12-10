@@ -104,42 +104,20 @@ def create_pxt_table_from_sample(
 def set_value_to_idx_rows(
     table: Table,
     col_expr: Expr,
-    idx_list: set[int],
-    value: int | float | str,
+    idx_expr: Expr,
+    indices: set[int],
+    value: int | float | str | None,
 ) -> None:
     """Set a column to a specific value for rows with given indices in a PixelTable table.
 
     Args:
         table: The PixelTable table. Must contain an 'idx' column.
         col_expr: The column expression to be set.
-        idx_list: List of row indices to update.
+        idx_expr: The column expression for the index.
+        indices: List of row indices to update.
         value: The value to set the column to.
     """
-    table.where(table.idx.isin(idx_list)).update({col_expr.display_str(): value})
-
-
-def update_column_if_too_many(
-    table: Table,
-    col_expr: Expr,
-    value: int | float | str,
-    max_count: int,
-    new_value: Any,
-) -> None:
-    """Update some values of a column if the count of that value exceeds a maximum count.
-
-    Args:
-        table: The PixelTable table. Must contain an 'idx' column.
-        col_expr: The column expression to be checked and updated.
-        value: The value to check the count of.
-        max_count: The maximum allowed count for the specified value.
-        new_value: The new value to set for excess rows.
-    """
-    value_df = table.where(col_expr == value)
-    value_count = value_df.select().count()
-    if value_count > max_count:
-        to_move = value_count - max_count
-        indices = [row["idx"] for row in value_df.sample(to_move).collect()]
-        set_value_to_idx_rows(table, col_expr, set(indices), new_value)
+    table.where(idx_expr.isin(indices)).update({col_expr.display_str(): value})
 
 
 def pxt_torch_dataset_collate_fn(batch: list[dict[str, Any]]) -> dict[str, Any]:
@@ -306,23 +284,6 @@ def get_column_distinct_ratios(table: Table, class_expr: Expr) -> dict[str, floa
         class_label: class_ratio
         for class_label, class_ratio in zip(value_and_count.keys(), ratios)
     }
-
-
-def is_view_of(view: Table, view_of: Table) -> bool:
-    """Check if a PixelTable view is based on a specific table.
-
-    Args:
-        view: The PixelTable view.
-        view_of: The PixelTable table the view is expected to be assigned to.
-
-    Returns:
-        True if the view is based on the specified table, False otherwise.
-    """
-    view_metadata = view.get_metadata()
-    view_of_metadata = view_of.get_metadata()
-    return (
-        view_metadata["base"] == view_of_metadata["path"] and view_metadata["is_view"]
-    )
 
 
 def get_sample_row_from_idx(

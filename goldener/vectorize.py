@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from functools import partial
 
 from pixeltable import Error
-from torch.utils.data import RandomSampler, Dataset
+from torch.utils.data import RandomSampler, Dataset, DataLoader
 from typing_extensions import assert_never
 from typing import Callable, Any
 
@@ -421,7 +421,7 @@ class GoldVectorizer:
         in the `table_path` attribute using the `TensorVectorizer` instance. The resulting vectors
         are stored in the PixelTable table under the column specified by `vectorized_key`.
 
-        This method is idempotent (e.g. failure proof), meaning that if it is called
+        This method is idempotent (i.e. failure proof), meaning that if it is called
         multiple times on the same dataset or table, it will not duplicate or recompute the vectorization
         already present in the PixelTable table.
 
@@ -458,20 +458,26 @@ class GoldVectorizer:
                 to_vectorize=to_vectorize,
                 old_vectorized_table=old_vectorized_table,
             )
-            vectorized_col = get_expr_from_column_name(
-                vectorized_table, self.vectorized_key
-            )
 
-            if vectorized_table.count() > 0:
-                with_no_vectorized = vectorized_table.where(vectorized_col == None)  # noqa: E711
-                if with_no_vectorized.count() == 0:
+            if vectorized_table.count() > 0 and "idx" in to_vectorize.columns():
+                to_vectorize_indices = set(
+                    [
+                        row["idx"]
+                        for row in to_vectorize.select(to_vectorize.idx).collect()
+                    ]
+                )
+                already_vectorized = set(
+                    [
+                        row["idx_sample"]
+                        for row in vectorized_table.select(vectorized_table.idx_sample)
+                        .distinct()
+                        .collect()
+                    ]
+                )
+                if not to_vectorize_indices.difference(already_vectorized):
                     return vectorized_table
 
-                to_vectorize_dataset = GoldPxtTorchDataset(
-                    vectorized_table.where(vectorized_col == None)  # noqa: E711
-                )
-            else:
-                to_vectorize_dataset = GoldPxtTorchDataset(to_vectorize)
+            to_vectorize_dataset = GoldPxtTorchDataset(to_vectorize)
         else:
             to_vectorize_dataset = to_vectorize
             vectorized_table = self._vectorized_table_from_dataset(
@@ -605,7 +611,7 @@ class GoldVectorizer:
             ]
         )
 
-        dataloader = torch.utils.data.DataLoader(
+        dataloader = DataLoader(
             to_vectorize_dataset,
             batch_size=self.batch_size,
             num_workers=self.num_workers,

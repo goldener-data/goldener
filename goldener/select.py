@@ -10,7 +10,7 @@ import jax.numpy as jnp
 from coreax import SquaredExponentialKernel, Data
 from coreax.kernels import median_heuristic
 from coreax.solvers import KernelHerding
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader
 
 from goldener.pxt_utils import (
     set_value_to_idx_rows,
@@ -18,6 +18,7 @@ from goldener.pxt_utils import (
     get_expr_from_column_name,
     get_valid_table,
     include_batch_into_table,
+    get_column_distinct_ratios,
 )
 from goldener.reduce import GoldReducer
 from goldener.torch_utils import get_dataset_sample_dict
@@ -27,7 +28,7 @@ from goldener.utils import filter_batch_from_indices
 class GoldSelector:
     """Select a subset of data points from a dataset using coresubset selection.
 
-    The gold runs selection of datapoints from a dataset. The selection is done from a
+    The GoldSelector runs selection of datapoints from a dataset. The selection is done from a
     coresubset selection algorithm applied on already vectorized representation of the data points.
     If the dataset is too big to fit into memory or the coresubset selection algorithm is too
     computationally expensive, the coresubset selection can be performed in chunks.
@@ -69,7 +70,6 @@ class GoldSelector:
     _MINIMAL_SCHEMA: dict[str, type] = {
         "idx": pxt.Int,
         "idx_sample": pxt.Int,
-        "chunked": pxt.Bool,
     }
 
     def __init__(
@@ -80,6 +80,7 @@ class GoldSelector:
         collate_fn: Callable | None = None,
         vectorized_key: str = "vectorized",
         selection_key: str = "selected",
+        class_key: str | None = None,
         to_keep_schema: dict[str, type] | None = None,
         batch_size: int | None = None,
         num_workers: int | None = None,
@@ -94,6 +95,7 @@ class GoldSelector:
         self.collate_fn = collate_fn
         self.vectorized_key = vectorized_key
         self.selection_key = selection_key
+        self.class_key = class_key
         self.to_keep_schema = to_keep_schema
         self.allow_existing = allow_existing
         self.distribute = distribute
@@ -151,7 +153,7 @@ class GoldSelector:
         return selected_dataset
 
     def select_in_table(
-        self, select_from: Dataset | Table, select_count: int, value: str
+        self, select_from: Dataset | Table, select_count: int, value: str | None
     ) -> Table:
         """Select a subset of data points and store their `sample_idx` in a table.
 
@@ -160,7 +162,7 @@ class GoldSelector:
         to reduce memory consumption. As well, if a reducer is provided,
         the vectors are reduced in dimension before applying the coresubset selection.
 
-        This method is idempotent (e.g. failure proof), meaning that if it is called
+        This method is idempotent (i.e. failure proof), meaning that if it is called
         multiple times on the same dataset or table, it will restart the selection process
         based on the vectors already present in the PixelTable table.
 
@@ -203,7 +205,14 @@ class GoldSelector:
 
         assert isinstance(select_from, Table)
 
-        if len(self._get_selected_indices(selection_table, value)) == select_count:
+        if (
+            len(
+                self.get_selected_sample_indices(
+                    selection_table, value, self.selection_key
+                )
+            )
+            == select_count
+        ):
             return selection_table
         elif self.distribute:
             self._distributed_select(select_from, selection_table, select_count, value)
@@ -219,6 +228,9 @@ class GoldSelector:
 
         if self.to_keep_schema is not None:
             minimal_schema |= self.to_keep_schema
+
+        if self.class_key is not None:
+            minimal_schema[self.class_key] = pxt.String
 
         selection_table = get_valid_table(
             table=old_selection_table
@@ -238,8 +250,30 @@ class GoldSelector:
                 if_exists="error", **{self.selection_key: pxt.String}
             )
 
-        if selection_table.count() != select_from.count():
-            self._add_rows_to_selection_table_from_table(select_from, selection_table)
+        if "chunked" not in selection_table.columns():
+            selection_table.add_column(if_exists="error", **{"chunked": pxt.Bool})
+            selection_table.update({"chunked": False})
+
+        if selection_table.count() > 0:
+            to_select_indices = set(
+                [
+                    row["idx"]
+                    for row in select_from.select(select_from.idx).distinct().collect()
+                ]
+            )
+            already_in_selection = set(
+                [
+                    row["idx"]
+                    for row in selection_table.select(selection_table.idx)
+                    .distinct()
+                    .collect()
+                ]
+            )
+            still_to_select = to_select_indices.difference(already_in_selection)
+            if not still_to_select:
+                return selection_table
+
+        self._add_rows_to_selection_table_from_table(select_from, selection_table)
 
         return selection_table
 
@@ -274,6 +308,10 @@ class GoldSelector:
 
             if self.selection_key not in row:
                 row[self.selection_key] = None
+
+            if "chunked" not in row:
+                row["chunked"] = False
+
             selection_table.insert([row])
 
     def _selection_table_from_dataset(
@@ -282,6 +320,9 @@ class GoldSelector:
         minimal_schema = self._MINIMAL_SCHEMA
         if self.to_keep_schema is not None:
             minimal_schema |= self.to_keep_schema
+
+        if self.class_key is not None:
+            minimal_schema[self.class_key] = pxt.String
 
         selection_table = get_valid_table(
             table=old_selection_table
@@ -311,6 +352,10 @@ class GoldSelector:
                 if_exists="error", **{self.selection_key: pxt.String}
             )
 
+        if "chunked" not in selection_table.columns():
+            selection_table.add_column(if_exists="error", **{"chunked": pxt.Bool})
+            selection_table.update({"chunked": False})
+
         self._add_rows_to_selection_table_from_dataset(select_from, selection_table)
 
         return selection_table
@@ -318,7 +363,7 @@ class GoldSelector:
     def _add_rows_to_selection_table_from_dataset(
         self, select_from: Dataset, selection_table: Table
     ) -> None:
-        dataloader = torch.utils.data.DataLoader(
+        dataloader = DataLoader(
             select_from,
             batch_size=self.batch_size if self.batch_size is not None else 1,
             num_workers=self.num_workers if self.num_workers is not None else 1,
@@ -352,6 +397,11 @@ class GoldSelector:
                     starts + idx for idx in range(len(batch[self.vectorized_key]))
                 ]
 
+            if "chunked" not in batch:
+                batch["chunked"] = [
+                    False for _ in range(len(batch[self.vectorized_key]))
+                ]
+
             # Keep only not yet included samples in the batch
             if not_empty:
                 batch = filter_batch_from_indices(
@@ -376,6 +426,8 @@ class GoldSelector:
             to_insert_keys = [self.vectorized_key, "idx_sample", self.selection_key]
             if self.to_keep_schema is not None:
                 to_insert_keys.extend(list(self.to_keep_schema.keys()))
+            if self.class_key is not None:
+                to_insert_keys.append(self.class_key)
 
             include_batch_into_table(
                 selection_table,
@@ -384,13 +436,40 @@ class GoldSelector:
                 "idx",
             )
 
-    def _get_selected_indices(self, table: Table, value: str) -> set[int]:
-        selection_col = get_expr_from_column_name(table, self.selection_key)
+    @staticmethod
+    def get_selected_sample_indices(
+        table: Table,
+        value: str | None,
+        selection_key: str,
+        class_key: str | None = None,
+        class_value: str | None = None,
+        idx_key: str = "idx_sample",
+    ) -> set[int]:
+        """Get the indices of samples selected with a given value.
+
+        Args:
+            table: PixelTable table to query.
+            value: Value in the selection_key column to filter selected samples.
+            selection_key: Column name used to store selection values.
+            class_key: Optional column name used to filter samples by class.
+            class_value: Optional class value to filter samples by class.
+            idx_key: Column name used to get sample indices.
+        """
+        idx_col = get_expr_from_column_name(table, idx_key)
+        selection_col = get_expr_from_column_name(table, selection_key)
+        if class_value is not None and class_key is not None:
+            class_col = get_expr_from_column_name(table, class_key)
+            query = (selection_col == value) & (class_col == class_value)  # noqa: E712
+        else:
+            if class_key is not None or class_value is not None:
+                raise ValueError("class_key and class_value must be set together.")
+            query = selection_col == value  # noqa: E712
+
         return set(
             [
-                row["idx_sample"]
-                for row in table.where(selection_col == value)  # noqa: E712
-                .select(table.idx_sample)
+                row[idx_key]
+                for row in table.where(query)  # noqa: E712
+                .select(idx_col)
                 .distinct()
                 .collect()
             ]
@@ -401,16 +480,99 @@ class GoldSelector:
         select_from: Table,
         selection_table: Table,
         select_count: int,
-        value: str,
+        value: str | None,
+    ) -> None:
+        if self.class_key is not None:
+            class_col = get_expr_from_column_name(selection_table, self.class_key)
+            class_ratios = get_column_distinct_ratios(selection_table, class_col)
+
+            for class_idx, (class_value, class_ratio) in enumerate(
+                class_ratios.items()
+            ):
+                already_selected = len(
+                    self.get_selected_sample_indices(
+                        table=selection_table,
+                        value=value,
+                        selection_key=self.selection_key,
+                        class_key=self.class_key,
+                        class_value=class_value,
+                    )
+                )
+                if class_idx < len(class_ratios) - 1:
+                    class_count = int(select_count * class_ratio)
+                else:
+                    # The last class takes the missing samples count to avoid rounding issues
+                    other_classes = len(
+                        self.get_selected_sample_indices(
+                            table=selection_table,
+                            value=value,
+                            selection_key=self.selection_key,
+                        )
+                    )
+                    class_count = select_count - other_classes
+
+                if class_count == 0:
+                    raise ValueError(
+                        f"Class '{class_value}' has ratio {class_ratio} which results in zero samples "
+                        f"for the requested select_count of {select_count}. "
+                    )
+
+                class_count = class_count - already_selected
+                if class_count == 0:
+                    continue
+                elif class_count < 0:
+                    raise ValueError(
+                        "The size of the selection table has decreased since the 1st selection computation"
+                    )
+
+                self._class_select(
+                    select_from,
+                    selection_table,
+                    class_count,
+                    value,
+                    class_value=class_value,
+                )
+
+        else:
+            self._class_select(
+                select_from,
+                selection_table,
+                select_count,
+                value,
+            )
+
+    def _class_select(
+        self,
+        select_from: Table,
+        selection_table: Table,
+        select_count: int,
+        value: str | None,
+        class_value: str | None = None,
     ) -> None:
         selection_col = get_expr_from_column_name(selection_table, self.selection_key)
         vectorized_col = get_expr_from_column_name(select_from, self.vectorized_key)
 
-        selection_count = len(self._get_selected_indices(selection_table, value))
+        selection_count = len(
+            self.get_selected_sample_indices(
+                table=selection_table,
+                value=value,
+                selection_key=self.selection_key,
+                class_key=self.class_key,
+                class_value=class_value,
+            )
+        )
+
+        if class_value is not None:
+            assert self.class_key is not None
+            class_col = get_expr_from_column_name(selection_table, self.class_key)
+            available_query = (selection_col == None) & (class_col == class_value)  # noqa: E712 E711
+        else:
+            available_query = selection_col == None  # noqa: E711
+
         available_for_selection = len(
             [
                 row["idx_sample"]
-                for row in selection_table.where(selection_col == None)  # noqa: E711
+                for row in selection_table.where(available_query)  # noqa: E711
                 .select(selection_table.idx_sample)
                 .distinct()
                 .collect()
@@ -428,7 +590,7 @@ class GoldSelector:
         # To achieve select_count of unique data points, we loop until we have enough unique data points selected.
         while selection_count < select_count:
             # select only rows still not selected
-            to_chunk_from = selection_table.where(selection_col == None)  # noqa: E711
+            to_chunk_from = selection_table.where(available_query)
             to_chunk_from.update(
                 {"chunked": False}
             )  # unchunk all rows not yet selected
@@ -455,7 +617,7 @@ class GoldSelector:
                     row["idx"]
                     for row in selection_table.where(
                         (selection_table.chunked == False)  # noqa: E712
-                        & (selection_col == None)  # noqa: E711
+                        & available_query
                     )
                     .select(selection_table.idx)
                     .collect()
@@ -481,10 +643,11 @@ class GoldSelector:
 
                 # selected indices are marked as already chunked
                 set_value_to_idx_rows(
-                    selection_table,
-                    selection_table.chunked,
-                    set(indices.tolist()),
-                    True,
+                    table=selection_table,
+                    col_expr=selection_table.chunked,
+                    idx_expr=selection_table.idx_sample,
+                    indices=set(indices.tolist()),
+                    value=True,
                 )
 
                 # make coresubset selection for the chunk
@@ -497,14 +660,21 @@ class GoldSelector:
 
                 # update table with selected indices
                 set_value_to_idx_rows(
-                    selection_table,
-                    selection_col,
-                    coresubset_indices,
-                    value,
+                    table=selection_table,
+                    col_expr=selection_col,
+                    idx_expr=selection_table.idx,
+                    indices=coresubset_indices,
+                    value=value,
                 )
 
                 # the sample might have been selected multiple times
-                selected_indices = self._get_selected_indices(selection_table, value)
+                selected_indices = self.get_selected_sample_indices(
+                    table=selection_table,
+                    value=value,
+                    selection_key=self.selection_key,
+                    class_key=self.class_key,
+                    class_value=class_value,
+                )
                 selection_table.where(
                     selection_table.idx_sample.isin(selected_indices)
                 ).update({self.selection_key: value})
@@ -515,7 +685,7 @@ class GoldSelector:
         select_from: Table,
         selection_table: Table,
         select_count: int,
-        value: str,
+        value: str | None,
     ) -> None:
         raise NotImplementedError("Distributed selection is not implemented yet.")
 
