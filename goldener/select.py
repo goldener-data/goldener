@@ -254,7 +254,7 @@ class GoldSelector:
             selection_table.add_column(if_exists="error", **{"chunked": pxt.Bool})
             selection_table.update({"chunked": False})
 
-        if "idx" in select_from.columns() and selection_table.count() > 0:
+        if selection_table.count() > 0:
             to_select_indices = set(
                 [
                     row["idx_sample"]
