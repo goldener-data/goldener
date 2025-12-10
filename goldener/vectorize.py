@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from functools import partial
 
 from pixeltable import Error
-from torch.utils.data import RandomSampler, Dataset
+from torch.utils.data import RandomSampler, Dataset, DataLoader
 from typing_extensions import assert_never
 from typing import Callable, Any
 
@@ -602,7 +602,7 @@ class GoldVectorizer:
             ]
         )
 
-        dataloader = torch.utils.data.DataLoader(
+        dataloader = DataLoader(
             to_vectorize_dataset,
             batch_size=self.batch_size,
             num_workers=self.num_workers,

@@ -1,9 +1,12 @@
+from collections import defaultdict
 from dataclasses import dataclass
 from logging import getLogger
+from typing import Callable
 
 import pixeltable as pxt
+import torch
 from pixeltable.catalog import Table
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader
 
 from goldener.describe import GoldDescriptor
 from goldener.pxt_utils import (
@@ -124,9 +127,12 @@ class GoldSplitter:
 
     @staticmethod
     def get_split_indices(
-        split_table: Table,
+        split_data: Table | Dataset,
         selection_key: str,
         idx_key: str = "idx",
+        batch_size: int = 1024,
+        num_workers: int = 0,
+        collate_fn: Callable | None = None,
     ) -> dict[str, set[int]]:
         """Get the indices of samples for each set from a split table.
 
@@ -134,23 +140,49 @@ class GoldSplitter:
             split_table: PixelTable Table containing the split information.
             selection_key: Column name in the table indicating the set assignment.
             idx_key: Column name in the table indicating the sample indices.
+            batch_size: Batch size to use when processing the input as dataset.
+            num_workers: Number of workers to use when processing the input as dataset.
+            collate_fn: Collate function to use when processing the input as dataset. It should
+                return a dictionary with at least the keys specified by `idx_key` and `selection_key`.
 
         Returns:
             A dictionary mapping each set name to a set of sample indices.
         """
-        selection_col = get_expr_from_column_name(split_table, selection_key)
 
-        set_indices: dict[str, set[int]] = {}
-        for row in split_table.select(selection_col).distinct().collect():
-            set_name = row[selection_key]
-            if set_name is None:
-                continue
+        set_indices: dict[str, set[int]] = defaultdict(set)
 
-            set_indices[set_name] = GoldSelector.get_selected_sample_indices(
-                split_table,
-                selection_key=selection_key,
-                value=set_name,
+        if isinstance(split_data, Dataset):
+            dataloader = DataLoader(
+                split_data,
+                batch_size=batch_size,
+                num_workers=num_workers,
+                collate_fn=collate_fn,
             )
+
+            for batch in dataloader:
+                batch_indices = batch[idx_key]
+                batch_selections = batch[selection_key]
+                for idx_value, set_name in zip(batch_indices, batch_selections):
+                    if set_name is None:
+                        continue
+                    set_indices[set_name].add(
+                        int(idx_value.item())
+                        if isinstance(idx_value, torch.Tensor)
+                        else idx_value
+                    )
+        else:
+            selection_col = get_expr_from_column_name(split_data, selection_key)
+            for row in split_data.select(selection_col).distinct().collect():
+                set_name = row[selection_key]
+                if set_name is None:
+                    continue
+
+                set_indices[set_name] = GoldSelector.get_selected_sample_indices(
+                    split_data,
+                    selection_key=selection_key,
+                    value=set_name,
+                    idx_key=idx_key,
+                )
 
         return set_indices
 
@@ -243,7 +275,7 @@ class GoldSplitter:
             selection_key=self.selector.selection_key,
             value=None,
         )
-        if len(remaining_idx_list) == 0 and already_selected == 0:
+        if len(remaining_idx_list) == 0 and len(already_selected) == 0:
             raise ValueError(
                 f"Set '{self._sets[-1].name}' has ratio {self._sets[-1].ratio} which results "
                 f"in zero samples for dataset of size {len(remaining_idx_list)}."
@@ -285,14 +317,17 @@ class GoldSplitter:
             split_table = described_table
 
         if self.drop_table:
-            to_drop = [self.vectorizer.table_path]
+            to_drop = []
+            if self.vectorizer.table_path != self.selector.table_path:
+                to_drop.append(self.vectorizer.table_path)
+
             if self.in_described_table:
                 to_drop.append(self.selector.table_path)
             else:
                 to_drop.append(self.descriptor.table_path)
 
             for table_name in to_drop:
-                pxt.drop_table(table_name)
+                pxt.drop_table(table_name, if_not_exists="ignore")
 
         return split_table
 
@@ -303,4 +338,4 @@ class GoldSplitter:
                 self.vectorizer.table_path,
                 self.selector.table_path,
             ):
-                pxt.drop_table(table_name)
+                pxt.drop_table(table_name, if_not_exists="ignore")

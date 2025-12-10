@@ -421,3 +421,61 @@ class TestGoldSplitter:
         assert len(splitted["val"]) == 5
 
         pxt.drop_dir("unit_test", if_not_exists="ignore", force=True)
+
+    def test_get_split_indices_from_table(self):
+        pxt.drop_dir("unit_test", force=True)
+
+        src_path = "unit_test.test_split_in_table"
+        pxt.create_dir("unit_test", if_exists="ignore")
+        split_table = pxt.create_table(
+            src_path,
+            source=[
+                {
+                    "data": torch.rand(3, 8, 8).numpy().astype(np.float32),
+                    "idx": idx,
+                    "label": "dummy",
+                    "set": "train" if idx < 5 else "val",
+                }
+                for idx in range(10)
+            ],
+            if_exists="replace_force",
+        )
+
+        splitted = GoldSplitter.get_split_indices(
+            split_table,
+            selection_key="set",
+            idx_key="idx",
+        )
+
+        for set_name, indices in splitted.items():
+            assert len(indices) == 5
+            assert set_name in ["train", "val"]
+
+        pxt.drop_dir("unit_test", if_not_exists="ignore", force=True)
+
+    def test_get_split_indices_from_dataset(self):
+        pxt.drop_dir("unit_test", force=True)
+
+        split_dataset = DummyDataset(
+            [
+                {
+                    "data": torch.rand(3, 8, 8),
+                    "idx": idx,
+                    "set": "train" if idx < 5 else "val",
+                    "label": "dummy",
+                }
+                for idx in range(10)
+            ]
+        )
+
+        splitted = GoldSplitter.get_split_indices(
+            split_dataset,
+            selection_key="set",
+            idx_key="idx",
+        )
+
+        for set_name, indices in splitted.items():
+            assert len(indices) == 5
+            assert set_name in ["train", "val"]
+
+        pxt.drop_dir("unit_test", if_not_exists="ignore", force=True)

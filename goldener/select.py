@@ -10,7 +10,7 @@ import jax.numpy as jnp
 from coreax import SquaredExponentialKernel, Data
 from coreax.kernels import median_heuristic
 from coreax.solvers import KernelHerding
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader
 
 from goldener.pxt_utils import (
     set_value_to_idx_rows,
@@ -345,7 +345,7 @@ class GoldSelector:
     def _add_rows_to_selection_table_from_dataset(
         self, select_from: Dataset, selection_table: Table
     ) -> None:
-        dataloader = torch.utils.data.DataLoader(
+        dataloader = DataLoader(
             select_from,
             batch_size=self.batch_size if self.batch_size is not None else 1,
             num_workers=self.num_workers if self.num_workers is not None else 1,
@@ -425,7 +425,19 @@ class GoldSelector:
         selection_key: str,
         class_key: str | None = None,
         class_value: str | None = None,
+        idx_key: str = "idx_sample",
     ) -> set[int]:
+        """Get the indices of samples selected with a given value.
+
+        Args:
+            table: PixelTable table to query.
+            value: Value in the selection_key column to filter selected samples.
+            selection_key: Column name used to store selection values.
+            class_key: Optional column name used to filter samples by class.
+            class_value: Optional class value to filter samples by class.
+            idx_key: Column name used to get sample indices.
+        """
+        idx_col = get_expr_from_column_name(table, idx_key)
         selection_col = get_expr_from_column_name(table, selection_key)
         if class_value is not None and class_key is not None:
             class_col = get_expr_from_column_name(table, class_key)
@@ -437,9 +449,9 @@ class GoldSelector:
 
         return set(
             [
-                row["idx_sample"]
+                row[idx_key]
                 for row in table.where(query)  # noqa: E712
-                .select(table.idx_sample)
+                .select(idx_col)
                 .distinct()
                 .collect()
             ]

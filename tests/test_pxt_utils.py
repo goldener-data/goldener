@@ -165,6 +165,7 @@ class TestCreatePxtDirsForPath:
 
 class TestSetValueToIdxRows:
     def test_set_value_to_multiple_rows(self):
+        pxt.drop_dir("test_set_value", force=True)
         table_path = "test_set_value.test_table"
 
         pxt.create_dir("test_set_value", if_exists="ignore")
@@ -178,7 +179,13 @@ class TestSetValueToIdxRows:
         table.add_column(label=pxt.String)
         table.update({"label": "A"})
 
-        set_value_to_idx_rows(table, table.label, {0, 2}, "B")
+        set_value_to_idx_rows(
+            table=table,
+            col_expr=table.label,
+            idx_expr=table.idx,
+            indices={0, 2},
+            value="B",
+        )
 
         result_b = table.where(table.label == "B").select(table.idx).collect()
         idx_values = sorted([row["idx"] for row in result_b])

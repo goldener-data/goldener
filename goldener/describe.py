@@ -5,7 +5,7 @@ import torch
 import pixeltable as pxt
 from pixeltable import Error
 from pixeltable.catalog import Table
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader
 
 from goldener.extract import GoldFeatureExtractor
 from goldener.pxt_utils import (
@@ -328,7 +328,7 @@ class GoldDescriptor:
             ]
         )
 
-        dataloader = torch.utils.data.DataLoader(
+        dataloader = DataLoader(
             to_describe_dataset,
             batch_size=self.batch_size,
             num_workers=self.num_workers,
