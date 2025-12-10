@@ -459,26 +459,23 @@ class GoldVectorizer:
                 old_vectorized_table=old_vectorized_table,
             )
 
-            if vectorized_table.count() > 0:
-                if "idx" in to_vectorize.columns():
-                    to_vectorize_indices = set(
-                        [
-                            row["idx"]
-                            for row in to_vectorize.select(to_vectorize.idx).collect()
-                        ]
-                    )
-                    already_vectorized = set(
-                        [
-                            row["idx_sample"]
-                            for row in vectorized_table.select(
-                                vectorized_table.idx_sample
-                            )
-                            .distinct()
-                            .collect()
-                        ]
-                    )
-                    if not to_vectorize_indices.difference(already_vectorized):
-                        return vectorized_table
+            if vectorized_table.count() > 0 and "idx" in to_vectorize.columns():
+                to_vectorize_indices = set(
+                    [
+                        row["idx"]
+                        for row in to_vectorize.select(to_vectorize.idx).collect()
+                    ]
+                )
+                already_vectorized = set(
+                    [
+                        row["idx_sample"]
+                        for row in vectorized_table.select(vectorized_table.idx_sample)
+                        .distinct()
+                        .collect()
+                    ]
+                )
+                if not to_vectorize_indices.difference(already_vectorized):
+                    return vectorized_table
 
             to_vectorize_dataset = GoldPxtTorchDataset(to_vectorize)
         else:

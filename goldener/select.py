@@ -254,27 +254,28 @@ class GoldSelector:
             selection_table.add_column(if_exists="error", **{"chunked": pxt.Bool})
             selection_table.update({"chunked": False})
 
-        to_select_indices = set(
-            [
-                row["idx"]
-                for row in select_from.select(select_from.idx_sample)
-                .distinct()
-                .collect()
-            ]
-        )
-        already_in_selection = set(
-            [
-                row["idx_sample"]
-                for row in selection_table.select(selection_table.idx_sample)
-                .distinct()
-                .collect()
-            ]
-        )
-        still_to_select = to_select_indices.difference(already_in_selection)
-        if still_to_select:
-            self._add_rows_to_selection_table_from_table(
-                select_from, selection_table, still_to_select
+        if "idx" in select_from.columns() and selection_table.count() > 0:
+            to_select_indices = set(
+                [
+                    row["idx"]
+                    for row in select_from.select(select_from.idx_sample)
+                    .distinct()
+                    .collect()
+                ]
             )
+            already_in_selection = set(
+                [
+                    row["idx_sample"]
+                    for row in selection_table.select(selection_table.idx_sample)
+                    .distinct()
+                    .collect()
+                ]
+            )
+            still_to_select = to_select_indices.difference(already_in_selection)
+            if not still_to_select:
+                return selection_table
+
+        self._add_rows_to_selection_table_from_table(select_from, selection_table)
 
         return selection_table
 
@@ -282,7 +283,6 @@ class GoldSelector:
         self,
         select_from: Table,
         selection_table: Table,
-        still_to_select: set[int],
     ) -> None:
         col_list = [
             "idx_sample",
@@ -295,9 +295,9 @@ class GoldSelector:
             col_list.append(self.selection_key)
 
         for idx_row, row in enumerate(
-            select_from.where(select_from.idx_sample.isin(still_to_select))
-            .select(*[get_expr_from_column_name(select_from, col) for col in col_list])
-            .collect()
+            select_from.select(
+                *[get_expr_from_column_name(select_from, col) for col in col_list]
+            ).collect()
         ):
             if self.max_batches is not None:
                 if self.batch_size is None:

@@ -185,24 +185,23 @@ class GoldDescriptor:
                 to_describe, old_description_table
             )
 
-            if description_table.count() > 0:
-                if "idx" in to_describe.columns():
-                    to_describe_indices = set(
-                        [
-                            row["idx"]
-                            for row in to_describe.select(to_describe.idx).collect()
-                        ]
-                    )
-                    already_described = set(
-                        [
-                            row["idx_sample"]
-                            for row in description_table.select(
-                                description_table.idx
-                            ).collect()
-                        ]
-                    )
-                    if not to_describe_indices.difference(already_described):
-                        return description_table
+            if description_table.count() > 0 and "idx" in to_describe.columns():
+                to_describe_indices = set(
+                    [
+                        row["idx"]
+                        for row in to_describe.select(to_describe.idx).collect()
+                    ]
+                )
+                already_described = set(
+                    [
+                        row["idx"]
+                        for row in description_table.select(
+                            description_table.idx
+                        ).collect()
+                    ]
+                )
+                if not to_describe_indices.difference(already_described):
+                    return description_table
 
             to_describe_dataset = GoldPxtTorchDataset(to_describe)
 
