@@ -330,6 +330,7 @@ class GoldDescriptor:
         )
 
         # Get the maximum idx from the table for automatic idx generation when restarting
+        # This will be None if the table is empty, which is handled correctly below
         max_idx_in_table = [
             row["max"]
             for row in description_table.select(

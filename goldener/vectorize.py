@@ -606,6 +606,7 @@ class GoldVectorizer:
         )
 
         # Get the maximum idx from the table for automatic idx generation when restarting
+        # This will be None if the table is empty, which is handled correctly in _unwrap_vectors_in_batch
         max_idx_in_table = [
             row["max"]
             for row in vectorized_table.select(
@@ -628,6 +629,8 @@ class GoldVectorizer:
             # add idx if it is not provided by the dataset
             if "idx" not in batch:
                 # Generate idx_sample values (not the final vector idx which is created in _unwrap_vectors_in_batch)
+                # We use max(already_vectorized) here because already_vectorized tracks idx_sample values
+                # The final vector idx values are generated in _unwrap_vectors_in_batch using max_idx_in_table
                 starts = 0 if not already_vectorized else max(already_vectorized) + 1
                 batch["idx"] = [
                     starts + idx for idx in range(len(batch[self.data_key]))
