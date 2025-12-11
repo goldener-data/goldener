@@ -189,7 +189,7 @@ class GoldPxtTorchDataset(PixeltablePytorchDataset):
 
     def __iter__(self) -> Iterator[dict[str, Any]]:
         """Iterate over the dataset, reshaping array columns to their original shapes.
-        
+
         Yields:
             Dictionary representing a single sample with properly shaped array columns.
         """

@@ -35,7 +35,7 @@ class GoldSet:
 
     def __post_init__(self) -> None:
         """Validate the GoldSet configuration after initialization.
-        
+
         Raises:
             ValueError: If ratio is not between 0 and 1 (exclusive).
         """
@@ -80,7 +80,7 @@ class GoldSplitter:
         max_batches: int | None = None,
     ) -> None:
         """Initialize the GoldSplitter.
-        
+
         Args:
             sets: List of GoldSet configurations defining the splits.
             descriptor: GoldDescriptor for extracting features from the dataset.
@@ -127,13 +127,13 @@ class GoldSplitter:
 
     def _check_sets_validity(self, sets: list[GoldSet], ratios_sum: float) -> None:
         """Validate the sets configuration.
-        
+
         This private method ensures that the sum of ratios is valid and that set names are unique.
-        
+
         Args:
             sets: List of GoldSet configurations to validate.
             ratios_sum: Sum of all set ratios.
-            
+
         Raises:
             ValueError: If ratios_sum is not between 0 and 1, or if set names are not unique.
         """
@@ -379,7 +379,7 @@ class GoldSplitter:
 
     def _drop_tables(self) -> None:
         """Drop all intermediate tables created during the splitting process.
-        
+
         This private method cleans up the descriptor, vectorizer, and selector tables
         if drop_table is enabled.
         """

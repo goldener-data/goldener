@@ -17,7 +17,7 @@ class GoldReducer:
 
     def __init__(self, reducer: UMAP | PCA | TSNE | GaussianRandomProjection):
         """Initialize the GoldReducer.
-        
+
         Args:
             reducer: An instance of UMAP, PCA, TSNE, or GaussianRandomProjection for dimensionality reduction.
         """
@@ -25,7 +25,7 @@ class GoldReducer:
 
     def fit(self, x: torch.Tensor) -> None:
         """Fit the dimensionality reduction model to the data.
-        
+
         Args:
             x: Input tensor to fit the model on.
         """
@@ -34,10 +34,10 @@ class GoldReducer:
 
     def fit_transform(self, x: torch.Tensor) -> torch.Tensor:
         """Fit the dimensionality reduction model to the data and transform it.
-        
+
         Args:
             x: Input tensor to fit and transform.
-            
+
         Returns:
             Transformed tensor with reduced dimensionality.
         """
@@ -45,10 +45,10 @@ class GoldReducer:
 
     def transform(self, x: torch.Tensor) -> torch.Tensor:
         """Transform the data using the fitted dimensionality reduction model.
-        
+
         Args:
             x: Input tensor to transform.
-            
+
         Returns:
             Transformed tensor with reduced dimensionality.
         """
