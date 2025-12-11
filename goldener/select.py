@@ -26,44 +26,41 @@ from goldener.utils import filter_batch_from_indices
 
 
 class GoldSelector:
-    """Select a subset of data points from a dataset using coresubset selection.
+    """Select a subset of data points from vectorized samples and store results in a PixelTable table.
 
-    The GoldSelector runs selection of datapoints from a dataset. The selection is done from a
-    coresubset selection algorithm applied on already vectorized representation of the data points.
+    The GoldSelector processes a dataset or PixelTable table to perform coresubset selection using a
+    kernel herding algorithm on already vectorized representations. The selection results are stored
+    in a local PixelTable table (specified by `table_path`) so that the selection process is idempotent:
+    calling the same operation multiple times will not duplicate or recompute selections that are already
+    present in the table.
+
     If the dataset is too big to fit into memory or the coresubset selection algorithm is too
     computationally expensive, the coresubset selection can be performed in chunks.
+    All torch tensors will be converted to numpy arrays before saving.
 
     The selection can operate in a sequential (single-process) mode or a
-    distributed mode (not implemented). When provided a PyTorch `Dataset`, a
-    `collate_fn` can be used to control how samples are batched prior to
-    vectorization. The table schema is created/validated automatically and will include
-    minimal indexing columns (`idx`, `idx_sample`) required to link vectors back to
-    their originating samples.
-
-    During the whole selection process, The computed elements are stored
-    in a local PixelTable table column, so that the
-    vectorization process is idempotent: calling the same operation multiple times will
-    not duplicate or recompute vectors that are already present in the table. This table will at least contain:
-        - idx: Index of the vector in the table.
-        - sample_idx: Index of the original data point in the dataset.
-        - `selection_key`: value assigned to the data point if it has been selected.
-        - chunked: Boolean indicating whether the vector has been already processed in a chunk.
+    distributed mode (not implemented). The table schema is created/validated automatically and will include
+    minimal indexing columns (`idx`, `idx_sample`) required to link selected samples back to
+    their originating data points.
 
     Attributes:
-        table_path: Path to store the PixelTable table. It is used to store the vectors
-        extracted from the dataset.
-        reducer: Optional dimensionality reducer to apply before selection.
-        chunk: Optional chunk size for processing data in chunks.
-        collate_fn: Optional collate function for the DataLoader.
-        vectorized_key: Key pointing to the vector used to make coresubset selection.
-        selection_key: Key in which to store the selection value.
-        to_keep_schema: Optional schema of additional columns to keep in
-        the PixelTable table used to compute the selection.
-        batch_size: Batch size for the DataLoader if a dataset is provided for the selection.
-        num_workers: Number of workers for the DataLoader if a dataset is provided for the selection.
-        allow_existing: Allow to start back the selection from an existing table.
-        distribute: Whether to use distributed selection.
-        drop_table: Whether to drop the PixelTable table after selection when using `select_in_dataset`.
+        table_path: Path to the PixelTable table where selection results will be stored locally.
+        reducer: Optional GoldReducer instance for dimensionality reduction before selection.
+        chunk: Optional chunk size for processing data in chunks to reduce memory consumption.
+        collate_fn: Optional function to collate dataset samples into batches composed of
+            dictionaries with at least the key specified by `vectorized_key` returning a PyTorch Tensor.
+            If None, the dataset is expected to directly provide such batches.
+        vectorized_key: Key in the batch dictionary that contains the vectorized data for selection. Default is "vectorized".
+        selection_key: Column name to store the selection value in the PixelTable table. Default is "selected".
+        class_key: Optional key for class-based stratified selection.
+        to_keep_schema: Optional dictionary defining additional columns to keep from the original dataset/table
+            into the selection table. The keys are the column names and the values are the PixelTable types.
+        batch_size: Batch size used when iterating over the data. Defaults to 1 if not distributed.
+        num_workers: Number of workers for the PyTorch DataLoader during iteration on data. Defaults to 0 if not distributed.
+        allow_existing: If False, an error will be raised when the table already exists. Default is True.
+        distribute: Whether to use distributed processing for selection and table population. Not implemented yet. Default is False.
+        drop_table: Whether to drop the selection table after creating the dataset with selection results. It is only applied
+            when using `select_in_dataset`. Default is False.
         max_batches: Optional maximum number of batches to process. Useful for testing on a small subset of the dataset.
     """
 
@@ -133,32 +130,29 @@ class GoldSelector:
     def select_in_dataset(
         self, select_from: Dataset | Table, select_count: int, value: str
     ) -> GoldPxtTorchDataset:
-        """Select a subset of data points in a dataset.
+        """Select a subset of samples using coresubset selection and return results as a GoldPxtTorchDataset.
 
-        The selection is done from a coresubset selection algorithm applied on already vectorized
-        representation of the data points. When the chunk attribute is set, the selection is performed in chunks
-        to reduce memory consumption. As well, if a reducer is provided,
-        the vectors are reduced in dimension before applying the coresubset selection.
+        The selection process applies a coresubset selection algorithm on already vectorized
+        representations of the data points and stores results in a PixelTable table specified by `table_path`.
+        When the chunk attribute is set, the selection is performed in chunks to reduce memory consumption.
+        If a reducer is provided, the vectors are reduced in dimension before applying the coresubset selection.
 
         This is a convenience wrapper that runs `select_in_table` to populate
         (or resume populating) the PixelTable table, then wraps the table into a
         `GoldPxtTorchDataset` for downstream consumption. If `drop_table` is True,
         the table will be removed after the dataset is created.
 
-        if `drop_table` is set to True, the PixelTable table used for selection
-        will be dropped after the selection dataset is created.
-
         Args:
-            select_from: Dataset or table to select from. If a dataset is provided, each item should be a
-            dictionary with at least the `vectorized_key` and `idx_sample` keys after applying the collate_fn.
-            If the collate_fn is None, the dataset is expected to directly provide such batches.
-            If a table is provided, it should contain at least the `vectorized_key`, `idx` and `idx_sample` columns.
+            select_from: Dataset or Table to select from. If a Dataset is provided, each item should be a
+                dictionary with at least the `vectorized_key` and `idx_sample` keys after applying the collate_fn.
+                If the collate_fn is None, the dataset is expected to directly provide such batches.
+                If a Table is provided, it should contain at least the `vectorized_key`, `idx` and `idx_sample` columns.
             select_count: Number of data points to select.
             value: Value to set in the `selection_key` column for selected samples.
 
         Returns:
-            A GoldPxtTorchDataset dataset containing the information of the selection table.
-            See `select_in_table` for more details.
+            A GoldPxtTorchDataset containing at least the selection information in the `selection_key` key
+                and `idx` and `idx_sample` keys as well.
         """
 
         selected_table = self.select_in_table(select_from, select_count, value)
@@ -173,28 +167,28 @@ class GoldSelector:
     def select_in_table(
         self, select_from: Dataset | Table, select_count: int, value: str | None
     ) -> Table:
-        """Select a subset of data points and store their `sample_idx` in a table.
+        """Select a subset of samples using coresubset selection and store results in a PixelTable table.
 
-        The selection is done from a coresubset selection algorithm applied on alreaty vectorized
-        representation of the data points. When the chunk attribute is set, the selection is performed in chunks
-        to reduce memory consumption. As well, if a reducer is provided,
-        the vectors are reduced in dimension before applying the coresubset selection.
+        The selection process applies a coresubset selection algorithm on already vectorized
+        representations of the data points and stores results in a PixelTable table specified by `table_path`.
+        When the chunk attribute is set, the selection is performed in chunks to reduce memory consumption.
+        If a reducer is provided, the vectors are reduced in dimension before applying the coresubset selection.
 
-        This method is idempotent (i.e. failure proof), meaning that if it is called
+        This method is idempotent (i.e., failure proof), meaning that if it is called
         multiple times on the same dataset or table, it will restart the selection process
         based on the vectors already present in the PixelTable table.
 
         Args:
-            select_from: Dataset or table to select from. If a dataset is provided, each item should be a
-            dictionary with at least the `vectorized_key` and `idx_sample` keys after applying the collate_fn.
-            If the collate_fn is None, the dataset is expected to directly provide such batches.
-            If a table is provided, it should contain at least the `vectorized_key`, `idx` and `idx_sample` columns.
+            select_from: Dataset or Table to select from. If a Dataset is provided, each item should be a
+                dictionary with at least the `vectorized_key` and `idx_sample` keys after applying the collate_fn.
+                If the collate_fn is None, the dataset is expected to directly provide such batches.
+                If a Table is provided, it should contain at least the `vectorized_key`, `idx` and `idx_sample` columns.
             select_count: Number of data points to select.
             value: Value to set in the `selection_key` column for selected samples.
 
         Returns:
-            A PixelTable Table containing at least the selected sample in the `selection_key` column
-            and `idx` and `idx_sample` column as well.
+            A PixelTable Table containing at least the selection information in the `selection_key` column
+                and `idx` and `idx_sample` columns as well.
         """
         try:
             old_selection_table = pxt.get_table(

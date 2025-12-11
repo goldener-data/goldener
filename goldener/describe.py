@@ -21,39 +21,41 @@ from goldener.utils import filter_batch_from_indices
 
 
 class GoldDescriptor:
-    """Describe the `data` of a dataset by extracting features from a pretrained model.
+    """Extract features from dataset samples using a pretrained model and store results in a PixelTable table.
+
+    The GoldDescriptor processes a dataset or PixelTable table to extract features using a
+    `GoldFeatureExtractor`. The computed features are stored in a local PixelTable table
+    (specified by `table_path`) so that the description process is idempotent: calling the
+    same operation multiple times will not duplicate or recompute features that are already
+    present in the table.
 
     Assuming all the data will not fit in memory, the dataset is processed in batches.
-
-    All the data of the dataset, the computed features included, will be saved in a local Pixeltable table during
-    the computation. In this table, the `data` of the dataset will be saved in the shape and scale obtained
-    after applying the `collate_fn` if provided. These arrays are expected to be all the same size.
     All torch tensors will be converted to numpy arrays before saving.
 
     The description can operate in a sequential (single-process) mode or a
     distributed mode (not implemented). The table schema is created/validated automatically and will include
-    minimal indexing columns (`idx`) required to link description back to
+    minimal indexing columns (`idx`) required to link descriptions back to
     their originating samples.
 
     Attributes:
-        table_path: Path to the PixelTable table where the description will be saved locally.
-        extractor: FeatureExtractor instance for feature extraction.
-        transform: Transformation to apply to the `data` before running the feature extraction if it is not already
-        applied by the `collate_fn`.
+        table_path: Path to the PixelTable table where descriptions will be saved locally.
+        extractor: GoldFeatureExtractor instance for extracting features from the data.
+        transform: Optional transformation to apply to the data before feature extraction if not already
+            applied by the `collate_fn`.
         collate_fn: Optional function to collate dataset samples into batches composed of
-        dictionaries with at least the key specified by `data_key` returning a pytorch Tensor.
-        If None, the dataset is expected to directly provide such batches. It should as well format
-        the value at `data_key` in the format expected by the feature extractor.
+            dictionaries with at least the key specified by `data_key` returning a PyTorch Tensor.
+            If None, the dataset is expected to directly provide such batches. It should format
+            the value at `data_key` in the format expected by the feature extractor.
         data_key: Key in the batch dictionary that contains the data to extract features from. Default is "data".
-        description_key: Key in the table where the extracted features will be stored. Default is "features".
+        description_key: Column name to store the extracted features in the PixelTable table. Default is "features".
         to_keep_schema: Optional dictionary defining additional columns to keep from the original dataset/table
-        into the description table. The keys are the column names and the values are the PixelTable types.
-        batch_size: Optional batch size for processing the dataset.
-        num_workers: Optional number of worker threads for data loading.
-        allow_existing: If False, an error will be raised when the table already exists.
-        distribute: Whether to use distributed processing for feature extraction and table population. Not implemented yet.
+            into the description table. The keys are the column names and the values are the PixelTable types.
+        batch_size: Batch size used when iterating over the data. Defaults to 1 if not distributed.
+        num_workers: Number of workers for the PyTorch DataLoader during iteration on data. Defaults to 0 if not distributed.
+        allow_existing: If False, an error will be raised when the table already exists. Default is True.
+        distribute: Whether to use distributed processing for feature extraction and table population. Not implemented yet. Default is False.
         drop_table: Whether to drop the description table after creating the dataset with descriptions. It is only applied
-        when using `describe_in_dataset`.
+            when using `describe_in_dataset`. Default is False.
         device: Torch device to use for feature extraction. If None, it will use 'cuda' if available, otherwise 'cpu'.
         max_batches: Optional maximum number of batches to process. Useful for testing on a small subset of the dataset.
     """
@@ -126,10 +128,10 @@ class GoldDescriptor:
         self,
         to_describe: Dataset | Table,
     ) -> GoldPxtTorchDataset:
-        """Describe the data by extracting features and returning them within a new dataset.
+        """Extract features from samples and return results as a GoldPxtTorchDataset.
 
         The description process extracts features from the data using the provided feature extractor
-        and stores them in a PixelTable table specified by `table_path`. The description of each data
+        and stores them in a PixelTable table specified by `table_path`. The extracted features
         will be stored in the column specified by `description_key`.
 
         This is a convenience wrapper that runs `describe_in_table` to populate
@@ -139,13 +141,13 @@ class GoldDescriptor:
 
         Args:
             to_describe: Dataset or Table to be described. If a Dataset is provided, each item should be a
-            dictionary with at least the key specified by `data_key` after applying the collate_fn.
-            If the collate_fn is None, the dataset is expected to directly provide such batches. If a Table is provided,
-            it should contain both 'idx' and `data_key` column.
+                dictionary with at least the key specified by `data_key` after applying the collate_fn.
+                If the collate_fn is None, the dataset is expected to directly provide such batches. If a Table is provided,
+                it should contain both 'idx' and `data_key` columns.
 
         Returns:
-            A GoldPxtTorchDataset dataset containing at least the extracted features in the `description_key` key
-            and an `idx` key as well.
+            A GoldPxtTorchDataset containing at least the extracted features in the `description_key` key
+                and an `idx` key as well.
         """
 
         description_table = self.describe_in_table(to_describe)
@@ -161,25 +163,25 @@ class GoldDescriptor:
         self,
         to_describe: Dataset | Table,
     ) -> Table:
-        """Describe the data by extracting features and storing them in a PixelTable table.
+        """Extract features from samples and store results in a PixelTable table.
 
         The description process extracts features from the data using the provided feature extractor
-        and stores them in a PixelTable table specified by `table_path`. The description of each data
+        and stores them in a PixelTable table specified by `table_path`. The extracted features
         will be stored in the column specified by `description_key`.
 
-        This method is idempotent (i.e. failure proof), meaning that if it is called
+        This method is idempotent (i.e., failure proof), meaning that if it is called
         multiple times on the same dataset or table, it will not duplicate or recompute the descriptions
         already present in the PixelTable table.
 
         Args:
             to_describe: Dataset or Table to be described. If a Dataset is provided, each item should be a
-            dictionary with at least the key specified by `data_key` after applying the collate_fn.
-            If the collate_fn is None, the dataset is expected to directly provide such batches. If a Table is provided,
-            it should contain both 'idx' and `data_key` column.
+                dictionary with at least the key specified by `data_key` after applying the collate_fn.
+                If the collate_fn is None, the dataset is expected to directly provide such batches. If a Table is provided,
+                it should contain both 'idx' and `data_key` columns.
 
         Returns:
             A PixelTable Table containing at least the extracted features in the `description_key` column
-            and an `idx` column as well.
+                and an `idx` column as well.
         """
         # If the computation was already started or already done, we resume from there
         try:
