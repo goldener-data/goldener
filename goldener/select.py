@@ -87,7 +87,7 @@ class GoldSelector:
         max_batches: int | None = None,
     ) -> None:
         """Initialize the GoldSelector.
-        
+
         Args:
             table_path: Path to store the PixelTable table.
             reducer: Optional dimensionality reducer to apply before selection.
@@ -237,14 +237,14 @@ class GoldSelector:
         self, select_from: Table, old_selection_table: Table | None
     ) -> Table:
         """Create or validate the selection table schema from a PixelTable table.
-        
+
         This private method sets up the table structure with necessary columns for tracking
         selection status and ensures all rows from the source table are represented.
-        
+
         Args:
             select_from: The source PixelTable table to select from.
             old_selection_table: Existing selection table if resuming, or None.
-            
+
         Returns:
             The selection table with proper schema and initial rows.
         """
@@ -307,10 +307,10 @@ class GoldSelector:
         selection_table: Table,
     ) -> None:
         """Add rows from the source table to the selection table.
-        
+
         This private method populates the selection table with rows from the source table,
         preserving necessary columns and initializing selection status.
-        
+
         Args:
             select_from: The source PixelTable table.
             selection_table: The selection table to populate.
@@ -351,14 +351,14 @@ class GoldSelector:
         self, select_from: Dataset, old_selection_table: Table | None
     ) -> Table:
         """Create or validate the selection table schema from a PyTorch Dataset.
-        
+
         This private method sets up the table structure with necessary columns including
         the vectorized column with proper array type based on the dataset sample.
-        
+
         Args:
             select_from: The source PyTorch Dataset to select from.
             old_selection_table: Existing selection table if resuming, or None.
-            
+
         Returns:
             The selection table with proper schema.
         """
@@ -409,10 +409,10 @@ class GoldSelector:
         self, select_from: Dataset, selection_table: Table
     ) -> None:
         """Add rows from the source dataset to the selection table.
-        
+
         This private method iterates through the dataset in batches and populates the
         selection table with vectorized data and metadata, skipping already processed samples.
-        
+
         Args:
             select_from: The source PyTorch Dataset.
             selection_table: The selection table to populate.
@@ -537,11 +537,11 @@ class GoldSelector:
         value: str | None,
     ) -> None:
         """Run sequential (single-process) selection process.
-        
+
         This private method handles class-stratified selection if a class_key is configured,
         otherwise performs selection on the full dataset. It delegates the actual coresubset
         selection to _class_select.
-        
+
         Args:
             select_from: The source table with vectorized data.
             selection_table: The table to store selection results.
@@ -616,11 +616,11 @@ class GoldSelector:
         class_value: str | None = None,
     ) -> None:
         """Perform coresubset selection for a specific class or all data.
-        
+
         This private method implements chunked coresubset selection using kernel herding.
         It processes data in chunks to manage memory, applies optional dimensionality reduction,
         and updates the selection table with selected samples.
-        
+
         Args:
             select_from: The source table with vectorized data.
             selection_table: The table to store selection results.
@@ -767,13 +767,13 @@ class GoldSelector:
         value: str | None,
     ) -> None:
         """Run distributed selection process (not implemented).
-        
+
         Args:
             select_from: The source table with vectorized data.
             selection_table: The table to store selection results.
             select_count: Number of samples to select.
             value: Value to assign to selected samples in the selection_key column.
-            
+
         Raises:
             NotImplementedError: Always raised as distributed mode is not yet implemented.
         """
@@ -783,15 +783,15 @@ class GoldSelector:
         self, x: torch.Tensor, select_count: int, indices: torch.Tensor
     ) -> set[int]:
         """Apply kernel herding coresubset selection algorithm.
-        
+
         This private method uses the coreax library's KernelHerding solver with a
         SquaredExponentialKernel to select a diverse subset of vectors.
-        
+
         Args:
             x: Input vectors to select from.
             select_count: Number of vectors to select.
             indices: Original indices corresponding to each vector.
-            
+
         Returns:
             Set of selected indices from the original index space.
         """

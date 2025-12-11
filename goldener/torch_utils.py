@@ -132,7 +132,7 @@ class ResetableTorchIterableDataset(torch.utils.data.IterableDataset):
 
     def __init__(self, data_iterable: torch.utils.data.IterableDataset):
         """Initialize the resetable iterable dataset.
-        
+
         Args:
             data_iterable: The underlying iterable dataset to wrap.
         """

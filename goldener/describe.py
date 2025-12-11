@@ -82,7 +82,7 @@ class GoldDescriptor:
         max_batches: int | None = None,
     ):
         """Initialize the GoldDescriptor.
-        
+
         Args:
             table_path: Path to the PixelTable table where descriptions will be saved.
             extractor: FeatureExtractor instance for extracting features.
@@ -246,14 +246,14 @@ class GoldDescriptor:
         self, to_describe: Table, old_description_table: Table | None
     ) -> Table:
         """Create or validate the description table schema from a PixelTable table.
-        
+
         This private method sets up the table structure and adds the description column
         with the appropriate array type based on the extractor's output shape.
-        
+
         Args:
             to_describe: The source PixelTable table to describe.
             old_description_table: Existing description table if resuming, or None.
-            
+
         Returns:
             The description table with proper schema.
         """
@@ -299,14 +299,14 @@ class GoldDescriptor:
         self, to_describe: Dataset, old_description_table: Table | None
     ) -> Table:
         """Create or validate the description table schema from a PyTorch Dataset.
-        
+
         This private method sets up the table structure and adds the description column
         with the appropriate array type based on the extractor's output shape.
-        
+
         Args:
             to_describe: The source PyTorch Dataset to describe.
             old_description_table: Existing description table if resuming, or None.
-            
+
         Returns:
             The description table with proper schema.
         """
@@ -355,14 +355,14 @@ class GoldDescriptor:
         to_describe_dataset: Dataset,
     ) -> Table:
         """Run distributed description process (not implemented).
-        
+
         Args:
             description_table: The table to store descriptions.
             to_describe_dataset: The dataset to describe.
-            
+
         Returns:
             The populated description table.
-            
+
         Raises:
             NotImplementedError: Always raised as distributed mode is not yet implemented.
         """
@@ -374,15 +374,15 @@ class GoldDescriptor:
         to_describe_dataset: Dataset,
     ) -> Table:
         """Run sequential (single-process) description process.
-        
+
         This method processes the dataset in batches, extracts features using the
         feature extractor, and stores them in the description table. It is idempotent
         and will skip samples that have already been described.
-        
+
         Args:
             description_table: The table to store descriptions.
             to_describe_dataset: The dataset to describe.
-            
+
         Returns:
             The populated description table.
         """

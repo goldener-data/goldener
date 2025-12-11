@@ -29,11 +29,12 @@ from goldener.utils import check_x_and_y_shapes, filter_batch_from_indices
 
 class FilterLocation(Enum):
     """Enum defining filter location strategies for filtering 2D tensor rows.
-    
+
     START: Filter from the start of the tensor.
     END: Filter from the end of the tensor.
     RANDOM: Filter randomly from the tensor.
     """
+
     START = "start"
     END = "end"
     RANDOM = "random"
@@ -82,7 +83,7 @@ class Filter2DWithCount:
     @property
     def is_random(self) -> bool:
         """Check if the filter is random.
-        
+
         Returns:
             True if the filter uses random sampling, False otherwise.
         """
@@ -93,10 +94,10 @@ class Filter2DWithCount:
         x: torch.Tensor,
     ) -> torch.Tensor:
         """Filter a single 2D tensor.
-        
+
         Args:
             x: Input 2D tensor to filter.
-            
+
         Returns:
             Filtered tensor.
         """
@@ -209,14 +210,14 @@ class TensorVectorizer:
         channel_pos: int = 1,
     ) -> None:
         """Initialize the TensorVectorizer.
-        
+
         Args:
             keep: Optional filter to keep specific rows in the input.
             remove: Optional filter to remove specific rows from the input.
             random_filter: Optional random filter to apply after keep/remove filters.
             transform_y: Optional transformation to apply to the target tensor.
             channel_pos: Position of the channel dimension in the input tensor. Defaults to 1.
-            
+
         Raises:
             ValueError: If keep or remove filters are random, or if random_filter is not random.
         """
@@ -298,11 +299,11 @@ class TensorVectorizer:
         x: torch.Tensor,
     ) -> torch.Tensor:
         """Apply a filter function to a tensor if provided.
-        
+
         Args:
             filter: Optional filter function to apply.
             x: Input tensor.
-            
+
         Returns:
             Filtered tensor, or original tensor if filter is None.
         """
@@ -404,7 +405,7 @@ class GoldVectorizer:
         max_batches: int | None = None,
     ) -> None:
         """Initialize the GoldVectorizer.
-        
+
         Args:
             table_path: Path to the PixelTable table for storing vectors.
             vectorizer: TensorVectorizer instance for transforming tensors.
@@ -563,14 +564,14 @@ class GoldVectorizer:
         self, to_vectorize: Table, old_vectorized_table: Table | None
     ) -> Table:
         """Create or validate the vectorized table schema from a PixelTable table.
-        
+
         This private method sets up the table structure and adds the vectorized column
         with the appropriate array type based on the vectorizer's output shape.
-        
+
         Args:
             to_vectorize: The source PixelTable table to vectorize.
             old_vectorized_table: Existing vectorized table if resuming, or None.
-            
+
         Returns:
             The vectorized table with proper schema.
         """
@@ -609,14 +610,14 @@ class GoldVectorizer:
         self, to_vectorize: Dataset, old_vectorized_table: Table | None
     ) -> Table:
         """Create or validate the vectorized table schema from a PyTorch Dataset.
-        
+
         This private method sets up the table structure and adds the vectorized column
         with the appropriate array type based on the vectorizer's output shape.
-        
+
         Args:
             to_vectorize: The source PyTorch Dataset to vectorize.
             old_vectorized_table: Existing vectorized table if resuming, or None.
-            
+
         Returns:
             The vectorized table with proper schema.
         """
@@ -672,14 +673,14 @@ class GoldVectorizer:
         to_vectorize_dataset: Dataset,
     ) -> Table:
         """Run distributed vectorization process (not implemented).
-        
+
         Args:
             vectorized_table: The table to store vectorized outputs.
             to_vectorize_dataset: The dataset to vectorize.
-            
+
         Returns:
             The populated vectorized table.
-            
+
         Raises:
             NotImplementedError: Always raised as distributed mode is not yet implemented.
         """
@@ -691,15 +692,15 @@ class GoldVectorizer:
         to_vectorize_dataset: Dataset,
     ) -> Table:
         """Run sequential (single-process) vectorization process.
-        
+
         This private method processes the dataset in batches, applies vectorization using
         the TensorVectorizer, and stores the results in the vectorized table. It is idempotent
         and will skip samples that have already been vectorized.
-        
+
         Args:
             vectorized_table: The table to store vectorized outputs.
             to_vectorize_dataset: The dataset to vectorize.
-            
+
         Returns:
             The populated vectorized table.
         """
@@ -806,17 +807,17 @@ class GoldVectorizer:
         to_keep_keys: list[str] | None = None,
     ) -> dict[str, Any]:
         """Unwrap vectorized output into individual rows for table insertion.
-        
+
         This private method converts the Vectorized dataclass (which contains batched vectors
         and their batch indices) into a dictionary format suitable for inserting into the
         PixelTable table, with one entry per vector.
-        
+
         Args:
             vectorized: Vectorized output containing vectors and batch indices.
             batch: Original batch dictionary with metadata.
             starts: Starting index for assigning new idx values.
             to_keep_keys: Optional list of additional keys to preserve from the batch.
-            
+
         Returns:
             Dictionary with unwrapped vectors and metadata, ready for table insertion.
         """
