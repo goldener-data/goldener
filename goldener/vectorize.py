@@ -349,37 +349,40 @@ class TensorVectorizer:
 
 
 class GoldVectorizer:
-    """Vectorize dataset data to flatten them as vector.
+    """Extract and flatten vectors from dataset samples and store results in a PixelTable table.
 
-    The GoldVectorizer runs a `TensorVectorizer` over a dataset or a PixelTable `Table`
-    to extract and flatten vectors from each sample. The computed vectors are stored
-    in a local PixelTable table column (specified by `vectorized_key`) so that the
-    vectorization process is idempotent: calling the same operation multiple times will
-    not duplicate or recompute vectors that are already present in the table.
+    The GoldVectorizer processes a dataset or PixelTable table to extract and flatten vectors using a
+    `TensorVectorizer`. The computed vectors are stored in a local PixelTable table
+    (specified by `table_path`) so that the vectorization process is idempotent: calling the
+    same operation multiple times will not duplicate or recompute vectors that are already
+    present in the table.
+
+    Assuming all the data will not fit in memory, the dataset is processed in batches.
+    All torch tensors will be converted to numpy arrays before saving.
 
     The vectorization can operate in a sequential (single-process) mode or a
-    distributed mode (not implemented). When provided a PyTorch `Dataset`, a
-    `collate_fn` can be used to control how samples are batched prior to
-    vectorization. The table schema is created/validated automatically and will include
+    distributed mode (not implemented). The table schema is created/validated automatically and will include
     minimal indexing columns (`idx`, `idx_sample`) required to link vectors back to
     their originating samples.
 
     Attributes:
-        table_path: Path to the PixelTable table where vectorized outputs will be stored.
-        vectorizer: A `TensorVectorizer` instance responsible for transforming batched
-        inputs into vectors and optional batch-index information.
-        collate_fn: Optional collate function to prepare dataset items into batches.
-        data_key: Key in the batch dictionary that contains the data to vectorize.
-        target_key: Optional key in the batch containing the target used to filter vectors.
-        vectorized_key: Column name to store the resulting vectors in the PixelTable table.
+        table_path: Path to the PixelTable table where vectorized outputs will be stored locally.
+        vectorizer: TensorVectorizer instance for transforming batched inputs into vectors.
+        collate_fn: Optional function to collate dataset samples into batches composed of
+            dictionaries with at least the key specified by `data_key` returning a PyTorch Tensor.
+            If None, the dataset is expected to directly provide such batches.
+        data_key: Key in the batch dictionary that contains the data to vectorize. Default is "features".
+        target_key: Optional key in the batch dictionary containing the target used to filter vectors. Default is "target".
+        vectorized_key: Column name to store the resulting vectors in the PixelTable table. Default is "vectorized".
         to_keep_schema: Optional dictionary defining additional columns to keep from the original dataset/table
-        into the description table. The keys are the column names and the values are the PixelTable types.
-        batch_size: Batch size used when iterating over the data.
-        num_workers: Number of workers for the PyTorch DataLoader during iteration on data.
-        allow_existing: If False, an error will be raised when the table already exists.
-        distribute: Whether to run a distributed vectorization pipeline (not implemented).
-        drop_table: Whether to drop the created PixelTable table after creating a dataset.
-        max_batches: Optional maximum number of batches to process (useful for testing).
+            into the vectorized table. The keys are the column names and the values are the PixelTable types.
+        batch_size: Batch size used when iterating over the data. Defaults to 1 if not distributed.
+        num_workers: Number of workers for the PyTorch DataLoader during iteration on data. Defaults to 0 if not distributed.
+        allow_existing: If False, an error will be raised when the table already exists. Default is True.
+        distribute: Whether to use distributed processing for vectorization and table population. Not implemented yet. Default is False.
+        drop_table: Whether to drop the vectorized table after creating the dataset with vectorized outputs. It is only applied
+            when using `vectorize_in_dataset`. Default is False.
+        max_batches: Optional maximum number of batches to process. Useful for testing on a small subset of the dataset.
     """
 
     _MINIMAL_SCHEMA: dict[str, type] = {"idx": pxt.Int, "idx_sample": pxt.Int}
@@ -442,24 +445,26 @@ class GoldVectorizer:
         self,
         to_vectorize: Dataset | Table,
     ) -> GoldPxtTorchDataset:
-        """Vectorize a dataset or table and return a GoldPxtTorchDataset.
+        """Extract and flatten vectors from samples and return results as a GoldPxtTorchDataset.
 
         The vectorization process extracts and flattens vectors from the provided dataset or table
-        in the `table_path` attribute using the `TensorVectorizer` instance. The resulting vectors
-        are stored in the PixelTable table under the column specified by `vectorized_key`.
+        using the `TensorVectorizer` instance and stores them in a PixelTable table specified by `table_path`.
+        The resulting vectors are stored in the column specified by `vectorized_key`.
 
         This is a convenience wrapper that runs `vectorize_in_table` to populate
         (or resume populating) the PixelTable table, then wraps the table into a
-        `GoldPxtTorchDataset` for downstream consumption.
-
-        If `drop_table` is True, the vectorized table will be removed after the dataset is created.
+        `GoldPxtTorchDataset` for downstream consumption. If `drop_table` is True,
+        the table will be removed after the dataset is created.
 
         Args:
-            to_vectorize: A PyTorch `Dataset` or a PixelTable `Table` to vectorize.
+            to_vectorize: Dataset or Table to be vectorized. If a Dataset is provided, each item should be a
+                dictionary with at least the key specified by `data_key` after applying the collate_fn.
+                If the collate_fn is None, the dataset is expected to directly provide such batches. If a Table is provided,
+                it should contain both 'idx' and `data_key` columns.
 
         Returns:
-            A GoldPxtTorchDataset dataset containing the information from the vectorized table.
-            See `vectorize_in_table` for more details.
+            A GoldPxtTorchDataset containing at least the vectorized data in the `vectorized_key` key
+                and `idx` and `idx_sample` keys as well.
         """
         vectorized_table = self.vectorize_in_table(to_vectorize)
 
@@ -474,25 +479,25 @@ class GoldVectorizer:
         self,
         to_vectorize: Dataset | Table,
     ) -> Table:
-        """Vectorize data and store vectors in a PixelTable `Table`.
+        """Extract and flatten vectors from samples and store results in a PixelTable table.
 
         The vectorization process extracts and flattens vectors from the provided dataset or table
-        in the `table_path` attribute using the `TensorVectorizer` instance. The resulting vectors
-        are stored in the PixelTable table under the column specified by `vectorized_key`.
+        using the `TensorVectorizer` instance and stores them in a PixelTable table specified by `table_path`.
+        The resulting vectors are stored in the column specified by `vectorized_key`.
 
-        This method is idempotent (i.e. failure proof), meaning that if it is called
+        This method is idempotent (i.e., failure proof), meaning that if it is called
         multiple times on the same dataset or table, it will not duplicate or recompute the vectorization
         already present in the PixelTable table.
 
         Args:
             to_vectorize: Dataset or Table to be vectorized. If a Dataset is provided, each item should be a
-            dictionary with at least the key specified by `data_key` after applying the collate_fn.
-            If the collate_fn is None, the dataset is expected to directly provide such batches. If a Table is provided,
-            it should contain both 'idx' and `data_key` column.
+                dictionary with at least the key specified by `data_key` after applying the collate_fn.
+                If the collate_fn is None, the dataset is expected to directly provide such batches. If a Table is provided,
+                it should contain both 'idx' and `data_key` columns.
 
         Returns:
-            A PixelTable Table containing at least the vectorized features in the `description_key` column
-            and `idx` and `idx_sample` column as well.
+            A PixelTable Table containing at least the vectorized data in the `vectorized_key` column
+                and `idx` and `idx_sample` columns as well.
         """
 
         # If the computation was already started or already done, we resume from there
