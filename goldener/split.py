@@ -34,6 +34,11 @@ class GoldSet:
     ratio: float
 
     def __post_init__(self) -> None:
+        """Validate the GoldSet configuration after initialization.
+        
+        Raises:
+            ValueError: If ratio is not between 0 and 1 (exclusive).
+        """
         if not (0 < self.ratio < 1):
             raise ValueError("Ratio must be between 0 and 1.")
 
@@ -74,6 +79,18 @@ class GoldSplitter:
         drop_table: bool = False,
         max_batches: int | None = None,
     ) -> None:
+        """Initialize the GoldSplitter.
+        
+        Args:
+            sets: List of GoldSet configurations defining the splits.
+            descriptor: GoldDescriptor for extracting features from the dataset.
+            vectorizer: GoldVectorizer for vectorizing described features.
+            selector: GoldSelector for selecting samples for each set.
+            in_described_table: Whether to return splits in the described table. Defaults to False.
+            allow_existing: Whether to allow existing tables. Defaults to True.
+            drop_table: Whether to drop intermediate tables. Defaults to False.
+            max_batches: Optional maximum number of batches to process.
+        """
         self.sets = sets
         self.descriptor = descriptor
         self.vectorizer = vectorizer
@@ -109,6 +126,17 @@ class GoldSplitter:
         self.selector.allow_existing = value
 
     def _check_sets_validity(self, sets: list[GoldSet], ratios_sum: float) -> None:
+        """Validate the sets configuration.
+        
+        This private method ensures that the sum of ratios is valid and that set names are unique.
+        
+        Args:
+            sets: List of GoldSet configurations to validate.
+            ratios_sum: Sum of all set ratios.
+            
+        Raises:
+            ValueError: If ratios_sum is not between 0 and 1, or if set names are not unique.
+        """
         if not (0 < ratios_sum <= 1.0):
             raise ValueError(
                 "Sum of split ratios must be greater than 0.0 and at most 1.0"
@@ -350,6 +378,11 @@ class GoldSplitter:
         return split_table
 
     def _drop_tables(self) -> None:
+        """Drop all intermediate tables created during the splitting process.
+        
+        This private method cleans up the descriptor, vectorizer, and selector tables
+        if drop_table is enabled.
+        """
         if self.drop_table:
             for table_name in (
                 self.descriptor.table_path,

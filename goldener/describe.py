@@ -79,6 +79,24 @@ class GoldDescriptor:
         device: torch.device | None = None,
         max_batches: int | None = None,
     ):
+        """Initialize the GoldDescriptor.
+        
+        Args:
+            table_path: Path to the PixelTable table where descriptions will be saved.
+            extractor: FeatureExtractor instance for extracting features.
+            transform: Optional transformation to apply before feature extraction.
+            collate_fn: Optional function to collate dataset samples into batches.
+            data_key: Key in the batch dictionary containing the data. Defaults to "data".
+            description_key: Key for storing extracted features. Defaults to "features".
+            to_keep_schema: Optional schema for additional columns to preserve.
+            batch_size: Batch size for processing. Defaults to 1 if not distributed.
+            num_workers: Number of worker threads. Defaults to 0 if not distributed.
+            allow_existing: Whether to allow using an existing table. Defaults to True.
+            distribute: Whether to use distributed processing. Defaults to False.
+            drop_table: Whether to drop the table after dataset creation. Defaults to False.
+            device: Torch device for feature extraction. Auto-detected if None.
+            max_batches: Optional maximum number of batches to process.
+        """
         self.table_path = table_path
         self.extractor = extractor
         self.transform = transform
@@ -225,6 +243,18 @@ class GoldDescriptor:
     def _description_table_from_table(
         self, to_describe: Table, old_description_table: Table | None
     ) -> Table:
+        """Create or validate the description table schema from a PixelTable table.
+        
+        This private method sets up the table structure and adds the description column
+        with the appropriate array type based on the extractor's output shape.
+        
+        Args:
+            to_describe: The source PixelTable table to describe.
+            old_description_table: Existing description table if resuming, or None.
+            
+        Returns:
+            The description table with proper schema.
+        """
         minimal_schema = self._MINIMAL_SCHEMA
         if self.to_keep_schema is not None:
             minimal_schema |= self.to_keep_schema
@@ -266,6 +296,18 @@ class GoldDescriptor:
     def _description_table_from_dataset(
         self, to_describe: Dataset, old_description_table: Table | None
     ) -> Table:
+        """Create or validate the description table schema from a PyTorch Dataset.
+        
+        This private method sets up the table structure and adds the description column
+        with the appropriate array type based on the extractor's output shape.
+        
+        Args:
+            to_describe: The source PyTorch Dataset to describe.
+            old_description_table: Existing description table if resuming, or None.
+            
+        Returns:
+            The description table with proper schema.
+        """
         minimal_schema = self._MINIMAL_SCHEMA
         if self.to_keep_schema is not None:
             minimal_schema |= self.to_keep_schema
@@ -310,6 +352,18 @@ class GoldDescriptor:
         description_table: Table,
         to_describe_dataset: Dataset,
     ) -> Table:
+        """Run distributed description process (not implemented).
+        
+        Args:
+            description_table: The table to store descriptions.
+            to_describe_dataset: The dataset to describe.
+            
+        Returns:
+            The populated description table.
+            
+        Raises:
+            NotImplementedError: Always raised as distributed mode is not yet implemented.
+        """
         raise NotImplementedError("Distributed description is not implemented yet.")
 
     def _sequential_describe(
@@ -317,6 +371,19 @@ class GoldDescriptor:
         description_table: Table,
         to_describe_dataset: Dataset,
     ) -> Table:
+        """Run sequential (single-process) description process.
+        
+        This method processes the dataset in batches, extracts features using the
+        feature extractor, and stores them in the description table. It is idempotent
+        and will skip samples that have already been described.
+        
+        Args:
+            description_table: The table to store descriptions.
+            to_describe_dataset: The dataset to describe.
+            
+        Returns:
+            The populated description table.
+        """
         assert self.batch_size is not None
         assert self.num_workers is not None
 

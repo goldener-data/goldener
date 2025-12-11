@@ -131,16 +131,23 @@ class ResetableTorchIterableDataset(torch.utils.data.IterableDataset):
     """
 
     def __init__(self, data_iterable: torch.utils.data.IterableDataset):
+        """Initialize the resetable iterable dataset.
+        
+        Args:
+            data_iterable: The underlying iterable dataset to wrap.
+        """
         super().__init__()
         self.data_iterable = data_iterable
         self._data_iterator = iter(self.data_iterable)
 
     def __iter__(self):
+        """Return the iterator object."""
         if self._data_iterator is None:
             self._data_iterator = iter(self.data_iterable)
         return self
 
     def __next__(self):
+        """Return the next item from the iterator."""
         try:
             return next(self._data_iterator)
         except StopIteration:
@@ -148,6 +155,7 @@ class ResetableTorchIterableDataset(torch.utils.data.IterableDataset):
             raise
 
     def reset(self):
+        """Reset the iterator to the beginning of the dataset."""
         self._data_iterator = iter(self.data_iterable)
 
 

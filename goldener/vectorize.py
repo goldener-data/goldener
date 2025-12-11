@@ -28,6 +28,12 @@ from goldener.utils import check_x_and_y_shapes, filter_batch_from_indices
 
 
 class FilterLocation(Enum):
+    """Enum defining filter location strategies for filtering 2D tensor rows.
+    
+    START: Filter from the start of the tensor.
+    END: Filter from the end of the tensor.
+    RANDOM: Filter randomly from the tensor.
+    """
     START = "start"
     END = "end"
     RANDOM = "random"
@@ -74,14 +80,26 @@ class Filter2DWithCount:
             )
 
     @property
-    def is_random(self):
-        """Check if the filter is random."""
+    def is_random(self) -> bool:
+        """Check if the filter is random.
+        
+        Returns:
+            True if the filter uses random sampling, False otherwise.
+        """
         return self._filter_location is FilterLocation.RANDOM
 
     def filter(
         self,
         x: torch.Tensor,
     ) -> torch.Tensor:
+        """Filter a single 2D tensor.
+        
+        Args:
+            x: Input 2D tensor to filter.
+            
+        Returns:
+            Filtered tensor.
+        """
         return self.filter_tensors({"x": x})["x"]
 
     def filter_tensors(
@@ -130,6 +148,7 @@ class Filter2DWithCount:
             assert_never(self._filter_location)
 
     def _start_filter(self, x: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
+        """Filter rows from the start of tensors."""
         return (
             {k: v[: self._filter_count] for k, v in x.items()}
             if self._keep
@@ -137,6 +156,7 @@ class Filter2DWithCount:
         )
 
     def _end_filter(self, x: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
+        """Filter rows from the end of tensors."""
         return (
             {k: v[-self._filter_count :] for k, v in x.items()}
             if self._keep
@@ -144,6 +164,7 @@ class Filter2DWithCount:
         )
 
     def _random_filter(self, x: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
+        """Filter rows randomly from tensors."""
         first_value = next(iter(x.values()))
         indices = list(self._random_sampler(range(len(first_value))))
         if self._keep:
@@ -187,6 +208,18 @@ class TensorVectorizer:
         transform_y: Callable[[torch.Tensor], torch.Tensor] | None = None,
         channel_pos: int = 1,
     ) -> None:
+        """Initialize the TensorVectorizer.
+        
+        Args:
+            keep: Optional filter to keep specific rows in the input.
+            remove: Optional filter to remove specific rows from the input.
+            random_filter: Optional random filter to apply after keep/remove filters.
+            transform_y: Optional transformation to apply to the target tensor.
+            channel_pos: Position of the channel dimension in the input tensor. Defaults to 1.
+            
+        Raises:
+            ValueError: If keep or remove filters are random, or if random_filter is not random.
+        """
         self.transform_y = transform_y
         self.channel_pos = channel_pos
 
@@ -264,6 +297,15 @@ class TensorVectorizer:
         filter: Callable[[torch.Tensor], torch.Tensor] | None,
         x: torch.Tensor,
     ) -> torch.Tensor:
+        """Apply a filter function to a tensor if provided.
+        
+        Args:
+            filter: Optional filter function to apply.
+            x: Input tensor.
+            
+        Returns:
+            Filtered tensor, or original tensor if filter is None.
+        """
         if filter is None:
             return x
 
@@ -358,6 +400,23 @@ class GoldVectorizer:
         drop_table: bool = False,
         max_batches: int | None = None,
     ) -> None:
+        """Initialize the GoldVectorizer.
+        
+        Args:
+            table_path: Path to the PixelTable table for storing vectors.
+            vectorizer: TensorVectorizer instance for transforming tensors.
+            collate_fn: Optional collate function for preparing batches.
+            data_key: Key for data in the batch dictionary. Defaults to "features".
+            target_key: Key for target in the batch dictionary. Defaults to "target".
+            vectorized_key: Column name for storing vectors. Defaults to "vectorized".
+            to_keep_schema: Optional schema for additional columns to preserve.
+            batch_size: Batch size for processing. Defaults to 1 if not distributed.
+            num_workers: Number of workers. Defaults to 0 if not distributed.
+            allow_existing: Whether to allow using an existing table. Defaults to True.
+            distribute: Whether to use distributed processing. Defaults to False.
+            drop_table: Whether to drop the table after dataset creation. Defaults to False.
+            max_batches: Optional maximum number of batches to process.
+        """
         self.table_path = table_path
         self.vectorizer = vectorizer
         self.collate_fn = collate_fn
@@ -498,6 +557,18 @@ class GoldVectorizer:
     def _vectorized_table_from_table(
         self, to_vectorize: Table, old_vectorized_table: Table | None
     ) -> Table:
+        """Create or validate the vectorized table schema from a PixelTable table.
+        
+        This private method sets up the table structure and adds the vectorized column
+        with the appropriate array type based on the vectorizer's output shape.
+        
+        Args:
+            to_vectorize: The source PixelTable table to vectorize.
+            old_vectorized_table: Existing vectorized table if resuming, or None.
+            
+        Returns:
+            The vectorized table with proper schema.
+        """
         minimal_schema = self._MINIMAL_SCHEMA
         if self.to_keep_schema is not None:
             minimal_schema |= self.to_keep_schema
@@ -532,6 +603,18 @@ class GoldVectorizer:
     def _vectorized_table_from_dataset(
         self, to_vectorize: Dataset, old_vectorized_table: Table | None
     ) -> Table:
+        """Create or validate the vectorized table schema from a PyTorch Dataset.
+        
+        This private method sets up the table structure and adds the vectorized column
+        with the appropriate array type based on the vectorizer's output shape.
+        
+        Args:
+            to_vectorize: The source PyTorch Dataset to vectorize.
+            old_vectorized_table: Existing vectorized table if resuming, or None.
+            
+        Returns:
+            The vectorized table with proper schema.
+        """
         minimal_schema = self._MINIMAL_SCHEMA
         if self.to_keep_schema is not None:
             minimal_schema |= self.to_keep_schema
@@ -583,6 +666,18 @@ class GoldVectorizer:
         vectorized_table: Table,
         to_vectorize_dataset: Dataset,
     ) -> Table:
+        """Run distributed vectorization process (not implemented).
+        
+        Args:
+            vectorized_table: The table to store vectorized outputs.
+            to_vectorize_dataset: The dataset to vectorize.
+            
+        Returns:
+            The populated vectorized table.
+            
+        Raises:
+            NotImplementedError: Always raised as distributed mode is not yet implemented.
+        """
         raise NotImplementedError("Distributed Vectorization is not implemented yet.")
 
     def _sequential_vectorize(
@@ -590,6 +685,19 @@ class GoldVectorizer:
         vectorized_table: Table,
         to_vectorize_dataset: Dataset,
     ) -> Table:
+        """Run sequential (single-process) vectorization process.
+        
+        This private method processes the dataset in batches, applies vectorization using
+        the TensorVectorizer, and stores the results in the vectorized table. It is idempotent
+        and will skip samples that have already been vectorized.
+        
+        Args:
+            vectorized_table: The table to store vectorized outputs.
+            to_vectorize_dataset: The dataset to vectorize.
+            
+        Returns:
+            The populated vectorized table.
+        """
         assert self.batch_size is not None
         assert self.num_workers is not None
 
@@ -692,6 +800,21 @@ class GoldVectorizer:
         starts: int = 0,
         to_keep_keys: list[str] | None = None,
     ) -> dict[str, Any]:
+        """Unwrap vectorized output into individual rows for table insertion.
+        
+        This private method converts the Vectorized dataclass (which contains batched vectors
+        and their batch indices) into a dictionary format suitable for inserting into the
+        PixelTable table, with one entry per vector.
+        
+        Args:
+            vectorized: Vectorized output containing vectors and batch indices.
+            batch: Original batch dictionary with metadata.
+            starts: Starting index for assigning new idx values.
+            to_keep_keys: Optional list of additional keys to preserve from the batch.
+            
+        Returns:
+            Dictionary with unwrapped vectors and metadata, ready for table insertion.
+        """
         new_batch: dict[str, Any] = {
             "idx": [],
             self.vectorized_key: [],
