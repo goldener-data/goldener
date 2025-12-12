@@ -433,6 +433,11 @@ class GoldDescriptor:
         for batch_idx, batch in tqdm(
             enumerate(dataloader),
             desc="Describing dataset samples",
+            total=(
+                None
+                if hasattr(to_describe_dataset, "__len__") is False
+                else len(dataloader)
+            ),
         ):
             # Stop if we've processed enough batches
             if self.max_batches is not None and batch_idx >= self.max_batches:

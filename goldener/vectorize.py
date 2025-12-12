@@ -750,6 +750,11 @@ class GoldVectorizer:
         for batch_idx, batch in tqdm(
             enumerate(dataloader),
             desc="Vectorizing the dataset",
+            total=(
+                None
+                if hasattr(to_vectorize_dataset, "__len__") is False
+                else len(dataloader)
+            ),
         ):
             # Stop if we've processed enough batches
             if self.max_batches is not None and batch_idx >= self.max_batches:
