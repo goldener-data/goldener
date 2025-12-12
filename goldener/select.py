@@ -469,6 +469,9 @@ class GoldSelector:
         for batch_idx, batch in tqdm(
             enumerate(dataloader),
             desc="Initializing rows for the selection table",
+            total=(
+                None if hasattr(select_from, "__len__") is False else len(dataloader)
+            ),
         ):
             # Stop if we've processed enough batches
             if self.max_batches is not None and batch_idx >= self.max_batches:
