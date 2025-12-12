@@ -250,6 +250,10 @@ class GoldDescriptor:
                 description_table, to_describe_dataset
             )
 
+        logger.info(
+            f"Description table populated {described.count()} rows at {self.table_path}"
+        )
+
         return described
 
     def _description_table_from_table(

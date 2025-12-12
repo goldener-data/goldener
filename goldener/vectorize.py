@@ -567,6 +567,10 @@ class GoldVectorizer:
                 vectorized_table, to_vectorize_dataset
             )
 
+        logger.info(
+            f"Vectorized table populated {vectorized.count()} rows at {self.table_path}"
+        )
+
         return vectorized
 
     def _vectorized_table_from_table(

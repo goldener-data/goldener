@@ -241,6 +241,16 @@ class GoldSelector:
         else:
             self._sequential_select(select_from, selection_table, select_count, value)
 
+        logger.info(
+            f"Selection table populated {
+                len(
+                    self.get_selected_sample_indices(
+                        selection_table, value, self.selection_key
+                    )
+                )
+            } rows with value {value} at {self.table_path}"
+        )
+
         return selection_table
 
     def _selection_table_from_table(
