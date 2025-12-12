@@ -1,3 +1,4 @@
+from logging import getLogger
 from typing import Callable
 
 import pixeltable as pxt
@@ -11,6 +12,7 @@ from coreax import SquaredExponentialKernel, Data
 from coreax.kernels import median_heuristic
 from coreax.solvers import KernelHerding
 from torch.utils.data import Dataset, DataLoader
+from tqdm import tqdm
 
 from goldener.pxt_utils import (
     set_value_to_idx_rows,
@@ -23,6 +25,9 @@ from goldener.pxt_utils import (
 from goldener.reduce import GoldReducer
 from goldener.torch_utils import get_dataset_sample_dict
 from goldener.utils import filter_batch_from_indices
+
+
+logger = getLogger(__name__)
 
 
 class GoldSelector:
@@ -190,12 +195,14 @@ class GoldSelector:
             A PixelTable Table containing at least the selection information in the `selection_key` column
                 and `idx` and `idx_sample` columns as well.
         """
+        logger.info(f"Loading the existing selection table from {self.table_path}")
         try:
             old_selection_table = pxt.get_table(
                 self.table_path,
                 if_not_exists="ignore",
             )
         except Error:
+            logger.info(f"No existing selection table from {self.table_path}")
             old_selection_table = None
 
         if not self.allow_existing and old_selection_table is not None:
@@ -225,11 +232,24 @@ class GoldSelector:
             )
             == select_count
         ):
+            logger.info(
+                f"Selection table already fully filled out for {value} from {self.table_path}"
+            )
             return selection_table
         elif self.distribute:
             self._distributed_select(select_from, selection_table, select_count, value)
         else:
             self._sequential_select(select_from, selection_table, select_count, value)
+
+        logger.info(
+            f"Selection table populated {
+                len(
+                    self.get_selected_sample_indices(
+                        selection_table, value, self.selection_key
+                    )
+                )
+            } rows with value {value} at {self.table_path}"
+        )
 
         return selection_table
 
@@ -295,6 +315,9 @@ class GoldSelector:
             )
             still_to_select = to_select_indices.difference(already_in_selection)
             if not still_to_select:
+                logger.info(
+                    f"The selection table is already initialized in {self.table_path}"
+                )
                 return selection_table
 
         self._add_rows_to_selection_table_from_table(select_from, selection_table)
@@ -325,10 +348,14 @@ class GoldSelector:
         if self.selection_key in select_from.columns():
             col_list.append(self.selection_key)
 
-        for idx_row, row in enumerate(
-            select_from.select(
-                *[get_expr_from_column_name(select_from, col) for col in col_list]
-            ).collect()
+        for idx_row, row in tqdm(
+            enumerate(
+                select_from.select(
+                    *[get_expr_from_column_name(select_from, col) for col in col_list]
+                ).collect()
+            ),
+            desc="Initializing rows for the selection table",
+            total=select_from.count(),
         ):
             if self.max_batches is not None:
                 if self.batch_size is None:
@@ -439,7 +466,13 @@ class GoldSelector:
             selection_table.count() > 0
         )  # allow to filter out already described samples
 
-        for batch_idx, batch in enumerate(dataloader):
+        for batch_idx, batch in tqdm(
+            enumerate(dataloader),
+            desc="Initializing rows for the selection table",
+            total=(
+                None if hasattr(select_from, "__len__") is False else len(dataloader)
+            ),
+        ):
             # Stop if we've processed enough batches
             if self.max_batches is not None and batch_idx >= self.max_batches:
                 break
@@ -577,6 +610,10 @@ class GoldSelector:
                     )
                     class_count = select_count - other_classes
 
+                logger.info(
+                    f"Selecting {class_count} samples for class '{class_value}' for value '{value}'"
+                )
+
                 if class_count == 0:
                     raise ValueError(
                         f"Class '{class_value}' has ratio {class_ratio} which results in zero samples "
@@ -600,6 +637,7 @@ class GoldSelector:
                 )
 
         else:
+            logger.info(f"Selecting {select_count} samples for value '{value}'")
             self._class_select(
                 select_from,
                 selection_table,

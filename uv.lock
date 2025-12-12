@@ -748,6 +748,7 @@ dependencies = [
     { name = "scikit-learn" },
     { name = "torch" },
     { name = "torchvision" },
+    { name = "tqdm" },
     { name = "umap-learn" },
 ]
 
@@ -779,6 +780,7 @@ requires-dist = [
     { name = "scikit-learn" },
     { name = "torch" },
     { name = "torchvision" },
+    { name = "tqdm" },
     { name = "types-pillow", marker = "extra == 'dev'" },
     { name = "types-tqdm", marker = "extra == 'dev'" },
     { name = "umap-learn" },
@@ -2530,7 +2532,7 @@ wheels = [
 
 [[package]]
 name = "pixeltable"
-version = "0.5.1"
+version = "0.5.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -2568,7 +2570,7 @@ dependencies = [
     { name = "tzlocal" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/2d/32/a0f6a97a28eeca3e607fb69933314d792bf2160c6e1d0b87ccc8e96e2858/pixeltable-0.5.1-py3-none-any.whl", hash = "sha256:a9e33b3c607dc74820970b2118b421ee4ac76415524e9bbe7246aa1ed1203e23", size = 570820, upload-time = "2025-11-19T20:35:27.276Z" },
+    { url = "https://files.pythonhosted.org/packages/86/54/7e50e0be819541f991946b0e1d7e7d6e0dc5f4fa0433692edb2a9dd413c6/pixeltable-0.5.5-py3-none-any.whl", hash = "sha256:f625362c73f98dded503b1ccd0f6b87b45b0f751f7e77bba47e4661a814d52cf", size = 583423, upload-time = "2025-12-11T21:34:25.864Z" },
 ]
 
 [[package]]
