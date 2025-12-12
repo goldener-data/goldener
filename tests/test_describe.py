@@ -147,7 +147,7 @@ class TestGoldDescriptor:
         column_schema = desc_table.get_metadata()["columns"]
         for col_name, col_dict in column_schema.items():
             if col_name == "features":
-                assert col_dict["type_"] == "Array[(4, 8, 8), Float]"
+                assert col_dict["type_"] == "Array[(4, 8, 8), Float32]"
             elif col_name == "idx":
                 assert col_dict["type_"] == "Int"
 
