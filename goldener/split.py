@@ -17,6 +17,7 @@ from goldener.pxt_utils import (
 from goldener.select import GoldSelector
 from goldener.vectorize import GoldVectorizer
 
+
 logger = getLogger(__name__)
 
 
@@ -300,6 +301,9 @@ class GoldSplitter:
 
         # select data for all sets except the last one
         for idx_set, gold_set in enumerate(self._sets[:-1]):
+            logger.info(
+                f"Selecting samples for set '{gold_set.name}' with ratio {gold_set.ratio}."
+            )
             set_count = int(gold_set.ratio * sample_count)
             if set_count == 0:
                 raise ValueError(

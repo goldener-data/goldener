@@ -1,3 +1,4 @@
+from logging import getLogger
 from typing import Callable
 
 import torch
@@ -6,6 +7,7 @@ import pixeltable as pxt
 from pixeltable import Error
 from pixeltable.catalog import Table
 from torch.utils.data import Dataset, DataLoader
+from tqdm import tqdm
 
 from goldener.extract import GoldFeatureExtractor
 from goldener.pxt_utils import (
@@ -18,6 +20,9 @@ from goldener.pxt_utils import (
 )
 from goldener.torch_utils import get_dataset_sample_dict
 from goldener.utils import filter_batch_from_indices
+
+
+logger = getLogger(__name__)
 
 
 class GoldDescriptor:
@@ -184,12 +189,14 @@ class GoldDescriptor:
                 and an `idx` column as well.
         """
         # If the computation was already started or already done, we resume from there
+        logger.info(f"Loading the existing description table from {self.table_path}")
         try:
             old_description_table = pxt.get_table(
                 self.table_path,
                 if_not_exists="ignore",
             )
         except Error:
+            logger.info(f"No existing description table from {self.table_path}")
             old_description_table = None
 
         if not self.allow_existing and old_description_table is not None:
@@ -221,6 +228,9 @@ class GoldDescriptor:
                     ]
                 )
                 if not to_describe_indices.difference(already_described):
+                    logger.info(
+                        f"Description table already fully filled out from {self.table_path}"
+                    )
                     return description_table
 
             to_describe_dataset = GoldPxtTorchDataset(to_describe)
@@ -269,6 +279,7 @@ class GoldDescriptor:
         )
 
         if self.description_key not in description_table.columns():
+            logger.info(f"Add the description column in {self.table_path}")
             sample = get_sample_row_from_idx(
                 to_describe,
                 collate_fn=pxt_torch_dataset_collate_fn,
@@ -322,6 +333,7 @@ class GoldDescriptor:
         )
 
         if self.description_key not in description_table.columns():
+            logger.info(f"Add the description column in {self.table_path}")
             sample = get_dataset_sample_dict(
                 to_describe,
                 collate_fn=self.collate_fn,
@@ -414,7 +426,10 @@ class GoldDescriptor:
             collate_fn=self.collate_fn,
         )
 
-        for batch_idx, batch in enumerate(dataloader):
+        for batch_idx, batch in tqdm(
+            enumerate(dataloader),
+            desc="Describing dataset samples",
+        ):
             # Stop if we've processed enough batches
             if self.max_batches is not None and batch_idx >= self.max_batches:
                 break

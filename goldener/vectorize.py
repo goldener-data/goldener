@@ -1,8 +1,10 @@
 from dataclasses import dataclass
 from functools import partial
+from logging import getLogger
 
 from pixeltable import Error
 from torch.utils.data import RandomSampler, Dataset, DataLoader
+from tqdm import tqdm
 from typing_extensions import assert_never
 from typing import Callable, Any
 
@@ -25,6 +27,8 @@ from goldener.pxt_utils import (
 )
 from goldener.torch_utils import make_2d_tensor, get_dataset_sample_dict
 from goldener.utils import check_x_and_y_shapes, filter_batch_from_indices
+
+logger = getLogger(__name__)
 
 
 class FilterLocation(Enum):
@@ -502,12 +506,14 @@ class GoldVectorizer:
         """
 
         # If the computation was already started or already done, we resume from there
+        logger.info(f"Loading the existing vectorized table from {self.table_path}")
         try:
             old_vectorized_table = pxt.get_table(
                 self.table_path,
                 if_not_exists="ignore",
             )
         except Error:
+            logger.info(f"No existing vectorized table from {self.table_path}")
             old_vectorized_table = None
 
         if not self.allow_existing and old_vectorized_table is not None:
@@ -540,6 +546,9 @@ class GoldVectorizer:
                     ]
                 )
                 if not to_vectorize_indices.difference(already_vectorized):
+                    logger.info(
+                        f"Vectorized table already fully filled out from {self.table_path}"
+                    )
                     return vectorized_table
 
             to_vectorize_dataset = GoldPxtTorchDataset(to_vectorize)
@@ -587,6 +596,7 @@ class GoldVectorizer:
         )
 
         if self.vectorized_key not in vectorized_table.columns():
+            logger.info(f"Add the Vectorized column in {self.table_path}")
             sample = get_sample_row_from_idx(
                 to_vectorize,
                 collate_fn=pxt_torch_dataset_collate_fn,
@@ -633,6 +643,7 @@ class GoldVectorizer:
         )
 
         if self.vectorized_key not in vectorized_table.columns():
+            logger.info(f"Add the Vectorized column in {self.table_path}")
             sample = get_dataset_sample_dict(
                 to_vectorize,
                 collate_fn=self.collate_fn,
@@ -732,7 +743,10 @@ class GoldVectorizer:
             collate_fn=self.collate_fn,
         )
 
-        for batch_idx, batch in enumerate(dataloader):
+        for batch_idx, batch in tqdm(
+            enumerate(dataloader),
+            desc="Vectorizing the dataset",
+        ):
             # Stop if we've processed enough batches
             if self.max_batches is not None and batch_idx >= self.max_batches:
                 break
