@@ -55,8 +55,8 @@ class GoldDescriptor:
         description_key: Column name to store the extracted features in the PixelTable table. Default is "features".
         to_keep_schema: Optional dictionary defining additional columns to keep from the original dataset/table
             into the description table. The keys are the column names and the values are the PixelTable types.
-        batch_size: Batch size used when iterating over the data. Defaults to 1 if not distributed.
-        num_workers: Number of workers for the PyTorch DataLoader during iteration on data. Defaults to 0 if not distributed.
+        batch_size: Batch size used when iterating over the data
+        num_workers: Number of workers for the PyTorch DataLoader during iteration on data
         allow_existing: If False, an error will be raised when the table already exists. Default is True.
         distribute: Whether to use distributed processing for feature extraction and table population. Not implemented yet. Default is False.
         drop_table: Whether to drop the description table after creating the dataset with descriptions. It is only applied
@@ -78,8 +78,8 @@ class GoldDescriptor:
         data_key: str = "data",
         description_key: str = "features",
         to_keep_schema: dict[str, type] | None = None,
-        batch_size: int | None = None,
-        num_workers: int | None = None,
+        batch_size: int = 1,
+        num_workers: int = 0,
         allow_existing: bool = True,
         distribute: bool = False,
         drop_table: bool = False,
@@ -96,8 +96,8 @@ class GoldDescriptor:
             data_key: Key in the batch dictionary containing the data. Defaults to "data".
             description_key: Key for storing extracted features. Defaults to "features".
             to_keep_schema: Optional schema for additional columns to preserve.
-            batch_size: Batch size for processing. Defaults to 1 if not distributed.
-            num_workers: Number of worker threads. Defaults to 0 if not distributed.
+            batch_size: Batch size for processing.
+            num_workers: Number of worker threads.
             allow_existing: Whether to allow using an existing table. Defaults to True.
             distribute: Whether to use distributed processing. Defaults to False.
             drop_table: Whether to drop the table after dataset creation. Defaults to False.
@@ -111,6 +111,8 @@ class GoldDescriptor:
         self.data_key = data_key
         self.description_key = description_key
         self.to_keep_schema = to_keep_schema
+        self.batch_size = batch_size
+        self.num_workers = num_workers
         self.allow_existing = allow_existing
         self.distribute = distribute
         self.drop_table = drop_table
@@ -119,15 +121,6 @@ class GoldDescriptor:
         if device is None:
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.device = device
-
-        self.batch_size: int | None
-        self.num_workers: int | None
-        if not self.distribute:
-            self.batch_size = 1 if batch_size is None else batch_size
-            self.num_workers = 0 if num_workers is None else num_workers
-        else:
-            self.batch_size = batch_size
-            self.num_workers = num_workers
 
     def describe_in_dataset(
         self,
@@ -445,7 +438,7 @@ class GoldDescriptor:
 
             # add idx if it is not provided by the dataset
             if "idx" not in batch:
-                starts = 0 if not already_described else max(already_described) + 1
+                starts = batch_idx * self.batch_size
                 batch["idx"] = [
                     starts + idx for idx in range(len(batch[self.data_key]))
                 ]
