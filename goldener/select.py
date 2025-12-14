@@ -60,8 +60,8 @@ class GoldSelector:
         class_key: Optional key for class-based stratified selection.
         to_keep_schema: Optional dictionary defining additional columns to keep from the original dataset/table
             into the selection table. The keys are the column names and the values are the PixelTable types.
-        batch_size: Batch size used when iterating over the data. Defaults to 1 if not distributed.
-        num_workers: Number of workers for the PyTorch DataLoader during iteration on data. Defaults to 0 if not distributed.
+        batch_size: Batch size used when iterating over the data.
+        num_workers: Number of workers for the PyTorch DataLoader during iteration on data.
         allow_existing: If False, an error will be raised when the table already exists. Default is True.
         distribute: Whether to use distributed processing for selection and table population. Not implemented yet. Default is False.
         drop_table: Whether to drop the selection table after creating the dataset with selection results. It is only applied
@@ -84,8 +84,8 @@ class GoldSelector:
         selection_key: str = "selected",
         class_key: str | None = None,
         to_keep_schema: dict[str, type] | None = None,
-        batch_size: int | None = None,
-        num_workers: int | None = None,
+        batch_size: int = 1,
+        num_workers: int = 0,
         allow_existing: bool = True,
         distribute: bool = False,
         drop_table: bool = False,
@@ -102,8 +102,8 @@ class GoldSelector:
             selection_key: Key for storing selection values. Defaults to "selected".
             class_key: Optional key for class stratification.
             to_keep_schema: Optional schema for additional columns to preserve.
-            batch_size: Batch size for processing. Defaults to 1 if not distributed.
-            num_workers: Number of workers. Defaults to 0 if not distributed.
+            batch_size: Batch size used when iterating over the data.
+            num_workers: Number of workers for the PyTorch DataLoader during iteration on data.
             allow_existing: Whether to allow using an existing table. Defaults to True.
             distribute: Whether to use distributed selection. Defaults to False.
             drop_table: Whether to drop the table after dataset creation. Defaults to False.
@@ -117,20 +117,12 @@ class GoldSelector:
         self.selection_key = selection_key
         self.class_key = class_key
         self.to_keep_schema = to_keep_schema
+        self.batch_size = batch_size
+        self.num_workers = num_workers
         self.allow_existing = allow_existing
         self.distribute = distribute
         self.drop_table = drop_table
         self.max_batches = max_batches
-
-        self.batch_size: int | None
-        self.num_workers: int | None
-
-        if not self.distribute:
-            self.batch_size = 1 if batch_size is None else batch_size
-            self.num_workers = 0 if num_workers is None else num_workers
-        else:
-            self.batch_size = batch_size
-            self.num_workers = num_workers
 
     def select_in_dataset(
         self, select_from: Dataset | Table, select_count: int, value: str
@@ -358,8 +350,6 @@ class GoldSelector:
             total=select_from.count(),
         ):
             if self.max_batches is not None:
-                if self.batch_size is None:
-                    raise ValueError("batch_size must be set when max_batches is used.")
                 if idx_row >= self.batch_size * self.max_batches:
                     break
 
@@ -446,8 +436,8 @@ class GoldSelector:
         """
         dataloader = DataLoader(
             select_from,
-            batch_size=self.batch_size if self.batch_size is not None else 1,
-            num_workers=self.num_workers if self.num_workers is not None else 1,
+            batch_size=self.batch_size,
+            num_workers=self.num_workers,
             collate_fn=self.collate_fn,
         )
 
@@ -478,7 +468,6 @@ class GoldSelector:
                 break
 
             if "idx" not in batch:
-                assert self.batch_size is not None
                 starts = batch_idx * self.batch_size
                 batch["idx"] = [
                     starts + idx for idx in range(len(batch[self.vectorized_key]))
