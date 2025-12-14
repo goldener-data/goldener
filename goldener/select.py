@@ -341,6 +341,10 @@ class GoldSelector:
         if self.selection_key in select_from.columns():
             col_list.append(self.selection_key)
 
+        not_empty = (
+            selection_table.count() > 0
+        )  # allow to filter out already described samples
+
         data_loader = DataLoader(
             GoldPxtTorchDataset(
                 select_from.select(
@@ -353,25 +357,42 @@ class GoldSelector:
             collate_fn=pxt_torch_dataset_collate_fn,
         )
 
-        for idx_row, row in tqdm(
+        already_in_selection = set(
+            [
+                row["idx"]
+                for row in selection_table.select(selection_table.idx).collect()
+            ]
+        )
+
+        for idx_batch, batch in tqdm(
             enumerate(data_loader),
             desc="Initializing rows for the selection table",
             total=select_from.count(),
         ):
             if self.max_batches is not None:
-                if idx_row >= self.batch_size * self.max_batches:
+                if idx_batch >= self.max_batches:
                     break
 
-            if selection_table.where(selection_table.idx == row["idx"]).count() > 0:
-                continue  # already included
+            # Keep only not yet described samples in the batch
+            if not_empty:
+                batch = filter_batch_from_indices(
+                    batch,
+                    already_in_selection,
+                )
 
-            if self.selection_key not in row:
-                row[self.selection_key] = None
+            if self.selection_key not in batch:
+                batch[self.selection_key] = [None for _ in range(len(batch["idx"]))]
 
-            if "chunked" not in row:
-                row["chunked"] = False
+            if "chunked" not in batch:
+                batch["chunked"] = [None for _ in range(len(batch["idx"]))]
 
-            selection_table.insert([row])
+            # insert batch in the selection table
+            include_batch_into_table(
+                selection_table,
+                batch,
+                col_list,
+                "idx",
+            )
 
     def _selection_table_from_dataset(
         self, select_from: Dataset, old_selection_table: Table | None
