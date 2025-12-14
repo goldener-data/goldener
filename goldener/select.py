@@ -346,7 +346,7 @@ class GoldSelector:
                 select_from.select(
                     *[get_expr_from_column_name(select_from, col) for col in col_list]
                 ),
-                keep_cache=True,
+                keep_cache=False,
             ),
             batch_size=self.batch_size,
             num_workers=self.num_workers,
