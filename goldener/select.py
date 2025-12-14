@@ -333,7 +333,6 @@ class GoldSelector:
         """
         col_list = [
             "idx_sample",
-            "idx",
         ]
         if self.to_keep_schema is not None:
             col_list.extend(list(self.to_keep_schema.keys()))
@@ -348,7 +347,10 @@ class GoldSelector:
         data_loader = DataLoader(
             GoldPxtTorchDataset(
                 select_from.select(
-                    *[get_expr_from_column_name(select_from, col) for col in col_list]
+                    *[
+                        get_expr_from_column_name(select_from, col)
+                        for col in col_list + ["idx"]
+                    ]
                 ),
                 keep_cache=False,
             ),
