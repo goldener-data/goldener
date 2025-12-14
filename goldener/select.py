@@ -382,6 +382,9 @@ class GoldSelector:
                     already_in_selection,
                 )
 
+            if len(batch) == 0:
+                continue  # all samples already described
+
             if self.selection_key not in batch:
                 batch[self.selection_key] = [None for _ in range(len(batch["idx"]))]
 
