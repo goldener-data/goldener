@@ -21,6 +21,7 @@ from goldener.pxt_utils import (
     get_valid_table,
     include_batch_into_table,
     get_column_distinct_ratios,
+    pxt_torch_dataset_collate_fn,
 )
 from goldener.reduce import GoldReducer
 from goldener.torch_utils import get_dataset_sample_dict
@@ -340,12 +341,20 @@ class GoldSelector:
         if self.selection_key in select_from.columns():
             col_list.append(self.selection_key)
 
-        for idx_row, row in tqdm(
-            enumerate(
+        data_loader = DataLoader(
+            GoldPxtTorchDataset(
                 select_from.select(
                     *[get_expr_from_column_name(select_from, col) for col in col_list]
-                ).collect()
+                ),
+                keep_cache=True,
             ),
+            batch_size=self.batch_size,
+            num_workers=self.num_workers,
+            collate_fn=pxt_torch_dataset_collate_fn,
+        )
+
+        for idx_row, row in tqdm(
+            enumerate(data_loader),
             desc="Initializing rows for the selection table",
             total=select_from.count(),
         ):
