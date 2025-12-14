@@ -55,8 +55,8 @@ class GoldDescriptor:
         description_key: Column name to store the extracted features in the PixelTable table. Default is "features".
         to_keep_schema: Optional dictionary defining additional columns to keep from the original dataset/table
             into the description table. The keys are the column names and the values are the PixelTable types.
-        batch_size: Batch size used when iterating over the data
-        num_workers: Number of workers for the PyTorch DataLoader during iteration on data
+        batch_size: Batch size used when iterating over the data.
+        num_workers: Number of workers for the PyTorch DataLoader during iteration on data.
         allow_existing: If False, an error will be raised when the table already exists. Default is True.
         distribute: Whether to use distributed processing for feature extraction and table population. Not implemented yet. Default is False.
         drop_table: Whether to drop the description table after creating the dataset with descriptions. It is only applied
@@ -96,8 +96,8 @@ class GoldDescriptor:
             data_key: Key in the batch dictionary containing the data. Defaults to "data".
             description_key: Key for storing extracted features. Defaults to "features".
             to_keep_schema: Optional schema for additional columns to preserve.
-            batch_size: Batch size for processing.
-            num_workers: Number of worker threads.
+            batch_size: Batch size used when iterating over the data.
+            num_workers: Number of workers for the PyTorch DataLoader during iteration on data.
             allow_existing: Whether to allow using an existing table. Defaults to True.
             distribute: Whether to use distributed processing. Defaults to False.
             drop_table: Whether to drop the table after dataset creation. Defaults to False.

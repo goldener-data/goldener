@@ -418,8 +418,8 @@ class GoldVectorizer:
             target_key: Key for target in the batch dictionary. Defaults to "target".
             vectorized_key: Column name for storing vectors. Defaults to "vectorized".
             to_keep_schema: Optional schema for additional columns to preserve.
-            batch_size: Batch size for processing.
-            num_workers: Number of workers.
+            batch_size: Batch size used when iterating over the data.
+            num_workers: Number of workers for the PyTorch DataLoader during iteration on data.
             allow_existing: Whether to allow using an existing table. Defaults to True.
             distribute: Whether to use distributed processing. Defaults to False.
             drop_table: Whether to drop the table after dataset creation. Defaults to False.
