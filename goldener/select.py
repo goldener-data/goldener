@@ -743,8 +743,16 @@ class GoldSelector:
                 if self.chunk is None
                 else min(self.chunk, to_chunk_from_count)
             )
+
             chunk_loop_count = to_chunk_from_count // chunk_size
             select_per_chunk = (select_count - selection_count) // chunk_loop_count
+
+            # when chunk size is too small to select enough samples, remove one chunk
+            if chunk_size < select_per_chunk:
+                chunk_loop_count -= 1
+                chunk_size = to_chunk_from_count // chunk_loop_count
+                select_per_chunk = (select_count - selection_count) // chunk_loop_count
+
             if select_per_chunk == 0:
                 select_per_chunk = 1
 
