@@ -1,3 +1,4 @@
+import math
 from typing import Iterable, Any
 
 import torch
@@ -111,3 +112,31 @@ def filter_batch_from_indices(
         key: filter_batched_values(batched_value)
         for key, batched_value in batch.items()
     }
+
+
+def get_size_and_sampling_count_per_chunk(
+    total_size: int, sampling_size: int, max_chunk_size: int
+) -> tuple[list[int], list[int]]:
+    """Get sizes and sampling sizes per chunk.
+
+    Args:
+        total_size: Total size of the data to sample from.
+        sampling_size: Total number of samples to draw.
+        max_chunk_size: Maximum size of each chunk.
+    """
+    if sampling_size >= total_size:
+        raise ValueError("sampling_count must be less than or equal to total_count")
+
+    if max_chunk_size >= total_size:
+        return [total_size], [sampling_size]  # single chunk
+
+    chunk_count = math.ceil(total_size / max_chunk_size)
+    chunk_size = total_size // chunk_count
+    chunk_sampling_size = sampling_size // chunk_count
+
+    chunk_sizes = [chunk_size] * (chunk_count - 1)
+    chunk_sizes.append(total_size - sum(chunk_sizes))
+    chunk_sampling_sizes = [chunk_sampling_size] * (chunk_count - 1)
+    chunk_sampling_sizes.append(sampling_size - sum(chunk_sampling_sizes))
+
+    return chunk_sizes, chunk_sampling_sizes

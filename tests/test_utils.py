@@ -1,6 +1,6 @@
 import torch
 import pytest
-from goldener.utils import check_x_and_y_shapes
+from goldener.utils import check_x_and_y_shapes, get_size_and_sampling_count_per_chunk
 
 
 class TestCheckXAndYShapes:
@@ -71,3 +71,39 @@ class TestCheckXAndYShapes:
         # Should not raise if y is None (skip check)
         if y is not None:
             check_x_and_y_shapes(x.shape, y.shape)
+
+
+class TestGetSizeAndSamplingCountPerChunk:
+    def test_single_chunk_when_max_ge_total(self):
+        total_size = 100
+        sampling_size = 10
+        max_chunk_size = 100
+        sizes, samplings = get_size_and_sampling_count_per_chunk(
+            total_size, sampling_size, max_chunk_size
+        )
+        assert sizes == [100]
+        assert samplings == [10]
+
+    def test_multiple_chunks_even_split(self):
+        total_size = 100
+        sampling_size = 10
+        max_chunk_size = 30
+        sizes, samplings = get_size_and_sampling_count_per_chunk(
+            total_size, sampling_size, max_chunk_size
+        )
+        assert sizes == [25, 25, 25, 25]
+        assert samplings == [2, 2, 2, 4]
+
+    def test_sampling_greater_than_total_raises(self):
+        with pytest.raises(ValueError):
+            get_size_and_sampling_count_per_chunk(10, 11, 5)
+
+    def test_edge_case_small_numbers(self):
+        total_size = 5
+        sampling_size = 2
+        max_chunk_size = 2
+        sizes, samplings = get_size_and_sampling_count_per_chunk(
+            total_size, sampling_size, max_chunk_size
+        )
+        assert sizes == [1, 1, 3]
+        assert samplings == [0, 0, 2]
