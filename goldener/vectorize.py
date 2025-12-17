@@ -367,7 +367,7 @@ class GoldVectorizer:
 
     The vectorization can operate in a sequential (single-process) mode or a
     distributed mode (not implemented). The table schema is created/validated automatically and will include
-    minimal indexing columns (`idx`, `idx_sample`) required to link vectors back to
+    minimal indexing columns (`idx`, `idx_vector`) required to link vectors back to
     their originating samples.
 
     Attributes:
@@ -390,7 +390,7 @@ class GoldVectorizer:
         max_batches: Optional maximum number of batches to process. Useful for testing on a small subset of the dataset.
     """
 
-    _MINIMAL_SCHEMA: dict[str, type] = {"idx": pxt.Int, "idx_sample": pxt.Int}
+    _MINIMAL_SCHEMA: dict[str, type] = {"idx": pxt.Int, "idx_vector": pxt.Int}
 
     def __init__(
         self,
@@ -462,7 +462,7 @@ class GoldVectorizer:
 
         Returns:
             A GoldPxtTorchDataset containing at least the vectorized data in the `vectorized_key` key
-                and `idx` and `idx_sample` keys as well.
+                and `idx` (index of the sample) and `idx_vector` (index of the vector) keys as well.
         """
         vectorized_table = self.vectorize_in_table(to_vectorize)
 
@@ -495,7 +495,7 @@ class GoldVectorizer:
 
         Returns:
             A PixelTable Table containing at least the vectorized data in the `vectorized_key` column
-                and `idx` and `idx_sample` columns as well.
+                and `idx` (index of the sample) and `idx_vector` (index of the vector) columns as well.
         """
 
         # If the computation was already started or already done, we resume from there
@@ -532,8 +532,8 @@ class GoldVectorizer:
                 )
                 already_vectorized = set(
                     [
-                        row["idx_sample"]
-                        for row in vectorized_table.select(vectorized_table.idx_sample)
+                        row["idx"]
+                        for row in vectorized_table.select(vectorized_table.idx)
                         .distinct()
                         .collect()
                     ]
@@ -724,11 +724,11 @@ class GoldVectorizer:
         )
         already_vectorized = set(
             [
-                row["idx_sample"]
+                row["idx"]
                 for row in vectorized_table.where(
                     vectorized_col != None  # noqa: E711
                 )
-                .select(vectorized_table.idx_sample)
+                .select(vectorized_table.idx)
                 .collect()
             ]
         )
@@ -802,7 +802,7 @@ class GoldVectorizer:
             )
 
             # insert vectorized in the table
-            to_insert_keys = [self.vectorized_key, "idx_sample"]
+            to_insert_keys = [self.vectorized_key, "idx"]
             if to_keep_keys is not None:
                 to_insert_keys.extend(to_keep_keys)
 
@@ -810,7 +810,7 @@ class GoldVectorizer:
                 vectorized_table,
                 batch,
                 to_insert_keys,
-                "idx",
+                "idx_vector",
             )
 
         return vectorized_table
@@ -840,7 +840,7 @@ class GoldVectorizer:
         new_batch: dict[str, Any] = {
             "idx": [],
             self.vectorized_key: [],
-            "idx_sample": [],
+            "idx_vector": [],
         }
         if to_keep_keys is not None:
             for key in to_keep_keys:
@@ -854,10 +854,10 @@ class GoldVectorizer:
         vectorized_idx = vectorized.batch_indices
         for vec_idx, vector in enumerate(vectorized.vectors):
             new_batch[self.vectorized_key].append(vector)
-            new_batch["idx"].append(starts + vec_idx)
+            new_batch["idx_vector"].append(starts + vec_idx)
             batch_idx = vectorized_idx[vec_idx].item()
             assert isinstance(batch_idx, int)
-            new_batch["idx_sample"].append(sample_indices[batch_idx])
+            new_batch["idx"].append(sample_indices[batch_idx])
             if to_keep_keys is not None:
                 for key in to_keep_keys:
                     new_batch[key].append(batch[key][batch_idx])

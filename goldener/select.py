@@ -48,7 +48,7 @@ class GoldSelector:
 
     The selection can operate in a sequential (single-process) mode or a
     distributed mode (not implemented). The table schema is created/validated automatically and will include
-    minimal indexing columns (`idx`, `idx_sample`) required to link selected samples back to
+    minimal indexing columns (`idx`, `idx_vector`) required to link selected samples back to
     their originating data points.
 
     Attributes:
@@ -74,7 +74,7 @@ class GoldSelector:
 
     _MINIMAL_SCHEMA: dict[str, type] = {
         "idx": pxt.Int,
-        "idx_sample": pxt.Int,
+        "idx_vector": pxt.Int,
     }
 
     def __init__(
@@ -144,15 +144,15 @@ class GoldSelector:
 
         Args:
             select_from: Dataset or Table to select from. If a Dataset is provided, each item should be a
-                dictionary with at least the `vectorized_key` and `idx_sample` keys after applying the collate_fn.
+                dictionary with at least the `vectorized_key` and `idx` keys after applying the collate_fn.
                 If the collate_fn is None, the dataset is expected to directly provide such batches.
-                If a Table is provided, it should contain at least the `vectorized_key`, `idx` and `idx_sample` columns.
+                If a Table is provided, it should contain at least the `vectorized_key`, `idx` and `idx_vector` columns.
             select_count: Number of data points to select.
             value: Value to set in the `selection_key` column for selected samples.
 
         Returns:
             A GoldPxtTorchDataset containing at least the selection information in the `selection_key` key
-                and `idx` and `idx_sample` keys as well.
+                and `idx` and `idx_vector` keys as well.
         """
 
         selected_table = self.select_in_table(select_from, select_count, value)
@@ -180,15 +180,15 @@ class GoldSelector:
 
         Args:
             select_from: Dataset or Table to select from. If a Dataset is provided, each item should be a
-                dictionary with at least the `vectorized_key` and `idx_sample` keys after applying the collate_fn.
+                dictionary with at least the `vectorized_key` and `idx` keys after applying the collate_fn.
                 If the collate_fn is None, the dataset is expected to directly provide such batches.
-                If a Table is provided, it should contain at least the `vectorized_key`, `idx` and `idx_sample` columns.
+                If a Table is provided, it should contain at least the `vectorized_key`, `idx` and `idx_vector` columns.
             select_count: Number of data points to select.
             value: Value to set in the `selection_key` column for selected samples.
 
         Returns:
             A PixelTable Table containing at least the selection information in the `selection_key` column
-                and `idx` and `idx_sample` columns as well.
+                and `idx` and `idx_vector` columns as well.
         """
         logger.info(f"Loading the existing selection table from {self.table_path}")
         try:
@@ -334,7 +334,7 @@ class GoldSelector:
             selection_table: The selection table to populate.
         """
         col_list = [
-            "idx_sample",
+            "idx_vector",
         ]
         if self.to_keep_schema is not None:
             col_list.extend(list(self.to_keep_schema.keys()))
@@ -363,7 +363,7 @@ class GoldSelector:
 
         already_in_selection = set(
             [
-                row["idx"]
+                row["idx_vector"]
                 for row in selection_table.select(selection_table.idx).collect()
             ]
         )
@@ -388,17 +388,19 @@ class GoldSelector:
                 continue  # all samples already described
 
             if self.selection_key not in batch:
-                batch[self.selection_key] = [None for _ in range(len(batch["idx"]))]
+                batch[self.selection_key] = [
+                    None for _ in range(len(batch["idx_vector"]))
+                ]
 
             if "chunked" not in batch:
-                batch["chunked"] = [None for _ in range(len(batch["idx"]))]
+                batch["chunked"] = [None for _ in range(len(batch["idx_vector"]))]
 
             # insert batch in the selection table
             include_batch_into_table(
                 selection_table,
                 batch,
                 col_list,
-                "idx",
+                "idx_vector",
             )
 
     def _selection_table_from_dataset(
@@ -536,7 +538,7 @@ class GoldSelector:
                     for idx in batch["idx"]
                 ]
             )
-            to_insert_keys = [self.vectorized_key, "idx_sample", self.selection_key]
+            to_insert_keys = [self.vectorized_key, "idx", self.selection_key]
             if self.to_keep_schema is not None:
                 to_insert_keys.extend(list(self.to_keep_schema.keys()))
             if self.class_key is not None:
@@ -546,7 +548,7 @@ class GoldSelector:
                 selection_table,
                 batch,
                 to_insert_keys,
-                "idx",
+                "idx_vector",
             )
 
     @staticmethod
@@ -556,7 +558,7 @@ class GoldSelector:
         selection_key: str,
         class_key: str | None = None,
         class_value: str | None = None,
-        idx_key: str = "idx_sample",
+        idx_key: str = "idx",
     ) -> set[int]:
         """Get the indices of samples selected with a given value.
 
@@ -712,14 +714,11 @@ class GoldSelector:
         else:
             available_query = selection_col == None  # noqa: E711
 
-        available_for_selection = len(
-            [
-                row["idx_sample"]
-                for row in selection_table.where(available_query)  # noqa: E711
-                .select(selection_table.idx_sample)
-                .distinct()
-                .collect()
-            ]
+        available_for_selection = (
+            selection_table.where(available_query)  # noqa: E711
+            .select(selection_table.idx)
+            .distinct()
+            .count()
         )
 
         if available_for_selection < (select_count - selection_count):
@@ -786,7 +785,7 @@ class GoldSelector:
                 set_value_to_idx_rows(
                     table=selection_table,
                     col_expr=selection_table.chunked,
-                    idx_expr=selection_table.idx_sample,
+                    idx_expr=selection_table.idx,
                     indices=chunked_indices,
                     value=True,
                 )
@@ -821,7 +820,7 @@ class GoldSelector:
                     class_value=class_value,
                 )
                 selection_table.where(
-                    selection_table.idx_sample.isin(selected_indices)
+                    selection_table.idx.isin(selected_indices)
                 ).update({self.selection_key: value})
                 selection_count = len(selected_indices)
 
