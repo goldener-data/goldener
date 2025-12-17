@@ -848,7 +848,7 @@ class GoldSelector:
         self,
         select_from: Table,
         selection_table: Table,
-        select_size: int,
+        select_count: int,
         value: str | None,
     ) -> None:
         """Run distributed selection process (not implemented).
@@ -856,7 +856,7 @@ class GoldSelector:
         Args:
             select_from: The source table with vectorized data.
             selection_table: The table to store selection results.
-            select_size: Number of samples to select.
+            select_count: Number of samples to select.
             value: Value to assign to selected samples in the selection_key column.
 
         Raises:
