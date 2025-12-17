@@ -165,7 +165,7 @@ class GoldSelector:
         return selected_dataset
 
     def select_in_table(
-        self, select_from: Dataset | Table, select_count: int, value: str | None
+        self, select_from: Dataset | Table, select_size: int | float, value: str | None
     ) -> Table:
         """Select a subset of samples using coresubset selection and store results in a PixelTable table.
 
@@ -183,7 +183,7 @@ class GoldSelector:
                 dictionary with at least the `vectorized_key` and `idx_sample` keys after applying the collate_fn.
                 If the collate_fn is None, the dataset is expected to directly provide such batches.
                 If a Table is provided, it should contain at least the `vectorized_key`, `idx` and `idx_sample` columns.
-            select_count: Number of data points to select.
+            select_size: Number or ratio of data points to select.
             value: Value to set in the `selection_key` column for selected samples.
 
         Returns:
@@ -218,6 +218,14 @@ class GoldSelector:
             select_from = selection_table
 
         assert isinstance(select_from, Table)
+
+        # define the number of element to sample
+        total_size = select_from.select(select_from.idx_sample).distinct().count()
+        select_count = (
+            select_size
+            if isinstance(select_size, int)
+            else int(select_size * total_size)
+        )
 
         if (
             len(
@@ -712,14 +720,11 @@ class GoldSelector:
         else:
             available_query = selection_col == None  # noqa: E711
 
-        available_for_selection = len(
-            [
-                row["idx_sample"]
-                for row in selection_table.where(available_query)  # noqa: E711
-                .select(selection_table.idx_sample)
-                .distinct()
-                .collect()
-            ]
+        available_for_selection = (
+            selection_table.where(available_query)
+            .select(selection_table.idx_sample)
+            .distinct()
+            .count()
         )
 
         if available_for_selection < (select_count - selection_count):
@@ -829,7 +834,7 @@ class GoldSelector:
         self,
         select_from: Table,
         selection_table: Table,
-        select_count: int,
+        select_size: int,
         value: str | None,
     ) -> None:
         """Run distributed selection process (not implemented).
@@ -837,7 +842,7 @@ class GoldSelector:
         Args:
             select_from: The source table with vectorized data.
             selection_table: The table to store selection results.
-            select_count: Number of samples to select.
+            select_size: Number of samples to select.
             value: Value to assign to selected samples in the selection_key column.
 
         Raises:
