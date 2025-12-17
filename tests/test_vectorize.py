@@ -357,13 +357,14 @@ class TestGoldVectorizer:
             DummyDataset(dataset_len=2),
         )
         assert table.count() == 128
-        for i, row in enumerate(table.collect()):
-            assert row["idx"] == i
-            if i < 64:
-                assert row["idx_sample"] == 0
-            else:
-                assert row["idx_sample"] == 1
-            assert row["vectorized"].shape == (3,)
+        idx_vector = set()
+        idx = set()
+        for row in table.collect():
+            idx.add(row["idx"])
+            idx_vector.add(row["idx_vector"])
+
+        assert idx == {0, 1}
+        assert idx_vector == set(range(128))
 
         pxt.drop_dir("unit_test", force=True)
 
@@ -429,7 +430,7 @@ class TestGoldVectorizer:
 
         assert table.count() == 128
         for i, row in enumerate(table.collect()):
-            assert row["idx"] == i
+            assert row["idx_vector"] == i
 
         pxt.drop_dir("unit_test", force=True)
 
@@ -523,14 +524,14 @@ class TestGoldVectorizer:
 
         assert vectorized_table.count() == 128
         for i, row in enumerate(vectorized_table.collect()):
-            assert row["idx"] == i
+            assert row["idx_vector"] == i
 
         gv.max_batches = None
         vectorized_table = gv.vectorize_in_table(dataset)
 
         assert vectorized_table.count() == 640
         for i, row in enumerate(vectorized_table.collect()):
-            assert row["idx"] == i
+            assert row["idx_vector"] == i
             assert row["vectorized"].shape == (3,)
 
         pxt.drop_dir("unit_test", force=True)

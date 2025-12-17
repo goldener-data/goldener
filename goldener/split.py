@@ -337,7 +337,7 @@ class GoldSplitter:
         set_value_to_idx_rows(
             table=selected_table,
             col_expr=selection_col,
-            idx_expr=selected_table.idx_sample,
+            idx_expr=selected_table.idx,
             indices=remaining_idx_list,
             value=self._sets[-1].name,
         )

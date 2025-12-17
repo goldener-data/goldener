@@ -42,13 +42,13 @@ class TestGoldSelector:
                 "idx": 0,
                 "vectorized": torch.zeros(1, 5).numpy(),
                 "label": "dummy",
-                "idx_sample": 0,
+                "idx_vector": 0,
             },
             {
-                "idx": 1,
+                "idx_vector": 1,
                 "vectorized": torch.zeros(1, 5).numpy(),
                 "label": "dummy",
-                "idx_sample": 0,
+                "idx": 0,
             },
         ]
 
@@ -66,10 +66,13 @@ class TestGoldSelector:
         assert set(pxt_table.columns()) == {
             selector.selection_key,
             "idx",
-            "idx_sample",
+            "idx_vector",
             "chunked",
         }
-        row_indices = [row["idx"] for row in pxt_table.select(pxt_table.idx).collect()]
+        row_indices = [
+            row["idx_vector"]
+            for row in pxt_table.select(pxt_table.idx_vector).collect()
+        ]
         assert set(row_indices) == {0, 1}
 
         pxt.drop_dir("unit_test", force=True)
@@ -127,7 +130,7 @@ class TestGoldSelector:
 
         sample = {
             "vectorized": torch.rand(1, 5),
-            "idx_sample": 7,
+            "idx": 0,
         }
         dataset = DummyDataset([sample, sample])
 
@@ -141,10 +144,13 @@ class TestGoldSelector:
             selector.vectorized_key,
             selector.selection_key,
             "idx",
-            "idx_sample",
+            "idx_vector",
             "chunked",
         }
-        row_indices = [row["idx"] for row in pxt_table.select(pxt_table.idx).collect()]
+        row_indices = [
+            row["idx_vector"]
+            for row in pxt_table.select(pxt_table.idx_vector).collect()
+        ]
         assert set(row_indices) == {0, 1}
 
         pxt.drop_dir("unit_test", force=True)
@@ -155,7 +161,7 @@ class TestGoldSelector:
         table_path = "unit_test.test_select_from_dataset"
 
         dataset = DummyDataset(
-            [{"vectorized": torch.rand(5), "idx_sample": idx} for idx in range(100)]
+            [{"vectorized": torch.rand(5), "idx": idx} for idx in range(100)]
         )
 
         selector = GoldSelector(
@@ -185,7 +191,7 @@ class TestGoldSelector:
         table_path = "unit_test.test_select_from_dataset"
 
         dataset = DummyDataset(
-            [{"vectorized": torch.rand(5), "idx_sample": idx} for idx in range(100)]
+            [{"vectorized": torch.rand(5), "idx": idx} for idx in range(100)]
         )
 
         selector = GoldSelector(
@@ -208,7 +214,7 @@ class TestGoldSelector:
         table_path = "unit_test.test_select_from_dataset"
 
         dataset = DummyDataset(
-            [{"vectorized": torch.rand(5), "idx_sample": idx} for idx in range(100)]
+            [{"vectorized": torch.rand(5), "idx": idx} for idx in range(100)]
         )
 
         selector = GoldSelector(
@@ -263,7 +269,7 @@ class TestGoldSelector:
 
         dataset = DummyDataset(
             [
-                {"vectorized": torch.rand(5), "idx_sample": idx, "label": str(idx % 2)}
+                {"vectorized": torch.rand(5), "idx": idx, "label": str(idx % 2)}
                 for idx in range(100)
             ]
         )
@@ -321,7 +327,7 @@ class TestGoldSelector:
                     "vectorized": torch.rand(
                         5,
                     ),
-                    "idx_sample": idx,
+                    "idx": idx,
                 }
                 for idx in range(100)
             ]
@@ -351,7 +357,7 @@ class TestGoldSelector:
         table_path = "unit_test.test_select_reducer"
 
         dataset = DummyDataset(
-            [{"vectorized": torch.rand(5), "idx_sample": idx} for idx in range(100)]
+            [{"vectorized": torch.rand(5), "idx": idx} for idx in range(100)]
         )
 
         selector = GoldSelector(
@@ -381,7 +387,7 @@ class TestGoldSelector:
         table_path = "unit_test.test_select_max_batches"
 
         dataset = DummyDataset(
-            [{"vectorized": torch.rand(5), "idx_sample": idx} for idx in range(100)]
+            [{"vectorized": torch.rand(5), "idx": idx} for idx in range(100)]
         )
 
         selector = GoldSelector(
@@ -408,7 +414,7 @@ class TestGoldSelector:
         table_path = "unit_test.test_select_max_batches"
 
         dataset = DummyDataset(
-            [{"vectorized": torch.rand(5), "idx_sample": idx} for idx in range(100)]
+            [{"vectorized": torch.rand(5), "idx": idx} for idx in range(100)]
         )
 
         selector = GoldSelector(
@@ -438,7 +444,7 @@ class TestGoldSelector:
         table_path = "unit_test.test_select_max_batches"
 
         dataset = DummyDataset(
-            [{"vectorized": torch.rand(5), "idx_sample": idx} for idx in range(100)]
+            [{"vectorized": torch.rand(5), "idx": idx} for idx in range(100)]
         )
 
         selector = GoldSelector(
@@ -462,7 +468,7 @@ class TestGoldSelector:
 
         table_path = "unit_test.test_select_not_enough"
         dataset = DummyDataset(
-            [{"vectorized": torch.rand(5), "idx_sample": idx} for idx in range(100)]
+            [{"vectorized": torch.rand(5), "idx": idx} for idx in range(100)]
         )
 
         selector = GoldSelector(
@@ -488,8 +494,8 @@ class TestGoldSelector:
             source=[
                 {
                     "vectorized": torch.rand(5).numpy().astype(np.float32),
-                    "idx_sample": idx % 10,
-                    "idx": idx,
+                    "idx": idx % 10,
+                    "idx_vector": idx,
                 }
                 for idx in range(100)
             ],
@@ -528,7 +534,7 @@ class TestGoldSelector:
         table_path = "unit_test.test_select_from_dataset"
 
         dataset = DummyDataset(
-            [{"vectorized": torch.rand(5), "idx_sample": idx} for idx in range(100)]
+            [{"vectorized": torch.rand(5), "idx": idx} for idx in range(100)]
         )
 
         selector = GoldSelector(
@@ -544,12 +550,9 @@ class TestGoldSelector:
         already_selected = set()
         for item in dataset:
             total_count += 1
-            if (
-                item["selected"] == "train"
-                and item["idx_sample"] not in already_selected
-            ):
+            if item["selected"] == "train" and item["idx"] not in already_selected:
                 selected_count += 1
-                already_selected.add(item["idx_sample"])
+                already_selected.add(item["idx"])
 
         assert total_count == 20
         assert selected_count == 3
@@ -564,7 +567,7 @@ class TestGoldSelector:
         table_path = "unit_test.test_select_from_dataset"
 
         dataset = DummyDataset(
-            [{"vectorized": torch.rand(5), "idx_sample": idx} for idx in range(100)]
+            [{"vectorized": torch.rand(5), "idx": idx} for idx in range(100)]
         )
 
         selector = GoldSelector(

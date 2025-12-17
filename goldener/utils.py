@@ -74,20 +74,23 @@ def get_ratios_for_counts(counts: Iterable[int]) -> list[float]:
 
 
 def filter_batch_from_indices(
-    batch: dict[str, Any], to_remove: set[int]
+    batch: dict[str, Any],
+    to_remove: set[int],
+    index_key: str = "idx",
 ) -> dict[str, Any]:
     """Filter a batch dictionary to only include items at specified indices.
 
     Args:
         batch: A dictionary representing a batch of data (each key corresponds to stacked information).
         to_remove: A set of indices to filter out from the batch.
+        index_key: The key in the batch dictionary that contains the indices.
 
     Returns:
         A filtered batch dictionary without the specified indices.
     """
     keep_in_batch = [
         idx_position
-        for idx_position, idx_value in enumerate(batch["idx"])
+        for idx_position, idx_value in enumerate(batch[index_key])
         if (idx_value.item() if isinstance(idx_value, torch.Tensor) else idx_value)
         not in to_remove
     ]
