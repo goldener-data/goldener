@@ -792,7 +792,7 @@ class GoldSelector:
                 )
                 if chunk_size == select_per_chunk:
                     # take all the indices
-                    # It can happen when the selection size is closed to the total size
+                    # It can happen when the selection size is close to the total size
                     coresubset_indices = chunked_indices
                 else:
                     # make coresubset selection for the chunk

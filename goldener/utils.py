@@ -123,9 +123,17 @@ def get_size_and_sampling_count_per_chunk(
         total_size: Total size of the data to sample from.
         sampling_size: Total number of samples to draw.
         max_chunk_size: Maximum size of each chunk.
+
+    Returns:
+        A tuple of two lists:
+            - A list of integers representing the size of each chunk.
+            - A list of integers representing the number of samples to draw from each chunk.
+
+    Raises:
+        ValueError: If sampling_size is greater than or equal to total_size.
     """
     if sampling_size >= total_size:
-        raise ValueError("sampling_count must be less than or equal to total_count")
+        raise ValueError("sampling_size must be less than or equal to total_size")
 
     if max_chunk_size >= total_size:
         return [total_size], [sampling_size]  # single chunk
