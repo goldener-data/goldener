@@ -356,7 +356,7 @@ class GoldSelector:
             selection_table: The selection table to populate.
         """
         col_list = [
-            "idx_vector",
+            "idx",
         ]
         if self.to_keep_schema is not None:
             col_list.extend(list(self.to_keep_schema.keys()))
@@ -373,7 +373,7 @@ class GoldSelector:
                 select_from.select(
                     *[
                         get_expr_from_column_name(select_from, col)
-                        for col in col_list + ["idx"]
+                        for col in col_list + ["idx_vector"]
                     ]
                 ),
                 keep_cache=False,
@@ -386,7 +386,7 @@ class GoldSelector:
         already_in_selection = set(
             [
                 row["idx_vector"]
-                for row in selection_table.select(selection_table.idx).collect()
+                for row in selection_table.select(selection_table.idx_vector).collect()
             ]
         )
 
