@@ -20,7 +20,7 @@ from goldener.pxt_utils import (
 )
 from goldener.torch_utils import get_dataset_sample_dict
 from goldener.utils import filter_batch_from_indices
-
+from goldener.vectorize import TensorVectorizer
 
 logger = getLogger(__name__)
 
@@ -73,9 +73,11 @@ class GoldDescriptor:
         self,
         table_path: str,
         extractor: GoldFeatureExtractor,
+        vectorizer: TensorVectorizer,
         transform: Callable | None = None,
         collate_fn: Callable | None = None,
         data_key: str = "data",
+        target_key: str = "target",
         description_key: str = "features",
         to_keep_schema: dict[str, type] | None = None,
         batch_size: int = 1,
@@ -106,9 +108,11 @@ class GoldDescriptor:
         """
         self.table_path = table_path
         self.extractor = extractor
+        self.vectorizer = vectorizer
         self.transform = transform
         self.collate_fn = collate_fn
         self.data_key = data_key
+        self.target_key = target_key
         self.description_key = description_key
         self.to_keep_schema = to_keep_schema
         self.batch_size = batch_size
