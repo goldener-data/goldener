@@ -232,7 +232,7 @@ class GoldSelector:
         assert isinstance(select_from, Table)
 
         # define the number of element to sample
-        total_size = select_from.select(select_from.idx_sample).distinct().count()
+        total_size = select_from.select(select_from.idx).distinct().count()
         select_count = (
             select_size
             if isinstance(select_size, int)
@@ -318,14 +318,16 @@ class GoldSelector:
         if selection_table.count() > 0:
             to_select_indices = set(
                 [
-                    row["idx"]
-                    for row in select_from.select(select_from.idx).distinct().collect()
+                    row["idx_vector"]
+                    for row in select_from.select(select_from.idx_vector)
+                    .distinct()
+                    .collect()
                 ]
             )
             already_in_selection = set(
                 [
-                    row["idx"]
-                    for row in selection_table.select(selection_table.idx)
+                    row["idx_vector"]
+                    for row in selection_table.select(selection_table.idx_vector)
                     .distinct()
                     .collect()
                 ]
@@ -404,6 +406,7 @@ class GoldSelector:
                 batch = filter_batch_from_indices(
                     batch,
                     already_in_selection,
+                    index_key="idx_vector",
                 )
 
             if len(batch) == 0:
@@ -505,11 +508,11 @@ class GoldSelector:
         vectorized_col = get_expr_from_column_name(selection_table, self.vectorized_key)
         already_included = set(
             [
-                row["idx"]
+                row["idx_vector"]
                 for row in selection_table.where(
                     vectorized_col != None  # noqa: E711
                 )
-                .select(selection_table.idx)
+                .select(selection_table.idx_vector)
                 .collect()
             ]
         )
@@ -528,11 +531,14 @@ class GoldSelector:
             if self.max_batches is not None and batch_idx >= self.max_batches:
                 break
 
-            if "idx" not in batch:
+            if "idx_vector" not in batch:
                 starts = batch_idx * self.batch_size
-                batch["idx"] = [
+                batch["idx_vector"] = [
                     starts + idx for idx in range(len(batch[self.vectorized_key]))
                 ]
+
+            if "idx" not in batch:
+                batch["idx"] = batch["idx_vector"]
 
             if "chunked" not in batch:
                 batch["chunked"] = [
@@ -557,7 +563,7 @@ class GoldSelector:
             already_included.update(
                 [
                     idx.item() if isinstance(idx, torch.Tensor) else idx
-                    for idx in batch["idx"]
+                    for idx in batch["idx_vector"]
                 ]
             )
             to_insert_keys = [self.vectorized_key, "idx", self.selection_key]

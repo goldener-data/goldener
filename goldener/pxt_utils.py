@@ -454,7 +454,7 @@ def include_batch_into_table(
             table.insert(
                 [
                     {
-                        "idx": sample_idx,
+                        index_key: sample_idx,
                     }
                     | to_insert_dict
                 ]
