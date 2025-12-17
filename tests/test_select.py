@@ -241,7 +241,7 @@ class TestGoldSelector:
         table_path = "unit_test.test_select_from_dataset"
 
         dataset = DummyDataset(
-            [{"vectorized": torch.rand(5), "idx": idx} for idx in range(100)]
+            [{"vectorized": torch.rand(5), "idx_sample": idx} for idx in range(100)]
         )
 
         selector = GoldSelector(
