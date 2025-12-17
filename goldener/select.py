@@ -25,8 +25,10 @@ from goldener.pxt_utils import (
 )
 from goldener.reduce import GoldReducer
 from goldener.torch_utils import get_dataset_sample_dict
-from goldener.utils import filter_batch_from_indices
-
+from goldener.utils import (
+    filter_batch_from_indices,
+    get_size_and_sampling_count_per_chunk,
+)
 
 logger = getLogger(__name__)
 
@@ -738,20 +740,18 @@ class GoldSelector:
 
             # initialize the chunk settings: chunk size, number of chunks, selection per chunk
             to_chunk_from_count = to_chunk_from.count()
-            chunk_size = (
-                to_chunk_from_count
-                if self.chunk is None
-                else min(self.chunk, to_chunk_from_count)
+            still_to_select = select_count - selection_count
+            chunk_sizes, chunk_selection_counts = get_size_and_sampling_count_per_chunk(
+                to_chunk_from_count, still_to_select, self.chunk or to_chunk_from_count
             )
-            chunk_loop_count = to_chunk_from_count // chunk_size
-            select_per_chunk = (select_count - selection_count) // chunk_loop_count
-            if select_per_chunk == 0:
-                select_per_chunk = 1
 
             # make coresubset selection per chunk
-            for chunk_idx in range(chunk_loop_count):
-                if selection_count >= select_count:
-                    break
+            for chunk_size, select_per_chunk in zip(
+                chunk_sizes, chunk_selection_counts
+            ):
+                if select_per_chunk == 0:
+                    # it can happen for really small remaining selections
+                    continue
 
                 # select data for the current chunk among vector not yet selected
                 not_chunked_indices = [
@@ -763,12 +763,11 @@ class GoldSelector:
                     .select(selection_table.idx)
                     .collect()
                 ]
-
-                to_select_from = select_from.where(
-                    select_from.idx.isin(not_chunked_indices)
-                ).select(vectorized_col, select_from.idx)
-                if chunk_idx < chunk_loop_count - 1:
-                    to_select_from = to_select_from.sample(chunk_size)
+                to_select_from = (
+                    select_from.where(select_from.idx.isin(not_chunked_indices))
+                    .select(vectorized_col, select_from.idx)
+                    .sample(chunk_size)
+                )
 
                 # load the vectors and the corresponding indices for the chunk
                 to_select = [
@@ -783,21 +782,26 @@ class GoldSelector:
                 indices = torch.cat(indices_list, dim=0)
 
                 # selected indices are marked as already chunked
+                chunked_indices = set(indices.tolist())
                 set_value_to_idx_rows(
                     table=selection_table,
                     col_expr=selection_table.chunked,
                     idx_expr=selection_table.idx_sample,
-                    indices=set(indices.tolist()),
+                    indices=chunked_indices,
                     value=True,
                 )
+                if chunk_size == select_per_chunk:
+                    # take all the indices
+                    # It can happen when the selection size is close to the total size
+                    coresubset_indices = chunked_indices
+                else:
+                    # make coresubset selection for the chunk
+                    if self.reducer is not None:
+                        vectors = self.reducer.fit_transform(vectors)
 
-                # make coresubset selection for the chunk
-                if self.reducer is not None:
-                    vectors = self.reducer.fit_transform(vectors)
-
-                coresubset_indices = self._coresubset_selection(
-                    vectors, select_per_chunk, indices
-                )
+                    coresubset_indices = self._coresubset_selection(
+                        vectors, select_per_chunk, indices
+                    )
 
                 # update table with selected indices
                 set_value_to_idx_rows(
