@@ -152,7 +152,7 @@ class GoldSelector:
 
         Returns:
             A GoldPxtTorchDataset containing at least the selection information in the `selection_key` key
-                and `idx` and `idx_vector` keys as well.
+                and `idx` (index of the sample) and `idx_vector` (index of the vector) keys as well.
         """
 
         selected_table = self.select_in_table(select_from, select_count, value)
@@ -188,7 +188,7 @@ class GoldSelector:
 
         Returns:
             A PixelTable Table containing at least the selection information in the `selection_key` column
-                and `idx` and `idx_vector` columns as well.
+                and `idx` (index of the sample) and `idx_vector` (index of the vector) columns as well.
         """
         logger.info(f"Loading the existing selection table from {self.table_path}")
         try:
