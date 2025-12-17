@@ -55,7 +55,7 @@ def get_ratio_list_sum(ratios: list[float]) -> float:
     """
     ratio_sum = sum(ratios)
     if not (0 < ratio_sum <= 1.0):
-        raise ValueError("Sum of split ratios must be 1.0")
+        raise ValueError("Sum of ratios must be 1.0")
 
     return ratio_sum
 

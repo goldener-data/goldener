@@ -179,6 +179,29 @@ class TestGoldSelector:
 
         pxt.drop_dir("unit_test", force=True)
 
+    def test_select_in_table_with_wrong_size(self):
+        pxt.drop_dir("unit_test", force=True)
+
+        table_path = "unit_test.test_select_from_dataset"
+
+        dataset = DummyDataset(
+            [{"vectorized": torch.rand(5), "idx_sample": idx} for idx in range(100)]
+        )
+
+        selector = GoldSelector(
+            table_path=table_path, allow_existing=True, batch_size=10, max_batches=None
+        )
+
+        with pytest.raises(
+            ValueError, match="When select_size is a float, it must be in the range"
+        ):
+            selector.select_in_table(dataset, select_size=1.0, value="train")
+
+        with pytest.raises(ValueError, match="select_size must be a positive integer"):
+            selector.select_in_table(dataset, select_size=0, value="train")
+
+        pxt.drop_dir("unit_test", force=True)
+
     def test_select_in_table_from_dataset_with_ratio(self):
         pxt.drop_dir("unit_test", force=True)
 
@@ -202,6 +225,33 @@ class TestGoldSelector:
                 selection_table[selector.selection_key] == "train"
             ).count()
             == 10
+        )
+
+        pxt.drop_dir("unit_test", force=True)
+
+    def test_select_in_table_from_dataset_with_small_ratio(self):
+        pxt.drop_dir("unit_test", force=True)
+
+        table_path = "unit_test.test_select_from_dataset"
+
+        dataset = DummyDataset(
+            [{"vectorized": torch.rand(5), "idx_sample": idx} for idx in range(100)]
+        )
+
+        selector = GoldSelector(
+            table_path=table_path, allow_existing=True, batch_size=10, max_batches=None
+        )
+
+        selection_table = selector.select_in_table(
+            dataset, select_size=0.0001, value="train"
+        )
+
+        assert selection_table.count() == 100
+        assert (
+            selection_table.where(
+                selection_table[selector.selection_key] == "train"
+            ).count()
+            == 1
         )
 
         pxt.drop_dir("unit_test", force=True)
