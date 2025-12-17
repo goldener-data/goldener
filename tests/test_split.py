@@ -105,7 +105,7 @@ class TestGoldSplitter:
         splitted = basic_splitter.get_split_indices(
             split_table,
             selection_key=basic_splitter.selector.selection_key,
-            idx_key="idx_sample",
+            idx_key="idx",
         )
 
         assert len(splitted) == 2
@@ -141,7 +141,7 @@ class TestGoldSplitter:
         splitted = basic_splitter.get_split_indices(
             split_table,
             selection_key=basic_splitter.selector.selection_key,
-            idx_key="idx_sample",
+            idx_key="idx",
         )
 
         assert len(splitted) == 2
@@ -175,7 +175,7 @@ class TestGoldSplitter:
         splitted = splitter.get_split_indices(
             split_table,
             selection_key=splitter.selector.selection_key,
-            idx_key="idx_sample",
+            idx_key="idx",
         )
 
         assert set(splitted.keys()) == {"train"}
@@ -294,7 +294,7 @@ class TestGoldSplitter:
         splitted = splitter.get_split_indices(
             split_table,
             selection_key=splitter.selector.selection_key,
-            idx_key="idx_sample",
+            idx_key="idx",
         )
 
         assert len(splitted) == 2
@@ -412,7 +412,7 @@ class TestGoldSplitter:
         splitted = basic_splitter.get_split_indices(
             split_table,
             selection_key=basic_splitter.selector.selection_key,
-            idx_key="idx_sample",
+            idx_key="idx",
         )
 
         assert len(splitted) == 2

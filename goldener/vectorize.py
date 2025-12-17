@@ -786,7 +786,7 @@ class GoldVectorizer:
             max_idx = [
                 row["max"]
                 for row in vectorized_table.select(
-                    pxtf.max(vectorized_table.idx)  # type: ignore[call-arg]
+                    pxtf.max(vectorized_table.idx_vector)  # type: ignore[call-arg]
                 ).collect()
             ][0]
 
