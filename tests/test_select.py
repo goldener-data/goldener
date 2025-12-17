@@ -163,7 +163,7 @@ class TestGoldSelector:
         )
 
         selection_table = selector.select_in_table(
-            dataset, select_count=10, value="train"
+            dataset, select_size=10, value="train"
         )
 
         assert selection_table.count() == 100
@@ -172,6 +172,86 @@ class TestGoldSelector:
                 selection_table[selector.selection_key] == "train"
             ).count()
             == 10
+        )
+
+        # validate running with already filled work
+        selector.select_in_table(dataset, select_size=10, value="train")
+
+        pxt.drop_dir("unit_test", force=True)
+
+    def test_select_in_table_with_wrong_size(self):
+        pxt.drop_dir("unit_test", force=True)
+
+        table_path = "unit_test.test_select_from_dataset"
+
+        dataset = DummyDataset(
+            [{"vectorized": torch.rand(5), "idx_sample": idx} for idx in range(100)]
+        )
+
+        selector = GoldSelector(
+            table_path=table_path, allow_existing=True, batch_size=10, max_batches=None
+        )
+
+        with pytest.raises(
+            ValueError, match="When select_size is a float, it must be in the range"
+        ):
+            selector.select_in_table(dataset, select_size=1.0, value="train")
+
+        with pytest.raises(ValueError, match="select_size must be a positive integer"):
+            selector.select_in_table(dataset, select_size=0, value="train")
+
+        pxt.drop_dir("unit_test", force=True)
+
+    def test_select_in_table_from_dataset_with_ratio(self):
+        pxt.drop_dir("unit_test", force=True)
+
+        table_path = "unit_test.test_select_from_dataset"
+
+        dataset = DummyDataset(
+            [{"vectorized": torch.rand(5), "idx_sample": idx} for idx in range(100)]
+        )
+
+        selector = GoldSelector(
+            table_path=table_path, allow_existing=True, batch_size=10, max_batches=None
+        )
+
+        selection_table = selector.select_in_table(
+            dataset, select_size=0.1, value="train"
+        )
+
+        assert selection_table.count() == 100
+        assert (
+            selection_table.where(
+                selection_table[selector.selection_key] == "train"
+            ).count()
+            == 10
+        )
+
+        pxt.drop_dir("unit_test", force=True)
+
+    def test_select_in_table_from_dataset_with_small_ratio(self):
+        pxt.drop_dir("unit_test", force=True)
+
+        table_path = "unit_test.test_select_from_dataset"
+
+        dataset = DummyDataset(
+            [{"vectorized": torch.rand(5), "idx_sample": idx} for idx in range(100)]
+        )
+
+        selector = GoldSelector(
+            table_path=table_path, allow_existing=True, batch_size=10, max_batches=None
+        )
+
+        selection_table = selector.select_in_table(
+            dataset, select_size=0.0001, value="train"
+        )
+
+        assert selection_table.count() == 100
+        assert (
+            selection_table.where(
+                selection_table[selector.selection_key] == "train"
+            ).count()
+            == 1
         )
 
         pxt.drop_dir("unit_test", force=True)
@@ -198,7 +278,7 @@ class TestGoldSelector:
 
         selection_table = selector.select_in_table(
             dataset,
-            select_count=10,
+            select_size=10,
             value="train",
         )
 
@@ -252,7 +332,7 @@ class TestGoldSelector:
         )
 
         selection_table = selector.select_in_table(
-            dataset, select_count=10, value="train"
+            dataset, select_size=10, value="train"
         )
 
         assert selection_table.count() == 100
@@ -282,7 +362,7 @@ class TestGoldSelector:
         )
 
         selection_table = selector.select_in_table(
-            dataset, select_count=10, value="train"
+            dataset, select_size=10, value="train"
         )
 
         assert selection_table.count() == 100
@@ -309,7 +389,7 @@ class TestGoldSelector:
         )
 
         selection_table = selector.select_in_table(
-            dataset, select_count=10, value="train"
+            dataset, select_size=10, value="train"
         )
 
         assert selection_table.count() == 20
@@ -335,11 +415,11 @@ class TestGoldSelector:
             table_path=table_path, allow_existing=True, batch_size=10, max_batches=2
         )
 
-        selector.select_in_table(dataset, select_count=10, value="train")
+        selector.select_in_table(dataset, select_size=10, value="train")
 
         selector.max_batches = None
         selection_table = selector.select_in_table(
-            dataset, select_count=20, value="train"
+            dataset, select_size=20, value="train"
         )
 
         assert selection_table.count() == 100
@@ -365,7 +445,7 @@ class TestGoldSelector:
             table_path=table_path, allow_existing=False, batch_size=10, max_batches=2
         )
 
-        selector.select_in_table(dataset, select_count=10, value="train")
+        selector.select_in_table(dataset, select_size=10, value="train")
 
         selector.max_batches = None
 
@@ -373,7 +453,7 @@ class TestGoldSelector:
         with pytest.raises(
             ValueError, match="already exists and allow_existing is set to"
         ):
-            selector.select_in_table(dataset, select_count=20, value="train")
+            selector.select_in_table(dataset, select_size=20, value="train")
 
         pxt.drop_dir("unit_test", force=True)
 
@@ -393,7 +473,7 @@ class TestGoldSelector:
         with pytest.raises(
             ValueError, match="Cannot select more unique data points than available"
         ):
-            selector.select_in_table(dataset, select_count=21, value="train")
+            selector.select_in_table(dataset, select_size=21, value="train")
 
         pxt.drop_dir("unit_test", force=True)
 
@@ -423,11 +503,11 @@ class TestGoldSelector:
             max_batches=2,
         )
 
-        selector.select_in_table(src_table, select_count=3, value="train")
+        selector.select_in_table(src_table, select_size=3, value="train")
 
         selector.max_batches = None
         selection_table = selector.select_in_table(
-            src_table, select_count=6, value="train"
+            src_table, select_size=6, value="train"
         )
 
         assert selection_table.count() == 100

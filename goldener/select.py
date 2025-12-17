@@ -165,7 +165,7 @@ class GoldSelector:
         return selected_dataset
 
     def select_in_table(
-        self, select_from: Dataset | Table, select_count: int, value: str | None
+        self, select_from: Dataset | Table, select_size: int | float, value: str | None
     ) -> Table:
         """Select a subset of samples using coresubset selection and store results in a PixelTable table.
 
@@ -183,13 +183,25 @@ class GoldSelector:
                 dictionary with at least the `vectorized_key` and `idx_sample` keys after applying the collate_fn.
                 If the collate_fn is None, the dataset is expected to directly provide such batches.
                 If a Table is provided, it should contain at least the `vectorized_key`, `idx` and `idx_sample` columns.
-            select_count: Number of data points to select.
+            select_size: Number or ratio (between 0 and 1) of data points to select.
             value: Value to set in the `selection_key` column for selected samples.
 
         Returns:
             A PixelTable Table containing at least the selection information in the `selection_key` column
                 and `idx` and `idx_sample` columns as well.
+
+        Raises:
+            ValueError: If select_size is a float not in the range (0.0, 1.0).
         """
+        if isinstance(select_size, float):
+            if not (0.0 < select_size < 1.0):
+                raise ValueError(
+                    "When select_size is a float, it must be in the range (0.0, 1.0)."
+                )
+        else:
+            if select_size <= 0:
+                raise ValueError("select_size must be a positive integer.")
+
         logger.info(f"Loading the existing selection table from {self.table_path}")
         try:
             old_selection_table = pxt.get_table(
@@ -218,6 +230,16 @@ class GoldSelector:
             select_from = selection_table
 
         assert isinstance(select_from, Table)
+
+        # define the number of element to sample
+        total_size = select_from.select(select_from.idx_sample).distinct().count()
+        select_count = (
+            select_size
+            if isinstance(select_size, int)
+            else int(select_size * total_size)
+        )
+        if select_count == 0 and isinstance(select_size, float):
+            select_count = 1  # at least one sample
 
         if (
             len(
@@ -712,14 +734,11 @@ class GoldSelector:
         else:
             available_query = selection_col == None  # noqa: E711
 
-        available_for_selection = len(
-            [
-                row["idx_sample"]
-                for row in selection_table.where(available_query)  # noqa: E711
-                .select(selection_table.idx_sample)
-                .distinct()
-                .collect()
-            ]
+        available_for_selection = (
+            selection_table.where(available_query)
+            .select(selection_table.idx_sample)
+            .distinct()
+            .count()
         )
 
         if available_for_selection < (select_count - selection_count):
