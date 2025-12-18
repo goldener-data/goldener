@@ -853,9 +853,13 @@ def vectorize_and_insert_batch_in_table(
     target_key: str | None,
     to_keep: list[str] | None = None,
 ) -> None:
+    target = (
+        batch[target_key] if target_key is not None and target_key in batch else None
+    )
+
     vectorized = vectorizer.vectorize(
         batch[data_key],
-        (batch[target_key] if target_key is not None else None),
+        target,
     )
 
     max_idx = [

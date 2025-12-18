@@ -45,6 +45,8 @@ class GoldDescriptor:
     Attributes:
         table_path: Path to the PixelTable table where descriptions will be saved locally.
         extractor: GoldFeatureExtractor instance for extracting features from the data.
+        vectorizer: Optional TensorVectorizer to further vectorize the extracted features
+            before storing them in the table.
         transform: Optional transformation to apply to the data before feature extraction if not already
             applied by the `collate_fn`.
         collate_fn: Optional function to collate dataset samples into batches composed of
@@ -52,6 +54,7 @@ class GoldDescriptor:
             If None, the dataset is expected to directly provide such batches. It should format
             the value at `data_key` in the format expected by the feature extractor.
         data_key: Key in the batch dictionary that contains the data to extract features from. Default is "data".
+        target_key: Key in the batch dictionary that contains the target/label information. Default is "target".
         description_key: Column name to store the extracted features in the PixelTable table. Default is "features".
         to_keep_schema: Optional dictionary defining additional columns to keep from the original dataset/table
             into the description table. The keys are the column names and the values are the PixelTable types.
@@ -93,9 +96,11 @@ class GoldDescriptor:
         Args:
             table_path: Path to the PixelTable table where descriptions will be saved.
             extractor: FeatureExtractor instance for extracting features.
+            vectorizer: Optional TensorVectorizer to further vectorize the extracted features.
             transform: Optional transformation to apply before feature extraction.
             collate_fn: Optional function to collate dataset samples into batches.
             data_key: Key in the batch dictionary containing the data. Defaults to "data".
+            target_key: Key in the batch dictionary containing the target/label. Defaults to "target".
             description_key: Key for storing extracted features. Defaults to "features".
             to_keep_schema: Optional schema for additional columns to preserve.
             batch_size: Batch size used when iterating over the data.
@@ -304,8 +309,8 @@ class GoldDescriptor:
                     self.vectorizer.vectorize(
                         torch.from_numpy(description).unsqueeze(0),
                         (
-                            sample_data[self.target_key]
-                            if self.target_key in sample_data
+                            sample[self.target_key]
+                            if self.target_key in sample
                             else None
                         ),
                     )

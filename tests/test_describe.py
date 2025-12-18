@@ -386,3 +386,51 @@ class TestGoldDescriptor:
         dataset.keep_cache = False
 
         pxt.drop_dir("unit_test", force=True)
+
+    def test_describe_in_dataset_from_table_with_vectorizer_and_target(
+        self, extractor, vectorizer
+    ):
+        pxt.drop_dir("unit_test", force=True)
+
+        src_path = "unit_test.src_table_input"
+
+        source_rows = [
+            {
+                "idx": 0,
+                "data": torch.zeros(3, 8, 8).numpy(),
+                "label": "dummy",
+                "target": torch.ones(1, 8, 8).numpy(),
+            },
+            {
+                "idx": 1,
+                "data": torch.zeros(3, 8, 8).numpy(),
+                "label": "dummy",
+                "target": torch.ones(1, 8, 8).numpy(),
+            },
+        ]
+
+        pxt.create_dir("unit_test", if_exists="ignore")
+        src_table = pxt.create_table(
+            src_path, source=source_rows, if_exists="replace_force"
+        )
+
+        desc = GoldDescriptor(
+            table_path="unit_test.test_describe",
+            extractor=extractor,
+            vectorizer=vectorizer,
+            batch_size=2,
+            collate_fn=None,
+            device=torch.device("cpu"),
+            allow_existing=False,
+            drop_table=True,
+        )
+
+        dataset = desc.describe_in_dataset(src_table)
+
+        for i, sample in enumerate(iter(dataset)):
+            assert sample["idx_vector"] == i
+            assert sample["features"].shape == (4,)
+
+        dataset.keep_cache = False
+
+        pxt.drop_dir("unit_test", force=True)
