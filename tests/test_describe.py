@@ -5,6 +5,7 @@ import pixeltable as pxt
 
 from goldener.describe import GoldDescriptor
 from goldener.extract import TorchGoldFeatureExtractorConfig, TorchGoldFeatureExtractor
+from goldener.vectorize import TensorVectorizer
 
 
 class DummyModel(torch.nn.Module):
@@ -26,15 +27,26 @@ def extractor():
     return TorchGoldFeatureExtractor(config)
 
 
+@pytest.fixture
+def vectorizer():
+    return TensorVectorizer()
+
+
 class DummyDataset:
-    def __init__(self, dataset_len: int = 2):
+    def __init__(self, dataset_len: int = 2, add_target: bool = False):
         self.dataset_len = dataset_len
+        self.add_target = add_target
 
     def __len__(self):
         return self.dataset_len
 
     def __getitem__(self, idx):
-        return {"data": torch.zeros(3, 8, 8), "idx": idx, "label": "dummy"}
+        sample = {"data": torch.zeros(3, 8, 8), "idx": idx, "label": "dummy"}
+
+        if not self.add_target:
+            return sample
+
+        return sample | {"target": torch.ones(1, 8, 8)}
 
 
 class TestGoldDescriptor:
@@ -314,6 +326,173 @@ class TestGoldDescriptor:
         for i, sample in enumerate(iter(dataset)):
             assert sample["idx"] == i
             assert sample["features"].shape == (4, 8, 8)
+
+        dataset.keep_cache = False
+
+        pxt.drop_dir("unit_test", force=True)
+
+    def test_simple_describe_in_table_from_dataset_with_target(
+        self, extractor, vectorizer
+    ):
+        pxt.drop_dir("unit_test", force=True)
+
+        desc = GoldDescriptor(
+            table_path="unit_test.test_describe",
+            extractor=extractor,
+            vectorizer=vectorizer,
+            to_keep_schema={"label": pxt.String},
+            batch_size=2,
+            collate_fn=None,
+            device=torch.device("cpu"),
+            allow_existing=False,
+        )
+        table = desc.describe_in_table(DummyDataset(add_target=True))
+
+        assert table.count() == 128
+        for i, row in enumerate(table.collect()):
+            assert row["idx_vector"] == i
+            assert row["features"].shape == (4,)
+            assert row["label"] == "dummy"
+
+        pxt.drop_dir("unit_test", force=True)
+
+    def test_simple_describe_in_table_from_dataset_with_target_and_collatefn(
+        self, extractor, vectorizer
+    ):
+        pxt.drop_dir("unit_test", force=True)
+
+        def collate_fn(batch):
+            data = torch.stack([b["data"] for b in batch], dim=0)
+            idxs = [b["idx"] for b in batch]
+            labels = [b["label"] for b in batch]
+            targets = torch.stack([b["target"] for b in batch], dim=0)
+            return {"data": data, "idx": idxs, "label": labels, "target": targets}
+
+        desc = GoldDescriptor(
+            table_path="unit_test.test_describe",
+            extractor=extractor,
+            vectorizer=vectorizer,
+            to_keep_schema={"label": pxt.String},
+            batch_size=2,
+            collate_fn=collate_fn,
+            device=torch.device("cpu"),
+            allow_existing=False,
+        )
+        table = desc.describe_in_table(DummyDataset(add_target=True))
+
+        assert table.count() == 128
+        for i, row in enumerate(table.collect()):
+            assert row["idx_vector"] == i
+            assert row["features"].shape == (4,)
+            assert row["label"] == "dummy"
+
+        pxt.drop_dir("unit_test", force=True)
+
+    def test_describe_in_table_from_table_with_vectorizer(self, extractor, vectorizer):
+        pxt.drop_dir("unit_test", force=True)
+        desc = GoldDescriptor(
+            table_path="unit_test.test_describe",
+            extractor=extractor,
+            vectorizer=vectorizer,
+            to_keep_schema={"label": pxt.String},
+            batch_size=2,
+            collate_fn=None,
+            device=torch.device("cpu"),
+            allow_existing=False,
+        )
+        table = desc.describe_in_table(DummyDataset())
+
+        assert table.count() == 128
+        for i, row in enumerate(table.collect()):
+            assert row["idx_vector"] == i
+            assert row["features"].shape == (4,)
+            assert row["label"] == "dummy"
+
+        assert set([row["idx"] for row in table.collect()]) == {0, 1}
+
+        pxt.drop_dir("unit_test", force=True)
+
+    def test_describe_in_dataset_from_table_with_vectorizer(
+        self, extractor, vectorizer
+    ):
+        pxt.drop_dir("unit_test", force=True)
+
+        src_path = "unit_test.src_table_input"
+
+        source_rows = [
+            {"idx": 0, "data": torch.zeros(3, 8, 8).numpy(), "label": "dummy"},
+            {"idx": 1, "data": torch.zeros(3, 8, 8).numpy(), "label": "dummy"},
+        ]
+
+        pxt.create_dir("unit_test", if_exists="ignore")
+        src_table = pxt.create_table(
+            src_path, source=source_rows, if_exists="replace_force"
+        )
+
+        desc = GoldDescriptor(
+            table_path="unit_test.test_describe",
+            extractor=extractor,
+            vectorizer=vectorizer,
+            batch_size=2,
+            collate_fn=None,
+            device=torch.device("cpu"),
+            allow_existing=False,
+            drop_table=True,
+        )
+
+        dataset = desc.describe_in_dataset(src_table)
+
+        for i, sample in enumerate(iter(dataset)):
+            assert sample["idx_vector"] == i
+            assert sample["features"].shape == (4,)
+
+        dataset.keep_cache = False
+
+        pxt.drop_dir("unit_test", force=True)
+
+    def test_describe_in_dataset_from_table_with_vectorizer_and_target(
+        self, extractor, vectorizer
+    ):
+        pxt.drop_dir("unit_test", force=True)
+
+        src_path = "unit_test.src_table_input"
+
+        source_rows = [
+            {
+                "idx": 0,
+                "data": torch.zeros(3, 8, 8).numpy(),
+                "label": "dummy",
+                "target": torch.ones(1, 8, 8).numpy(),
+            },
+            {
+                "idx": 1,
+                "data": torch.zeros(3, 8, 8).numpy(),
+                "label": "dummy",
+                "target": torch.ones(1, 8, 8).numpy(),
+            },
+        ]
+
+        pxt.create_dir("unit_test", if_exists="ignore")
+        src_table = pxt.create_table(
+            src_path, source=source_rows, if_exists="replace_force"
+        )
+
+        desc = GoldDescriptor(
+            table_path="unit_test.test_describe",
+            extractor=extractor,
+            vectorizer=vectorizer,
+            batch_size=2,
+            collate_fn=None,
+            device=torch.device("cpu"),
+            allow_existing=False,
+            drop_table=True,
+        )
+
+        dataset = desc.describe_in_dataset(src_table)
+
+        for i, sample in enumerate(iter(dataset)):
+            assert sample["idx_vector"] == i
+            assert sample["features"].shape == (4,)
 
         dataset.keep_cache = False
 

@@ -20,7 +20,7 @@ from goldener.pxt_utils import (
 )
 from goldener.torch_utils import get_dataset_sample_dict
 from goldener.utils import filter_batch_from_indices
-
+from goldener.vectorize import TensorVectorizer, vectorize_and_insert_batch_in_table
 
 logger = getLogger(__name__)
 
@@ -45,6 +45,8 @@ class GoldDescriptor:
     Attributes:
         table_path: Path to the PixelTable table where descriptions will be saved locally.
         extractor: GoldFeatureExtractor instance for extracting features from the data.
+        vectorizer: Optional TensorVectorizer to further vectorize the extracted features
+            before storing them in the table.
         transform: Optional transformation to apply to the data before feature extraction if not already
             applied by the `collate_fn`.
         collate_fn: Optional function to collate dataset samples into batches composed of
@@ -52,6 +54,7 @@ class GoldDescriptor:
             If None, the dataset is expected to directly provide such batches. It should format
             the value at `data_key` in the format expected by the feature extractor.
         data_key: Key in the batch dictionary that contains the data to extract features from. Default is "data".
+        target_key: Key in the batch dictionary that contains the target/label information. Default is "target".
         description_key: Column name to store the extracted features in the PixelTable table. Default is "features".
         to_keep_schema: Optional dictionary defining additional columns to keep from the original dataset/table
             into the description table. The keys are the column names and the values are the PixelTable types.
@@ -73,9 +76,11 @@ class GoldDescriptor:
         self,
         table_path: str,
         extractor: GoldFeatureExtractor,
+        vectorizer: TensorVectorizer | None = None,
         transform: Callable | None = None,
         collate_fn: Callable | None = None,
         data_key: str = "data",
+        target_key: str = "target",
         description_key: str = "features",
         to_keep_schema: dict[str, type] | None = None,
         batch_size: int = 1,
@@ -91,9 +96,11 @@ class GoldDescriptor:
         Args:
             table_path: Path to the PixelTable table where descriptions will be saved.
             extractor: FeatureExtractor instance for extracting features.
+            vectorizer: Optional TensorVectorizer to further vectorize the extracted features.
             transform: Optional transformation to apply before feature extraction.
             collate_fn: Optional function to collate dataset samples into batches.
             data_key: Key in the batch dictionary containing the data. Defaults to "data".
+            target_key: Key in the batch dictionary containing the target/label. Defaults to "target".
             description_key: Key for storing extracted features. Defaults to "features".
             to_keep_schema: Optional schema for additional columns to preserve.
             batch_size: Batch size used when iterating over the data.
@@ -106,9 +113,11 @@ class GoldDescriptor:
         """
         self.table_path = table_path
         self.extractor = extractor
+        self.vectorizer = vectorizer
         self.transform = transform
         self.collate_fn = collate_fn
         self.data_key = data_key
+        self.target_key = target_key
         self.description_key = description_key
         self.to_keep_schema = to_keep_schema
         self.batch_size = batch_size
@@ -265,6 +274,8 @@ class GoldDescriptor:
             The description table with proper schema.
         """
         minimal_schema = self._MINIMAL_SCHEMA
+        if self.vectorizer is not None:
+            minimal_schema["idx_vector"] = pxt.Int
         if self.to_keep_schema is not None:
             minimal_schema |= self.to_keep_schema
 
@@ -293,6 +304,21 @@ class GoldDescriptor:
                 .cpu()
                 .numpy()
             )
+            if self.vectorizer is not None:
+                description = (
+                    self.vectorizer.vectorize(
+                        torch.from_numpy(description).unsqueeze(0),
+                        (
+                            sample[self.target_key]
+                            if self.target_key in sample
+                            else None
+                        ),
+                    )
+                    .vectors[0]
+                    .detach()
+                    .cpu()
+                    .numpy()
+                )
             description_table.add_column(
                 **{
                     self.description_key: pxt.Array[  # type: ignore[misc]
@@ -319,6 +345,8 @@ class GoldDescriptor:
             The description table with proper schema.
         """
         minimal_schema = self._MINIMAL_SCHEMA
+        if self.vectorizer is not None:
+            minimal_schema["idx_vector"] = pxt.Int
         if self.to_keep_schema is not None:
             minimal_schema |= self.to_keep_schema
 
@@ -348,6 +376,22 @@ class GoldDescriptor:
                 .cpu()
                 .numpy()
             )
+            if self.vectorizer is not None:
+                target = sample.get(self.target_key, None)
+                if target is not None and self.collate_fn is None:
+                    assert isinstance(target, torch.Tensor)
+                    target = target.unsqueeze(0)
+
+                description = (
+                    self.vectorizer.vectorize(
+                        torch.from_numpy(description).unsqueeze(0),
+                        target,
+                    )
+                    .vectors[0]
+                    .detach()
+                    .cpu()
+                    .numpy()
+                )
             description_table.add_column(
                 **{
                     self.description_key: pxt.Array[  # type: ignore[misc]
@@ -412,6 +456,7 @@ class GoldDescriptor:
                     description_col != None  # noqa: E711
                 )
                 .select(description_table.idx)
+                .distinct()
                 .collect()
             ]
         )
@@ -425,7 +470,11 @@ class GoldDescriptor:
 
         for batch_idx, batch in tqdm(
             enumerate(dataloader),
-            desc="Describing dataset samples",
+            desc=(
+                "Describing dataset samples"
+                if self.vectorizer is None
+                else "Describing and vectorizing dataset samples"
+            ),
             total=(
                 None
                 if hasattr(to_describe_dataset, "__len__") is False
@@ -470,15 +519,29 @@ class GoldDescriptor:
             )
 
             # insert description in the table
-            to_insert_keys = [self.description_key]
-            if self.to_keep_schema is not None:
-                to_insert_keys.extend(self.to_keep_schema.keys())
-
-            include_batch_into_table(
-                description_table,
-                batch,
-                to_insert_keys,
-                "idx",
+            to_keep_keys = (
+                list(self.to_keep_schema.keys())
+                if self.to_keep_schema is not None
+                else []
             )
+            if self.vectorizer is None:
+                to_insert_keys = [self.description_key] + to_keep_keys
+
+                include_batch_into_table(
+                    description_table,
+                    batch,
+                    to_insert_keys,
+                    "idx",
+                )
+            else:
+                vectorize_and_insert_batch_in_table(
+                    description_table,
+                    batch,
+                    self.vectorizer,
+                    self.description_key,
+                    self.description_key,
+                    self.target_key,
+                    to_keep_keys,
+                )
 
         return description_table

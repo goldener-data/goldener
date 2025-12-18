@@ -333,6 +333,53 @@ class TestGoldVectorizer:
 
         pxt.drop_dir("unit_test", force=True)
 
+    def test_vectorize_in_table_with_target(self):
+        pxt.drop_dir("unit_test", force=True)
+
+        src_path = "unit_test.src_table_vectorize"
+        desc_path = "unit_test.vectorize_from_table"
+
+        source_rows = [
+            {
+                "idx": 0,
+                "features": torch.zeros(4, 3).numpy(),
+                "label": "dummy",
+                "target": torch.ones(1, 3).numpy(),
+            },
+            {
+                "idx": 1,
+                "features": torch.zeros(4, 3).numpy(),
+                "label": "dummy",
+                "target": torch.ones(1, 3).numpy(),
+            },
+        ]
+
+        pxt.create_dir("unit_test", if_exists="ignore")
+        src_table = pxt.create_table(
+            src_path, source=source_rows, if_exists="replace_force"
+        )
+
+        gv = GoldVectorizer(
+            table_path=desc_path,
+            vectorizer=TensorVectorizer(),
+            collate_fn=None,
+            data_key="features",
+            vectorized_key="vectorized",
+            to_keep_schema={"label": pxt.String},
+            batch_size=1,
+            num_workers=0,
+            allow_existing=False,
+        )
+
+        out_table = gv.vectorize_in_table(src_table)
+        assert out_table.count() == 3 * 2
+        for row in out_table.collect():
+            assert "vectorized" in row
+            assert row["vectorized"].shape == (4,)
+            assert row["label"] == "dummy"
+
+        pxt.drop_dir("unit_test", force=True)
+
     def test_vectorize_in_table_without_idx(
         self,
     ):
