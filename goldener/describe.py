@@ -378,15 +378,13 @@ class GoldDescriptor:
             )
             if self.vectorizer is not None:
                 target = sample.get(self.target_key, None)
-                if target is not None and self.collate_fn is not None:
+                if target is not None and self.collate_fn is None:
                     assert isinstance(target, torch.Tensor)
                     target = target.unsqueeze(0)
 
                 description = (
                     self.vectorizer.vectorize(
-                        torch.from_numpy(description).unsqueeze(0)
-                        if self.collate_fn is None
-                        else sample[self.data_key],
+                        torch.from_numpy(description).unsqueeze(0),
                         target,
                     )
                     .vectors[0]
