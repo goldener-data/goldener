@@ -778,88 +778,109 @@ class GoldVectorizer:
             )
 
             # describe data
-            vectorized = self.vectorizer.vectorize(
-                batch[self.data_key],
-                batch.get(self.target_key, None),
-            )
-
-            max_idx = [
-                row["max"]
-                for row in vectorized_table.select(
-                    pxtf.max(vectorized_table.idx_vector)  # type: ignore[call-arg]
-                ).collect()
-            ][0]
-
-            to_keep_keys = None
-            if self.to_keep_schema is not None:
-                to_keep_keys = list(self.to_keep_schema.keys())
-
-            batch = self._unwrap_vectors_in_batch(
-                vectorized=vectorized,
+            vectorize_and_insert_batch_in_table(
+                vectorized_table=vectorized_table,
                 batch=batch,
-                starts=max_idx + 1 if max_idx is not None else 0,
-                to_keep_keys=to_keep_keys,
-            )
-
-            # insert vectorized in the table
-            to_insert_keys = [self.vectorized_key, "idx"]
-            if to_keep_keys is not None:
-                to_insert_keys.extend(to_keep_keys)
-
-            include_batch_into_table(
-                vectorized_table,
-                batch,
-                to_insert_keys,
-                "idx_vector",
+                vectorizer=self.vectorizer,
+                data_key=self.data_key,
+                vectorized_key=self.vectorized_key,
+                target_key=self.target_key,
+                to_keep=list(self.to_keep_schema.keys())
+                if self.to_keep_schema is not None
+                else None,
             )
 
         return vectorized_table
 
-    def _unwrap_vectors_in_batch(
-        self,
-        vectorized: Vectorized,
-        batch: dict[str, Any],
-        starts: int = 0,
-        to_keep_keys: list[str] | None = None,
-    ) -> dict[str, Any]:
-        """Unwrap vectorized output into individual rows for table insertion.
 
-        This private method converts the Vectorized dataclass (which contains batched vectors
-        and their batch indices) into a dictionary format suitable for inserting into the
-        PixelTable table, with one entry per vector.
+def unwrap_vectors_in_batch(
+    vectorized: Vectorized,
+    vectorized_key: str,
+    batch: dict[str, Any],
+    starts: int = 0,
+    to_keep: list[str] | None = None,
+) -> dict[str, Any]:
+    """Unwrap vectorized output into individual rows for table insertion.
 
-        Args:
-            vectorized: Vectorized output containing vectors and batch indices.
-            batch: Original batch dictionary with metadata.
-            starts: Starting index for assigning new idx values.
-            to_keep_keys: Optional list of additional keys to preserve from the batch.
+    This private method converts the Vectorized dataclass (which contains batched vectors
+    and their batch indices) into a dictionary format suitable for inserting into the
+    PixelTable table, with one entry per vector.
 
-        Returns:
-            Dictionary with unwrapped vectors and metadata, ready for table insertion.
-        """
-        new_batch: dict[str, Any] = {
-            "idx": [],
-            self.vectorized_key: [],
-            "idx_vector": [],
-        }
-        if to_keep_keys is not None:
-            for key in to_keep_keys:
-                new_batch[key] = []
+    Args:
+        vectorized: Vectorized output containing vectors and batch indices.
+        vectorized_key: Key under which to store the vectors in the output dictionary.
+        batch: Original batch dictionary with metadata.
+        starts: Starting index for assigning new idx values.
+        to_keep: Optional list of additional keys to preserve from the batch.
 
-        sample_indices = [
-            (idx_value.item() if isinstance(idx_value, torch.Tensor) else idx_value)
-            for batch_idx, idx_value in enumerate(batch["idx"])
-        ]
+    Returns:
+        Dictionary with unwrapped vectors and metadata, ready for table insertion.
+    """
+    new_batch: dict[str, Any] = {
+        "idx": [],
+        vectorized_key: [],
+        "idx_vector": [],
+    }
+    if to_keep is not None:
+        for key in to_keep:
+            new_batch[key] = []
 
-        vectorized_idx = vectorized.batch_indices
-        for vec_idx, vector in enumerate(vectorized.vectors):
-            new_batch[self.vectorized_key].append(vector)
-            new_batch["idx_vector"].append(starts + vec_idx)
-            batch_idx = vectorized_idx[vec_idx].item()
-            assert isinstance(batch_idx, int)
-            new_batch["idx"].append(sample_indices[batch_idx])
-            if to_keep_keys is not None:
-                for key in to_keep_keys:
-                    new_batch[key].append(batch[key][batch_idx])
+    sample_indices = [
+        (idx_value.item() if isinstance(idx_value, torch.Tensor) else idx_value)
+        for batch_idx, idx_value in enumerate(batch["idx"])
+    ]
 
-        return new_batch
+    vectorized_idx = vectorized.batch_indices
+    for vec_idx, vector in enumerate(vectorized.vectors):
+        new_batch[vectorized_key].append(vector)
+        new_batch["idx_vector"].append(starts + vec_idx)
+        batch_idx = vectorized_idx[vec_idx].item()
+        assert isinstance(batch_idx, int)
+        new_batch["idx"].append(sample_indices[batch_idx])
+        if to_keep is not None:
+            for key in to_keep:
+                new_batch[key].append(batch[key][batch_idx])
+
+    return new_batch
+
+
+def vectorize_and_insert_batch_in_table(
+    vectorized_table: Table,
+    batch: dict[str, Any],
+    vectorizer: TensorVectorizer,
+    data_key: str,
+    vectorized_key: str,
+    target_key: str | None,
+    to_keep: list[str] | None = None,
+) -> None:
+    vectorized = vectorizer.vectorize(
+        batch[data_key],
+        (batch[target_key] if target_key is not None else None),
+    )
+
+    max_idx = [
+        row["max"]
+        for row in vectorized_table.select(
+            pxtf.max(vectorized_table.idx_vector)  # type: ignore[call-arg]
+        ).collect()
+    ][0]
+
+    batch = unwrap_vectors_in_batch(
+        vectorized=vectorized,
+        vectorized_key=vectorized_key,
+        batch=batch,
+        starts=max_idx + 1 if max_idx is not None else 0,
+        to_keep=to_keep,
+    )
+
+    # insert vectorized in the table
+    to_insert_keys = [vectorized_key, "idx"]
+    if to_keep is not None:
+        to_insert_keys.extend(to_keep)
+
+    include_batch_into_table(
+        vectorized_table,
+        batch,
+        to_insert_keys,
+        "idx_vector",
+    )

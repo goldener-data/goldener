@@ -20,7 +20,7 @@ from goldener.pxt_utils import (
 )
 from goldener.torch_utils import get_dataset_sample_dict
 from goldener.utils import filter_batch_from_indices
-from goldener.vectorize import TensorVectorizer
+from goldener.vectorize import TensorVectorizer, vectorize_and_insert_batch_in_table
 
 logger = getLogger(__name__)
 
@@ -73,7 +73,7 @@ class GoldDescriptor:
         self,
         table_path: str,
         extractor: GoldFeatureExtractor,
-        vectorizer: TensorVectorizer,
+        vectorizer: TensorVectorizer | None = None,
         transform: Callable | None = None,
         collate_fn: Callable | None = None,
         data_key: str = "data",
@@ -269,6 +269,8 @@ class GoldDescriptor:
             The description table with proper schema.
         """
         minimal_schema = self._MINIMAL_SCHEMA
+        if self.vectorizer is not None:
+            minimal_schema["idx_vector"] = pxt.Int
         if self.to_keep_schema is not None:
             minimal_schema |= self.to_keep_schema
 
@@ -297,6 +299,21 @@ class GoldDescriptor:
                 .cpu()
                 .numpy()
             )
+            if self.vectorizer is not None:
+                description = (
+                    self.vectorizer.vectorize(
+                        torch.from_numpy(description).unsqueeze(0),
+                        (
+                            sample_data[self.target_key]
+                            if self.target_key in sample_data
+                            else None
+                        ),
+                    )
+                    .vectors[0]
+                    .detach()
+                    .cpu()
+                    .numpy()
+                )
             description_table.add_column(
                 **{
                     self.description_key: pxt.Array[  # type: ignore[misc]
@@ -323,6 +340,8 @@ class GoldDescriptor:
             The description table with proper schema.
         """
         minimal_schema = self._MINIMAL_SCHEMA
+        if self.vectorizer is not None:
+            minimal_schema["idx_vector"] = pxt.Int
         if self.to_keep_schema is not None:
             minimal_schema |= self.to_keep_schema
 
@@ -352,6 +371,24 @@ class GoldDescriptor:
                 .cpu()
                 .numpy()
             )
+            if self.vectorizer is not None:
+                target = sample.get(self.target_key, None)
+                if target is not None and self.collate_fn is not None:
+                    assert isinstance(target, torch.Tensor)
+                    target = target.unsqueeze(0)
+
+                description = (
+                    self.vectorizer.vectorize(
+                        torch.from_numpy(description).unsqueeze(0)
+                        if self.collate_fn is None
+                        else sample[self.data_key],
+                        target,
+                    )
+                    .vectors[0]
+                    .detach()
+                    .cpu()
+                    .numpy()
+                )
             description_table.add_column(
                 **{
                     self.description_key: pxt.Array[  # type: ignore[misc]
@@ -416,6 +453,7 @@ class GoldDescriptor:
                     description_col != None  # noqa: E711
                 )
                 .select(description_table.idx)
+                .distinct()
                 .collect()
             ]
         )
@@ -429,7 +467,11 @@ class GoldDescriptor:
 
         for batch_idx, batch in tqdm(
             enumerate(dataloader),
-            desc="Describing dataset samples",
+            desc=(
+                "Describing dataset samples"
+                if self.vectorizer is None
+                else "Describing and vectorizing dataset samples"
+            ),
             total=(
                 None
                 if hasattr(to_describe_dataset, "__len__") is False
@@ -474,15 +516,29 @@ class GoldDescriptor:
             )
 
             # insert description in the table
-            to_insert_keys = [self.description_key]
-            if self.to_keep_schema is not None:
-                to_insert_keys.extend(self.to_keep_schema.keys())
-
-            include_batch_into_table(
-                description_table,
-                batch,
-                to_insert_keys,
-                "idx",
+            to_keep_keys = (
+                list(self.to_keep_schema.keys())
+                if self.to_keep_schema is not None
+                else []
             )
+            if self.vectorizer is None:
+                to_insert_keys = [self.description_key] + to_keep_keys
+
+                include_batch_into_table(
+                    description_table,
+                    batch,
+                    to_insert_keys,
+                    "idx",
+                )
+            else:
+                vectorize_and_insert_batch_in_table(
+                    description_table,
+                    batch,
+                    self.vectorizer,
+                    self.description_key,
+                    self.description_key,
+                    self.target_key,
+                    to_keep_keys,
+                )
 
         return description_table
