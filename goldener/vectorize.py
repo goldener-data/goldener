@@ -802,7 +802,7 @@ def unwrap_vectors_in_batch(
 ) -> dict[str, Any]:
     """Unwrap vectorized output into individual rows for table insertion.
 
-    This private method converts the Vectorized dataclass (which contains batched vectors
+    This converts the Vectorized dataclass (which contains batched vectors
     and their batch indices) into a dictionary format suitable for inserting into the
     PixelTable table, with one entry per vector.
 
@@ -810,7 +810,7 @@ def unwrap_vectors_in_batch(
         vectorized: Vectorized output containing vectors and batch indices.
         vectorized_key: Key under which to store the vectors in the output dictionary.
         batch: Original batch dictionary with metadata.
-        starts: Starting index for assigning new idx values.
+        starts: Starting index for assigning new `idx_vector` values.
         to_keep: Optional list of additional keys to preserve from the batch.
 
     Returns:
@@ -853,6 +853,20 @@ def vectorize_and_insert_batch_in_table(
     target_key: str | None,
     to_keep: list[str] | None = None,
 ) -> None:
+    """Vectorize a batch and insert the results into a PixelTable table.
+
+    This function vectorizes the data in the provided batch using the specified
+    TensorVectorizer and inserts the resulting vectors into the given PixelTable table.
+
+    Args:
+        vectorized_table: The PixelTable table to insert vectorized outputs into.
+        batch: The batch dictionary containing data to vectorize.
+        vectorizer: The TensorVectorizer instance to use for vectorization.
+        data_key: Key in the batch dictionary that contains the data to vectorize.
+        vectorized_key: Column name to store the resulting vectors in the PixelTable table.
+        target_key: Optional key in the batch dictionary containing the target used to filter vectors.
+        to_keep: Optional list of additional keys to preserve from the batch.
+    """
     target = (
         batch[target_key] if target_key is not None and target_key in batch else None
     )
