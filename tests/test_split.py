@@ -478,3 +478,54 @@ class TestGoldSplitter:
             assert set_name in ["train", "val"]
 
         pxt.drop_dir("unit_test", if_not_exists="ignore", force=True)
+
+    def test_with_descriptor_including_vectorizer(self, extractor):
+        pxt.drop_dir("unit_test", force=True)
+
+        descriptor = GoldDescriptor(
+            table_path="unit_test.descriptor_split",
+            extractor=extractor,
+            vectorizer=TensorVectorizer(),
+            description_key="vectorized",
+            batch_size=2,
+            collate_fn=None,
+            device=torch.device("cpu"),
+            allow_existing=False,
+        )
+
+        selector = GoldSelector(
+            table_path="unit_test.selector_split",
+            vectorized_key="vectorized",
+            batch_size=2,
+        )
+
+        sets = [GoldSet(name="train", ratio=0.5), GoldSet(name="val", ratio=0.5)]
+        splitter = GoldSplitter(
+            sets=sets,
+            descriptor=descriptor,
+            selector=selector,
+            vectorizer=None,
+            max_batches=1,
+        )
+
+        assert splitter.descriptor.max_batches == 1
+
+        split_table = splitter.split_in_table(
+            to_split=DummyDataset(
+                [
+                    {"data": torch.rand(3, 8, 8), "idx": idx, "label": "dummy"}
+                    for idx in range(10)
+                ]
+            )
+        )
+        splitted = splitter.get_split_indices(
+            split_table,
+            selection_key=splitter.selector.selection_key,
+            idx_key="idx",
+        )
+
+        assert len(splitted) == 2
+        # Only 2 items total (1 batch with batch_size=2)
+        assert len(splitted["train"]) + len(splitted["val"]) == 2
+
+        pxt.drop_dir("unit_test", if_not_exists="ignore", force=True)

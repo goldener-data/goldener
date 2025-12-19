@@ -59,7 +59,7 @@ class GoldSplitter:
     Attributes:
         sets: List of GoldSet configurations defining the splits.
         descriptor: GoldDescriptor used to describe the dataset.
-        vectorizer: GoldVectorizer used to vectorize the described dataset.
+        vectorizer: Optional GoldVectorizer used to vectorize the described dataset.
         selector: GoldSelector used to select samples for each set. The collate_fn of the selector
         will be set to `pxt_torch_dataset_collate_fn`, and the select_key will be forced to "features"
         to match the descriptor's output column.
@@ -73,7 +73,7 @@ class GoldSplitter:
         self,
         sets: list[GoldSet],
         descriptor: GoldDescriptor,
-        vectorizer: GoldVectorizer,
+        vectorizer: GoldVectorizer | None,
         selector: GoldSelector,
         in_described_table: bool = False,
         allow_existing: bool = True,
@@ -85,7 +85,7 @@ class GoldSplitter:
         Args:
             sets: List of GoldSet configurations defining the splits.
             descriptor: GoldDescriptor for extracting features from the dataset.
-            vectorizer: GoldVectorizer for vectorizing described features.
+            vectorizer: Optional GoldVectorizer for vectorizing described features.
             selector: GoldSelector for selecting samples for each set.
             in_described_table: Whether to return splits in the described table. Defaults to False.
             allow_existing: Whether to allow existing tables. Defaults to True.
@@ -123,7 +123,8 @@ class GoldSplitter:
         """Set whether existing tables are allowed in all components."""
         self._allow_existing = value
         self.descriptor.allow_existing = value
-        self.vectorizer.allow_existing = value
+        if self.vectorizer is not None:
+            self.vectorizer.allow_existing = value
         self.selector.allow_existing = value
 
     def _check_sets_validity(self, sets: list[GoldSet], ratios_sum: float) -> None:
@@ -295,9 +296,15 @@ class GoldSplitter:
             or if class stratification results in zero samples for any class in a set.
         """
         description_table = self.descriptor.describe_in_table(to_split)
-        sample_count = description_table.count()
+        sample_count = (
+            description_table.select(description_table.idx).distinct().count()
+        )
 
-        vectorized_table = self.vectorizer.vectorize_in_table(description_table)
+        vectorized_table = (
+            self.vectorizer.vectorize_in_table(description_table)
+            if self.vectorizer is not None
+            else description_table
+        )
 
         # select data for all sets except the last one
         for idx_set, gold_set in enumerate(self._sets[:-1]):
@@ -368,7 +375,10 @@ class GoldSplitter:
 
         if self.drop_table:
             to_drop = []
-            if self.vectorizer.table_path != self.selector.table_path:
+            if (
+                self.vectorizer is not None
+                and self.vectorizer.table_path != self.selector.table_path
+            ):
                 to_drop.append(self.vectorizer.table_path)
 
             if self.in_described_table:
@@ -388,9 +398,12 @@ class GoldSplitter:
         if drop_table is enabled.
         """
         if self.drop_table:
-            for table_name in (
+            tables_names = [
                 self.descriptor.table_path,
-                self.vectorizer.table_path,
                 self.selector.table_path,
-            ):
+            ]
+            if self.vectorizer is not None:
+                tables_names.append(self.vectorizer.table_path)
+
+            for table_name in tables_names:
                 pxt.drop_table(table_name, if_not_exists="ignore")
