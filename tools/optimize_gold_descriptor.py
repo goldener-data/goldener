@@ -404,23 +404,40 @@ def recommend_optimal_settings(
     print("Optimal Settings Recommendation")
     print(f"{'='*80}")
     
-    # Calculate memory usage per sample
-    ram_per_sample = (results.memory_peak.ram_mb - results.memory_before.ram_mb) / current_batch_size
-    vram_per_sample = (results.memory_peak.gpu_vram_mb - results.memory_before.gpu_vram_mb) / current_batch_size
+    # Safety factor for memory usage recommendations (80% of available memory)
+    MEMORY_SAFETY_FACTOR = 0.8
+    MAX_REASONABLE_BATCH_SIZE = 10000  # Prevent unrealistic recommendations
+    
+    # Calculate memory usage per sample (handle edge cases)
+    memory_increase_ram = max(0, results.memory_peak.ram_mb - results.memory_before.ram_mb)
+    memory_increase_vram = max(0, results.memory_peak.gpu_vram_mb - results.memory_before.gpu_vram_mb)
+    
+    ram_per_sample = memory_increase_ram / current_batch_size if current_batch_size > 0 else 0
+    vram_per_sample = memory_increase_vram / current_batch_size if current_batch_size > 0 else 0
     
     # Calculate optimal batch size based on available memory
-    # Use 80% of available memory as a safety margin
-    safety_factor = 0.8
+    if ram_per_sample > 0:
+        optimal_batch_size_ram = int((available_ram_mb * MEMORY_SAFETY_FACTOR) / ram_per_sample)
+        optimal_batch_size_ram = min(optimal_batch_size_ram, MAX_REASONABLE_BATCH_SIZE)
+    else:
+        optimal_batch_size_ram = MAX_REASONABLE_BATCH_SIZE
     
-    optimal_batch_size_ram = int((available_ram_mb * safety_factor) / ram_per_sample) if ram_per_sample > 0 else float('inf')
-    optimal_batch_size_vram = int((available_vram_mb * safety_factor) / vram_per_sample) if vram_per_sample > 0 else float('inf')
+    if vram_per_sample > 0:
+        optimal_batch_size_vram = int((available_vram_mb * MEMORY_SAFETY_FACTOR) / vram_per_sample)
+        optimal_batch_size_vram = min(optimal_batch_size_vram, MAX_REASONABLE_BATCH_SIZE)
+    else:
+        optimal_batch_size_vram = MAX_REASONABLE_BATCH_SIZE
     
-    # Take the minimum of the two
+    # Take the minimum of the two (bottleneck), but at least 1
     optimal_batch_size = max(1, min(optimal_batch_size_ram, optimal_batch_size_vram))
     
     # Estimate performance at optimal batch size
-    estimated_throughput = results.throughput_samples_per_sec * (optimal_batch_size / current_batch_size)
-    estimated_time_ms = results.inference_time_ms * (current_batch_size / optimal_batch_size)
+    if current_batch_size > 0:
+        estimated_throughput = results.throughput_samples_per_sec * (optimal_batch_size / current_batch_size)
+        estimated_time_ms = results.inference_time_ms * (current_batch_size / optimal_batch_size)
+    else:
+        estimated_throughput = 0
+        estimated_time_ms = 0
     
     recommendations = {
         "optimal_batch_size": optimal_batch_size,
@@ -432,9 +449,9 @@ def recommend_optimal_settings(
     
     print(f"\nCurrent Settings:")
     print(f"  Batch Size: {current_batch_size}")
-    print(f"  RAM Usage:  {results.memory_peak.ram_mb - results.memory_before.ram_mb:.2f} MB")
+    print(f"  RAM Usage:  {memory_increase_ram:.2f} MB")
     if torch.cuda.is_available():
-        print(f"  VRAM Usage: {results.memory_peak.gpu_vram_mb - results.memory_before.gpu_vram_mb:.2f} MB")
+        print(f"  VRAM Usage: {memory_increase_vram:.2f} MB")
     
     print(f"\nAvailable Resources:")
     print(f"  Available RAM:  {available_ram_mb:.2f} MB")
