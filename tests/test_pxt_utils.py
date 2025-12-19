@@ -19,7 +19,9 @@ from goldener.pxt_utils import (
     get_array_column_shapes_from_table,
     get_sample_row_from_idx,
     get_valid_table,
-    include_batch_into_table,
+    make_batch_ready_for_table,
+    get_pxt_table_primary_keys,
+    check_pxt_table_has_primary_key,
 )
 
 
@@ -342,7 +344,7 @@ class TestIncludeBatchIntoTable:
             "extra": [10, 20],
         }
 
-        include_batch_into_table(
+        make_batch_ready_for_table(
             table,
             batch,
             to_insert=["data"],
@@ -370,7 +372,7 @@ class TestIncludeBatchIntoTable:
             "extra": [10, 20],
         }
 
-        include_batch_into_table(
+        make_batch_ready_for_table(
             table,
             batch,
             to_insert=["data"],
@@ -397,7 +399,7 @@ class TestIncludeBatchIntoTable:
             ValueError,
             match="not found in the batch",
         ):
-            include_batch_into_table(
+            make_batch_ready_for_table(
                 table,
                 batch,
                 to_insert=["data"],
@@ -417,10 +419,72 @@ class TestIncludeBatchIntoTable:
             ValueError,
             match="should not be in the to_insert list",
         ):
-            include_batch_into_table(
+            make_batch_ready_for_table(
                 table,
                 batch,
                 to_insert=["data", "idx"],
                 index_key="idx",
             )
         pxt.drop_dir("test_include_batch", force=True)
+
+
+class TestGetPxtTablePrimaryKeys:
+    def test_with_primary_key(self):
+        pxt.drop_dir("unit_test", force=True)
+
+        pxt.create_dir("unit_test", if_exists="ignore")
+        table = pxt.create_table(
+            "unit_test.table_with_pk",
+            schema={"idx": pxt.Required[pxt.Int], "label": pxt.String},
+            primary_key="idx",
+        )
+
+        pk = get_pxt_table_primary_keys(table)
+        assert pk == set(["idx"])
+
+        pxt.drop_dir("unit_test", force=True)
+
+    def test_without_primary_key(self):
+        pxt.drop_dir("unit_test", force=True)
+
+        pxt.create_dir("unit_test", if_exists="ignore")
+        table = pxt.create_table(
+            "unit_test.table_with_pk",
+            schema={"idx": pxt.Required[pxt.Int], "label": pxt.String},
+        )
+
+        pk = get_pxt_table_primary_keys(table)
+        assert pk == set()
+
+        pxt.drop_dir("unit_test", force=True)
+
+
+class TestCheckPxtTableHasPrimaryKey:
+    def test_with_primary_key(self):
+        pxt.drop_dir("unit_test", force=True)
+
+        pxt.create_dir("unit_test", if_exists="ignore")
+        table = pxt.create_table(
+            "unit_test.table_with_pk",
+            schema={"idx": pxt.Required[pxt.Int], "label": pxt.String},
+            primary_key="idx",
+        )
+        check_pxt_table_has_primary_key(table, set(["idx"]))
+
+        pxt.drop_dir("unit_test", force=True)
+
+    def test_without_primary_key(self):
+        pxt.drop_dir("unit_test", force=True)
+
+        pxt.create_dir("unit_test", if_exists="ignore")
+        table = pxt.create_table(
+            "unit_test.table_with_pk",
+            schema={"idx": pxt.Required[pxt.Int], "label": pxt.String},
+        )
+
+        with pytest.raises(
+            ValueError, match="does not have all specified columns as primary"
+        ):
+            check_pxt_table_has_primary_key(table, set(["idx"]))
+
+        pxt.drop_dir("unit_test", force=True)

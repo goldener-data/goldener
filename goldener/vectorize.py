@@ -15,7 +15,6 @@ from torch import Generator
 
 import pixeltable as pxt
 from pixeltable.catalog import Table
-import pixeltable.functions as pxtf
 
 from goldener.pxt_utils import (
     GoldPxtTorchDataset,
@@ -23,7 +22,9 @@ from goldener.pxt_utils import (
     get_sample_row_from_idx,
     pxt_torch_dataset_collate_fn,
     get_expr_from_column_name,
-    include_batch_into_table,
+    make_batch_ready_for_table,
+    check_pxt_table_has_primary_key,
+    get_max_value_in_column,
 )
 from goldener.torch_utils import make_2d_tensor, get_dataset_sample_dict
 from goldener.utils import check_x_and_y_shapes, filter_batch_from_indices
@@ -381,6 +382,7 @@ class GoldVectorizer:
         vectorized_key: Column name to store the resulting vectors in the PixelTable table. Default is "vectorized".
         to_keep_schema: Optional dictionary defining additional columns to keep from the original dataset/table
             into the vectorized table. The keys are the column names and the values are the PixelTable types.
+        min_pxt_insert_size: Minimum number of rows to accumulate before inserting into the PixelTable table. Default is 100.
         batch_size: Batch size used when iterating over the data.
         num_workers: Number of workers for the PyTorch DataLoader during iteration on data.
         allow_existing: If False, an error will be raised when the table already exists. Default is True.
@@ -390,7 +392,10 @@ class GoldVectorizer:
         max_batches: Optional maximum number of batches to process. Useful for testing on a small subset of the dataset.
     """
 
-    _MINIMAL_SCHEMA: dict[str, type] = {"idx": pxt.Int, "idx_vector": pxt.Int}
+    _MINIMAL_SCHEMA: dict[str, type] = {
+        "idx": pxt.Required[pxt.Int],
+        "idx_vector": pxt.Required[pxt.Int],
+    }
 
     def __init__(
         self,
@@ -401,6 +406,7 @@ class GoldVectorizer:
         target_key: str = "target",
         vectorized_key: str = "vectorized",
         to_keep_schema: dict[str, type] | None = None,
+        min_pxt_insert_size: int = 100,
         batch_size: int = 1,
         num_workers: int = 0,
         allow_existing: bool = True,
@@ -418,6 +424,7 @@ class GoldVectorizer:
             target_key: Key for target in the batch dictionary. Defaults to "target".
             vectorized_key: Column name for storing vectors. Defaults to "vectorized".
             to_keep_schema: Optional schema for additional columns to preserve.
+            min_pxt_insert_size: Minimum number of rows to accumulate before inserting into the PixelTable table. Default is 100.
             batch_size: Batch size used when iterating over the data.
             num_workers: Number of workers for the PyTorch DataLoader during iteration on data.
             allow_existing: Whether to allow using an existing table. Defaults to True.
@@ -432,12 +439,13 @@ class GoldVectorizer:
         self.target_key = target_key
         self.vectorized_key = vectorized_key
         self.to_keep_schema = to_keep_schema
+        self.min_pxt_insert_size = min_pxt_insert_size
+        self.batch_size = batch_size
+        self.num_workers = num_workers
         self.allow_existing = allow_existing
         self.distribute = distribute
         self.drop_table = drop_table
         self.max_batches = max_batches
-        self.batch_size = batch_size
-        self.num_workers = num_workers
 
     def vectorize_in_dataset(
         self,
@@ -508,6 +516,10 @@ class GoldVectorizer:
         except Error:
             logger.info(f"No existing vectorized table from {self.table_path}")
             old_vectorized_table = None
+
+        # description table are expected to have a primary key allowing to idempotent updates
+        if old_vectorized_table is not None:
+            check_pxt_table_has_primary_key(old_vectorized_table, set(["idx_vector"]))
 
         if not self.allow_existing and old_vectorized_table is not None:
             raise ValueError(
@@ -581,16 +593,7 @@ class GoldVectorizer:
         Returns:
             The vectorized table with proper schema.
         """
-        minimal_schema = self._MINIMAL_SCHEMA
-        if self.to_keep_schema is not None:
-            minimal_schema |= self.to_keep_schema
-
-        vectorized_table = get_valid_table(
-            table=old_vectorized_table
-            if old_vectorized_table is not None
-            else self.table_path,
-            minimal_schema=minimal_schema,
-        )
+        vectorized_table = self._get_vectorized_valid_table(old_vectorized_table)
 
         if self.vectorized_key not in vectorized_table.columns():
             logger.info(f"Add the Vectorized column in {self.table_path}")
@@ -628,16 +631,7 @@ class GoldVectorizer:
         Returns:
             The vectorized table with proper schema.
         """
-        minimal_schema = self._MINIMAL_SCHEMA
-        if self.to_keep_schema is not None:
-            minimal_schema |= self.to_keep_schema
-
-        vectorized_table = get_valid_table(
-            table=old_vectorized_table
-            if old_vectorized_table is not None
-            else self.table_path,
-            minimal_schema=minimal_schema,
-        )
+        vectorized_table = self._get_vectorized_valid_table(old_vectorized_table)
 
         if self.vectorized_key not in vectorized_table.columns():
             logger.info(f"Add the Vectorized column in {self.table_path}")
@@ -674,6 +668,19 @@ class GoldVectorizer:
             )
 
         return vectorized_table
+
+    def _get_vectorized_valid_table(self, old_vectorized_table: Table | None) -> Table:
+        minimal_schema = self._MINIMAL_SCHEMA
+        if self.to_keep_schema is not None:
+            minimal_schema |= self.to_keep_schema
+
+        return get_valid_table(
+            table=old_vectorized_table
+            if old_vectorized_table is not None
+            else self.table_path,
+            minimal_schema=minimal_schema,
+            primary_key="idx_vector",
+        )
 
     def _distributed_vectorize(
         self,
@@ -740,6 +747,15 @@ class GoldVectorizer:
             collate_fn=self.collate_fn,
         )
 
+        ready_to_insert: list[dict[str, Any]] = []
+
+        start_idx = (
+            0
+            if vectorized_table.count() == 0
+            else get_max_value_in_column(vectorized_table, vectorized_table.idx_vector)
+            + 1
+        )
+
         for batch_idx, batch in tqdm(
             enumerate(dataloader),
             desc="Vectorizing the dataset",
@@ -777,18 +793,38 @@ class GoldVectorizer:
                 ]
             )
 
-            # describe data
-            vectorize_and_insert_batch_in_table(
-                vectorized_table=vectorized_table,
+            # vectorize data
+            to_keep_keys = (
+                list(self.to_keep_schema.keys())
+                if self.to_keep_schema is not None
+                else []
+            )
+            batch = vectorize_and_unwrap_in_batch(
                 batch=batch,
                 vectorizer=self.vectorizer,
                 data_key=self.data_key,
                 vectorized_key=self.vectorized_key,
                 target_key=self.target_key,
-                to_keep=list(self.to_keep_schema.keys())
-                if self.to_keep_schema is not None
-                else None,
+                to_keep=to_keep_keys,
+                starts=start_idx,
             )
+
+            start_idx = max(batch["idx_vector"]) + 1
+
+            to_insert_keys = [self.vectorized_key, "idx"] + to_keep_keys
+            batch_as_list = make_batch_ready_for_table(
+                vectorized_table,
+                batch,
+                to_insert_keys,
+                "idx_vector",
+            )
+            ready_to_insert.extend(batch_as_list)
+            if len(ready_to_insert) > self.min_pxt_insert_size:
+                vectorized_table.batch_update(ready_to_insert, if_not_exists="insert")
+                ready_to_insert = []
+
+        if ready_to_insert:
+            vectorized_table.batch_update(ready_to_insert, if_not_exists="insert")
 
         return vectorized_table
 
@@ -844,15 +880,15 @@ def unwrap_vectors_in_batch(
     return new_batch
 
 
-def vectorize_and_insert_batch_in_table(
-    vectorized_table: Table,
+def vectorize_and_unwrap_in_batch(
     batch: dict[str, Any],
     vectorizer: TensorVectorizer,
     data_key: str,
     vectorized_key: str,
     target_key: str | None,
     to_keep: list[str] | None = None,
-) -> None:
+    starts: int = 0,
+) -> dict[str, Any]:
     """Vectorize a batch and insert the results into a PixelTable table.
 
     This function vectorizes the data in the provided batch using the specified
@@ -876,29 +912,12 @@ def vectorize_and_insert_batch_in_table(
         target,
     )
 
-    max_idx = [
-        row["max"]
-        for row in vectorized_table.select(
-            pxtf.max(vectorized_table.idx_vector)  # type: ignore[call-arg]
-        ).collect()
-    ][0]
-
     batch = unwrap_vectors_in_batch(
         vectorized=vectorized,
         vectorized_key=vectorized_key,
         batch=batch,
-        starts=max_idx + 1 if max_idx is not None else 0,
+        starts=starts,
         to_keep=to_keep,
     )
 
-    # insert vectorized in the table
-    to_insert_keys = [vectorized_key, "idx"]
-    if to_keep is not None:
-        to_insert_keys.extend(to_keep)
-
-    include_batch_into_table(
-        vectorized_table,
-        batch,
-        to_insert_keys,
-        "idx_vector",
-    )
+    return batch

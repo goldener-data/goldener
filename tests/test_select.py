@@ -141,8 +141,8 @@ class TestGoldSelector:
         )
 
         assert set(pxt_table.columns()) == {
-            selector.vectorized_key,
             selector.selection_key,
+            selector.vectorized_key,
             "idx",
             "idx_vector",
             "chunked",

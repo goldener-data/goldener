@@ -1,5 +1,5 @@
 from logging import getLogger
-from typing import Callable
+from typing import Callable, Any
 
 import pixeltable as pxt
 from pixeltable import Error
@@ -19,9 +19,8 @@ from goldener.pxt_utils import (
     GoldPxtTorchDataset,
     get_expr_from_column_name,
     get_valid_table,
-    include_batch_into_table,
+    make_batch_ready_for_table,
     get_column_distinct_ratios,
-    pxt_torch_dataset_collate_fn,
 )
 from goldener.reduce import GoldReducer
 from goldener.torch_utils import get_dataset_sample_dict
@@ -63,6 +62,7 @@ class GoldSelector:
         class_key: Optional key for class-based stratified selection.
         to_keep_schema: Optional dictionary defining additional columns to keep from the original dataset/table
             into the selection table. The keys are the column names and the values are the PixelTable types.
+        min_pxt_insert_size: Minimum number of rows to accumulate before inserting into PixelTable. Default is 100.
         batch_size: Batch size used when iterating over the data.
         num_workers: Number of workers for the PyTorch DataLoader during iteration on data.
         allow_existing: If False, an error will be raised when the table already exists. Default is True.
@@ -73,8 +73,8 @@ class GoldSelector:
     """
 
     _MINIMAL_SCHEMA: dict[str, type] = {
-        "idx": pxt.Int,
-        "idx_vector": pxt.Int,
+        "idx": pxt.Required[pxt.Int],
+        "idx_vector": pxt.Required[pxt.Int],
     }
 
     def __init__(
@@ -87,6 +87,7 @@ class GoldSelector:
         selection_key: str = "selected",
         class_key: str | None = None,
         to_keep_schema: dict[str, type] | None = None,
+        min_pxt_insert_size: int = 100,
         batch_size: int = 1,
         num_workers: int = 0,
         allow_existing: bool = True,
@@ -105,6 +106,7 @@ class GoldSelector:
             selection_key: Key for storing selection values. Defaults to "selected".
             class_key: Optional key for class stratification.
             to_keep_schema: Optional schema for additional columns to preserve.
+            min_pxt_insert_size: Minimum number of rows to accumulate before inserting into PixelTable. Default is 100.
             batch_size: Batch size used when iterating over the data.
             num_workers: Number of workers for the PyTorch DataLoader during iteration on data.
             allow_existing: Whether to allow using an existing table. Defaults to True.
@@ -120,6 +122,7 @@ class GoldSelector:
         self.selection_key = selection_key
         self.class_key = class_key
         self.to_keep_schema = to_keep_schema
+        self.min_pxt_insert_size = min_pxt_insert_size
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.allow_existing = allow_existing
@@ -339,39 +342,15 @@ class GoldSelector:
                 )
                 return selection_table
 
-        self._add_rows_to_selection_table_from_table(select_from, selection_table)
-
-        return selection_table
-
-    def _add_rows_to_selection_table_from_table(
-        self,
-        select_from: Table,
-        selection_table: Table,
-    ) -> None:
-        """Add rows from the source table to the selection table.
-
-        This private method populates the selection table with rows from the source table,
-        preserving necessary columns and initializing selection status.
-
-        Args:
-            select_from: The source PixelTable table.
-            selection_table: The selection table to populate.
-        """
-        col_list = [
-            "idx",
-        ]
+        col_list = ["idx", self.vectorized_key]
         if self.to_keep_schema is not None:
             col_list.extend(list(self.to_keep_schema.keys()))
 
         if self.selection_key in select_from.columns():
             col_list.append(self.selection_key)
 
-        not_empty = (
-            selection_table.count() > 0
-        )  # allow to filter out already described samples
-
-        data_loader = DataLoader(
-            GoldPxtTorchDataset(
+        self._add_rows_to_selection_table_from_dataset(
+            select_from=GoldPxtTorchDataset(
                 select_from.select(
                     *[
                         get_expr_from_column_name(select_from, col)
@@ -380,53 +359,11 @@ class GoldSelector:
                 ),
                 keep_cache=False,
             ),
-            batch_size=self.batch_size,
-            num_workers=self.num_workers,
-            collate_fn=pxt_torch_dataset_collate_fn,
+            selection_table=selection_table,
+            include_vectorized=False,
         )
 
-        already_in_selection = set(
-            [
-                row["idx_vector"]
-                for row in selection_table.select(selection_table.idx_vector).collect()
-            ]
-        )
-
-        for idx_batch, batch in tqdm(
-            enumerate(data_loader),
-            desc="Initializing rows for the selection table",
-            total=(select_from.count() // self.batch_size) + 1,
-        ):
-            if self.max_batches is not None:
-                if idx_batch >= self.max_batches:
-                    break
-
-            # Keep only not yet described samples in the batch
-            if not_empty:
-                batch = filter_batch_from_indices(
-                    batch,
-                    already_in_selection,
-                    index_key="idx_vector",
-                )
-
-            if len(batch) == 0:
-                continue  # all samples already described
-
-            if self.selection_key not in batch:
-                batch[self.selection_key] = [
-                    None for _ in range(len(batch["idx_vector"]))
-                ]
-
-            if "chunked" not in batch:
-                batch["chunked"] = [None for _ in range(len(batch["idx_vector"]))]
-
-            # insert batch in the selection table
-            include_batch_into_table(
-                selection_table,
-                batch,
-                col_list,
-                "idx_vector",
-            )
+        return selection_table
 
     def _selection_table_from_dataset(
         self, select_from: Dataset, old_selection_table: Table | None
@@ -434,7 +371,7 @@ class GoldSelector:
         """Create or validate the selection table schema from a PyTorch Dataset.
 
         This private method sets up the table structure with necessary columns including
-        the vectorized column with proper array type based on the dataset sample.
+        and validate that the vectorized column is present in the dataset.
 
         Args:
             select_from: The source PyTorch Dataset to select from.
@@ -482,12 +419,17 @@ class GoldSelector:
             selection_table.add_column(if_exists="error", **{"chunked": pxt.Bool})
             selection_table.update({"chunked": False})
 
-        self._add_rows_to_selection_table_from_dataset(select_from, selection_table)
+        self._add_rows_to_selection_table_from_dataset(
+            select_from, selection_table, include_vectorized=True
+        )
 
         return selection_table
 
     def _add_rows_to_selection_table_from_dataset(
-        self, select_from: Dataset, selection_table: Table
+        self,
+        select_from: Dataset,
+        selection_table: Table,
+        include_vectorized: bool = False,
     ) -> None:
         """Add rows from the source dataset to the selection table.
 
@@ -505,20 +447,17 @@ class GoldSelector:
             collate_fn=self.collate_fn,
         )
 
-        vectorized_col = get_expr_from_column_name(selection_table, self.vectorized_key)
-        already_included = set(
+        already_in_selection = set(
             [
                 row["idx_vector"]
-                for row in selection_table.where(
-                    vectorized_col != None  # noqa: E711
-                )
-                .select(selection_table.idx_vector)
-                .collect()
+                for row in selection_table.select(selection_table.idx_vector).collect()
             ]
         )
         not_empty = (
-            selection_table.count() > 0
+            len(already_in_selection) > 0
         )  # allow to filter out already described samples
+
+        ready_to_insert: list[dict[str, Any]] = []
 
         for batch_idx, batch in tqdm(
             enumerate(dataloader),
@@ -541,15 +480,14 @@ class GoldSelector:
                 batch["idx"] = batch["idx_vector"]
 
             if "chunked" not in batch:
-                batch["chunked"] = [
-                    False for _ in range(len(batch[self.vectorized_key]))
-                ]
+                batch["chunked"] = [False for _ in range(len(batch["idx_vector"]))]
 
             # Keep only not yet included samples in the batch
             if not_empty:
                 batch = filter_batch_from_indices(
                     batch,
-                    already_included,
+                    already_in_selection,
+                    index_key="idx_vector",
                 )
 
                 if len(batch) == 0:
@@ -560,24 +498,34 @@ class GoldSelector:
                     None for _ in range(len(batch[self.vectorized_key]))
                 ]
 
-            already_included.update(
+            already_in_selection.update(
                 [
                     idx.item() if isinstance(idx, torch.Tensor) else idx
                     for idx in batch["idx_vector"]
                 ]
             )
-            to_insert_keys = [self.vectorized_key, "idx", self.selection_key]
+            to_insert_keys = ["idx", self.selection_key]
             if self.to_keep_schema is not None:
                 to_insert_keys.extend(list(self.to_keep_schema.keys()))
             if self.class_key is not None:
                 to_insert_keys.append(self.class_key)
+            if include_vectorized:
+                to_insert_keys.append(self.vectorized_key)
 
-            include_batch_into_table(
+            batch_as_list = make_batch_ready_for_table(
                 selection_table,
                 batch,
                 to_insert_keys,
                 "idx_vector",
             )
+
+            ready_to_insert.extend(batch_as_list)
+            if len(ready_to_insert) >= self.min_pxt_insert_size:
+                selection_table.insert(ready_to_insert)
+                ready_to_insert = []
+
+        if ready_to_insert:
+            selection_table.insert(ready_to_insert)
 
     @staticmethod
     def get_selected_sample_indices(

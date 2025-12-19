@@ -7,6 +7,7 @@ import pixeltable as pxt
 from pixeltable import Query
 from pixeltable.catalog import Table
 from pixeltable.exprs import Expr
+import pixeltable.functions as pxtf
 
 import torch
 from pixeltable.type_system import ArrayType
@@ -331,6 +332,7 @@ def get_sample_row_from_idx(
 def get_valid_table(
     table: Table | str,
     minimal_schema: dict[str, type],
+    primary_key: str | None = None,
 ) -> Table:
     """Get a valid PixelTable view for a given table.
 
@@ -359,6 +361,7 @@ def get_valid_table(
         created_table = pxt.create_table(
             table,
             schema=minimal_schema,
+            primary_key=primary_key,
         )
         assert isinstance(created_table, Table)
         table = created_table
@@ -403,16 +406,13 @@ def get_table_from_dataset(
     )
 
 
-def include_batch_into_table(
+def make_batch_ready_for_table(
     table: Table,
     batch: dict[str, Any],
     to_insert: list[str],
     index_key: str = "idx",
-) -> None:
-    """Include a batch of data into a PixelTable table.
-
-    The inclusion is either an insertion of new rows or an update of existing rows
-    based on the index key.
+) -> list[dict[str, Any]]:
+    """Unwrap a batch of data into a list of data ready to be included in the table.
 
     Args:
         table: The PixelTable table to include the batch into.
@@ -420,6 +420,8 @@ def include_batch_into_table(
         to_insert: A list of keys from the batch to insert or update in the table.
         index_key: The key in the batch that represents the index for matching rows in the table.
 
+    Returns:
+        A list of dictionaries, each representing a row to be inserted or updated in the table.
     Raises:
         ValueError: If the index key is not found in the batch or if it is included in the to_insert list.
     """
@@ -431,6 +433,7 @@ def include_batch_into_table(
             f"Index key '{index_key}' should not be in the to_insert list."
         )
 
+    to_insert_list = []
     for batch_idx, idx_value in enumerate(batch[index_key]):
         sample_idx = (
             idx_value.item() if isinstance(idx_value, torch.Tensor) else idx_value
@@ -451,13 +454,71 @@ def include_batch_into_table(
         }
 
         if idx_query.count() == 0:
-            table.insert(
-                [
-                    {
-                        index_key: sample_idx,
-                    }
-                    | to_insert_dict
-                ]
+            to_insert_list.append(
+                {
+                    index_key: sample_idx,
+                }
+                | to_insert_dict
             )
         else:
-            idx_query.update(to_insert_dict)
+            to_insert_list.append(to_insert_dict)
+
+    return to_insert_list
+
+
+def get_pxt_table_primary_keys(table: Table) -> set[str]:
+    """Get the primary key columns of a PixelTable table.
+
+    Args:
+        table: The PixelTable table.
+
+    Returns:
+        A list of primary key column names.
+    """
+    return set(
+        col_name
+        for col_name, col_dict in table.get_metadata()["columns"].items()
+        if col_dict.get("is_primary_key", False)
+    )
+
+
+def check_pxt_table_has_primary_key(table: Table, cols: set[str]) -> None:
+    """Check if some columns are defined as primary keys in the PixelTable table.
+
+    Args:
+        table: The PixelTable table.
+        cols: A list of column names to check.
+
+    Raises:
+        ValueError: If any of the specified columns are not primary keys in the table.
+    """
+    primary_keys = get_pxt_table_primary_keys(table)
+    if missing := cols.difference(primary_keys):
+        raise ValueError(
+            f"The table does not have all specified columns as primary keys, "
+            f"missing: {missing}"
+        )
+
+
+def get_max_value_in_column(
+    table: Table,
+    col_expr: Expr,
+) -> int:
+    """Get the maximum value in a specified column of a PixelTable table.
+
+    Args:
+        table: The PixelTable table.
+        col_expr: The column expression to analyze.
+
+    Returns:
+        The maximum value in the specified column.
+
+    Raises:
+        ValueError: If the maximum value is not an integer.
+    """
+    max_value = [row["max"] for row in table.select(pxtf.max(col_expr)).collect()][0]  # type: ignore[call-arg]
+
+    if not isinstance(max_value, int):
+        raise ValueError("The maximum value is not an integer.")
+
+    return max_value

@@ -161,7 +161,7 @@ class TestGoldDescriptor:
             if col_name == "features":
                 assert col_dict["type_"] == "Array[(4, 8, 8), float32]"
             elif col_name == "idx":
-                assert col_dict["type_"] == "Int"
+                assert col_dict["type_"] == "Required[Int]"
 
         pxt.drop_dir("unit_test", force=True)
 
@@ -495,5 +495,34 @@ class TestGoldDescriptor:
             assert sample["features"].shape == (4,)
 
         dataset.keep_cache = False
+
+        pxt.drop_dir("unit_test", force=True)
+
+    def test_describe_in_table_after_restart_with_vectorizer(self, extractor):
+        pxt.drop_dir("unit_test", force=True)
+
+        desc = GoldDescriptor(
+            table_path="unit_test.test_describe",
+            extractor=extractor,
+            vectorizer=TensorVectorizer(),
+            batch_size=2,
+            collate_fn=None,
+            device=torch.device("cpu"),
+            allow_existing=True,
+            max_batches=2,
+        )
+        dataset = DummyDataset(dataset_len=10)
+        description_table = desc.describe_in_table(dataset)
+
+        assert description_table.count() == 4 * 8 * 8
+        for i, row in enumerate(description_table.collect()):
+            assert row["idx_vector"] == i
+        desc.max_batches = None
+        description_table = desc.describe_in_table(dataset)
+
+        assert description_table.count() == 10 * 8 * 8
+        for i, row in enumerate(description_table.collect()):
+            assert row["idx_vector"] == i
+            assert row["features"].shape == (4,)
 
         pxt.drop_dir("unit_test", force=True)
