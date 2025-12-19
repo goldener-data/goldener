@@ -42,6 +42,12 @@ gpu = [
   "jax[cuda]",
 ]
 
+tools = [
+  "timm",
+  "psutil",
+  "pynvml",
+]
+
 [project.urls]
 Homepage = "https://github.com/goldener-data/goldener"
 Repository = "https://github.com/goldener-data/goldener"
