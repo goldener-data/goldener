@@ -818,7 +818,7 @@ class GoldVectorizer:
                 "idx_vector",
             )
             ready_to_insert.extend(batch_as_list)
-            if len(ready_to_insert) > self.min_pxt_insert_size:
+            if len(ready_to_insert) >= self.min_pxt_insert_size:
                 vectorized_table.batch_update(ready_to_insert, if_not_exists="insert")
                 ready_to_insert = []
 

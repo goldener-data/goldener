@@ -462,3 +462,19 @@ class TestGetMaxValueInColumn:
             get_max_value_in_column(table, col_expr)
 
         pxt.drop_dir("test_max_value", force=True)
+
+    def test_with_empty_table(self):
+        pxt.drop_dir("test_max_value", force=True)
+
+        table_path = "test_max_value.test_table"
+
+        pxt.create_dir("test_max_value", if_exists="ignore")
+
+        table = pxt.create_table(table_path, schema={"idx": pxt.Int, "value": pxt.Int})
+
+        col_expr = get_expr_from_column_name(table, "value")
+
+        with pytest.raises(ValueError, match="The table is empty"):
+            get_max_value_in_column(table, col_expr)
+
+        pxt.drop_dir("test_max_value", force=True)

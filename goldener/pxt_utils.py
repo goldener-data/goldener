@@ -420,7 +420,7 @@ def get_pxt_table_primary_keys(table: Table) -> set[str]:
         table: The PixelTable table.
 
     Returns:
-        A list of primary key column names.
+        A set of primary key column names.
     """
     return set(
         col_name
@@ -434,7 +434,7 @@ def check_pxt_table_has_primary_key(table: Table, cols: set[str]) -> None:
 
     Args:
         table: The PixelTable table.
-        cols: A list of column names to check.
+        cols: A set of column names to check.
 
     Raises:
         ValueError: If any of the specified columns are not primary keys in the table.
@@ -463,6 +463,9 @@ def get_max_value_in_column(
     Raises:
         ValueError: If the maximum value is not an integer.
     """
+    if table.count() == 0:
+        raise ValueError("The table is empty")
+
     max_value = [row["max"] for row in table.select(pxtf.max(col_expr)).collect()][0]  # type: ignore[call-arg]
 
     if not isinstance(max_value, int):

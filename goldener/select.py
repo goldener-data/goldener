@@ -376,7 +376,7 @@ class GoldSelector:
     ) -> Table:
         """Create or validate the selection table schema from a PyTorch Dataset.
 
-        This private method sets up the table structure with necessary columns including
+        This private method sets up the table structure with necessary columns
         and validate that the vectorized column is present in the dataset.
 
         Args:
