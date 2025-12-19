@@ -21,6 +21,7 @@ from goldener.pxt_utils import (
     get_valid_table,
     make_batch_ready_for_table,
     get_column_distinct_ratios,
+    check_pxt_table_has_primary_key,
 )
 from goldener.reduce import GoldReducer
 from goldener.torch_utils import get_dataset_sample_dict
@@ -214,6 +215,10 @@ class GoldSelector:
         except Error:
             logger.info(f"No existing selection table from {self.table_path}")
             old_selection_table = None
+
+        # selection table are expected to have a primary key allowing to idempotent updates
+        if old_selection_table is not None:
+            check_pxt_table_has_primary_key(old_selection_table, set(["idx_vector"]))
 
         if not self.allow_existing and old_selection_table is not None:
             raise ValueError(

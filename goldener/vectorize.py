@@ -517,7 +517,7 @@ class GoldVectorizer:
             logger.info(f"No existing vectorized table from {self.table_path}")
             old_vectorized_table = None
 
-        # description table are expected to have a primary key allowing to idempotent updates
+        # vectorized table are expected to have a primary key allowing to idempotent updates
         if old_vectorized_table is not None:
             check_pxt_table_has_primary_key(old_vectorized_table, set(["idx_vector"]))
 
