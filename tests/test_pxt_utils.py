@@ -5,7 +5,6 @@ import torch
 import numpy as np
 
 import pixeltable as pxt
-from pixeltable import Float
 
 from goldener.pxt_utils import (
     create_pxt_table_from_sample,
@@ -19,7 +18,10 @@ from goldener.pxt_utils import (
     get_array_column_shapes_from_table,
     get_sample_row_from_idx,
     get_valid_table,
-    include_batch_into_table,
+    make_batch_ready_for_table,
+    get_pxt_table_primary_keys,
+    check_pxt_table_has_primary_key,
+    get_max_value_in_column,
 )
 
 
@@ -328,99 +330,151 @@ class TestGetValidTable:
         pxt.drop_dir("test_get_valid_view", force=True)
 
 
-class TestIncludeBatchIntoTable:
+class TestMakeBatchReadyForTable:
     def test_with_index_not_present(self):
-        pxt.create_dir("test_include_batch", if_exists="ignore")
-        table = pxt.create_table(
-            "test_include_batch.base_table",
-            schema={"data": pxt.Array[(8, 8), Float], "idx": pxt.Int},
-        )
-
         batch = {
             "data": np.random.rand(2, 8, 8).astype(np.float32),
             "idx": [0, 1],
             "extra": [10, 20],
         }
 
-        include_batch_into_table(
-            table,
+        batch_list = make_batch_ready_for_table(
             batch,
             to_insert=["data"],
             index_key="idx",
         )
 
-        assert table.count() == 2
-        table_columns = table.columns()
-        assert "data" in table_columns
-        assert "idx" in table_columns
-        assert "extra" not in table_columns
-
-        pxt.drop_dir("test_include_batch", force=True)
-
-    def test_with_index_present(self):
-        pxt.create_dir("test_include_batch", if_exists="ignore")
-        table = pxt.create_table(
-            "test_include_batch.base_table",
-            source=[{"data": np.random.rand(8, 8).astype(np.float32), "idx": 0}],
-        )
-
-        batch = {
-            "data": np.random.rand(2, 8, 8).astype(np.float32),
-            "idx": [0, 1],
-            "extra": [10, 20],
-        }
-
-        include_batch_into_table(
-            table,
-            batch,
-            to_insert=["data"],
-            index_key="idx",
-        )
-
-        assert table.count() == 2
-        table_columns = table.columns()
-        assert "data" in table_columns
-        assert "idx" in table_columns
-        assert "extra" not in table_columns
-
-        pxt.drop_dir("test_include_batch", force=True)
+        assert len(batch_list) == 2
+        assert "data" in batch_list[0]
+        assert "idx" in batch_list[0]
+        assert "extra" not in batch_list[0]
 
     def test_with_no_index(self):
-        pxt.create_dir("test_include_batch", if_exists="ignore")
-        table = pxt.create_table(
-            "test_include_batch.base_table",
-            schema={"data": pxt.Array[(8, 8), Float]},
-        )
-
         batch = {"data": np.random.rand(2, 8, 8).astype(np.float32), "extra": [10, 20]}
         with pytest.raises(
-            ValueError,
-            match="not found in the batch",
+            KeyError,
         ):
-            include_batch_into_table(
-                table,
+            make_batch_ready_for_table(
                 batch,
                 to_insert=["data"],
                 index_key="idx",
             )
-        pxt.drop_dir("test_include_batch", force=True)
 
-    def test_with_index_in_insert(self):
-        pxt.create_dir("test_include_batch", if_exists="ignore")
+
+class TestGetPxtTablePrimaryKeys:
+    def test_with_primary_key(self):
+        pxt.drop_dir("unit_test", force=True)
+
+        pxt.create_dir("unit_test", if_exists="ignore")
         table = pxt.create_table(
-            "test_include_batch.base_table",
-            schema={"data": pxt.Array[(8, 8), Float]},
+            "unit_test.table_with_pk",
+            schema={"idx": pxt.Required[pxt.Int], "label": pxt.String},
+            primary_key="idx",
         )
 
-        batch = {"data": np.random.rand(2, 8, 8).astype(np.float32), "idx": [10, 20]}
+        pk = get_pxt_table_primary_keys(table)
+        assert pk == set(["idx"])
+
+        pxt.drop_dir("unit_test", force=True)
+
+    def test_without_primary_key(self):
+        pxt.drop_dir("unit_test", force=True)
+
+        pxt.create_dir("unit_test", if_exists="ignore")
+        table = pxt.create_table(
+            "unit_test.table_with_pk",
+            schema={"idx": pxt.Required[pxt.Int], "label": pxt.String},
+        )
+
+        pk = get_pxt_table_primary_keys(table)
+        assert pk == set()
+
+        pxt.drop_dir("unit_test", force=True)
+
+
+class TestCheckPxtTableHasPrimaryKey:
+    def test_with_primary_key(self):
+        pxt.drop_dir("unit_test", force=True)
+
+        pxt.create_dir("unit_test", if_exists="ignore")
+        table = pxt.create_table(
+            "unit_test.table_with_pk",
+            schema={"idx": pxt.Required[pxt.Int], "label": pxt.String},
+            primary_key="idx",
+        )
+        check_pxt_table_has_primary_key(table, set(["idx"]))
+
+        pxt.drop_dir("unit_test", force=True)
+
+    def test_without_primary_key(self):
+        pxt.drop_dir("unit_test", force=True)
+
+        pxt.create_dir("unit_test", if_exists="ignore")
+        table = pxt.create_table(
+            "unit_test.table_with_pk",
+            schema={"idx": pxt.Required[pxt.Int], "label": pxt.String},
+        )
+
         with pytest.raises(
-            ValueError,
-            match="should not be in the to_insert list",
+            ValueError, match="does not have all specified columns as primary"
         ):
-            include_batch_into_table(
-                table,
-                batch,
-                to_insert=["data", "idx"],
-                index_key="idx",
-            )
-        pxt.drop_dir("test_include_batch", force=True)
+            check_pxt_table_has_primary_key(table, set(["idx"]))
+
+        pxt.drop_dir("unit_test", force=True)
+
+
+class TestGetMaxValueInColumn:
+    def test_get_max_value(self):
+        pxt.drop_dir("test_max_value", force=True)
+
+        table_path = "test_max_value.test_table"
+
+        pxt.create_dir("test_max_value", if_exists="ignore")
+        samples = [
+            {"idx": 0, "value": 10},
+            {"idx": 1, "value": 20},
+            {"idx": 2, "value": 15},
+        ]
+        table = pxt.create_table(table_path, source=samples)
+
+        col_expr = get_expr_from_column_name(table, "value")
+        max_value = get_max_value_in_column(table, col_expr)
+
+        assert max_value == 20
+        pxt.drop_dir("test_max_value", force=True)
+
+    def test_with_not_int(self):
+        pxt.drop_dir("test_max_value", force=True)
+
+        table_path = "test_max_value.test_table"
+
+        pxt.create_dir("test_max_value", if_exists="ignore")
+        samples = [
+            {"idx": 0, "value": 10.0},
+            {"idx": 1, "value": 20.0},
+            {"idx": 2, "value": 15.0},
+        ]
+        table = pxt.create_table(table_path, source=samples)
+
+        col_expr = get_expr_from_column_name(table, "value")
+
+        with pytest.raises(TypeError, match="The maximum value is not an integer"):
+            get_max_value_in_column(table, col_expr)
+
+        pxt.drop_dir("test_max_value", force=True)
+
+    def test_with_empty_table(self):
+        pxt.drop_dir("test_max_value", force=True)
+
+        table_path = "test_max_value.test_table"
+
+        pxt.create_dir("test_max_value", if_exists="ignore")
+
+        table = pxt.create_table(table_path, schema={"idx": pxt.Int, "value": pxt.Int})
+
+        col_expr = get_expr_from_column_name(table, "value")
+
+        with pytest.raises(ValueError, match="The table is empty"):
+            get_max_value_in_column(table, col_expr)
+
+        pxt.drop_dir("test_max_value", force=True)

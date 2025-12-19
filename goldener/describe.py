@@ -1,5 +1,5 @@
 from logging import getLogger
-from typing import Callable
+from typing import Callable, Any
 
 import torch
 
@@ -16,11 +16,13 @@ from goldener.pxt_utils import (
     get_sample_row_from_idx,
     pxt_torch_dataset_collate_fn,
     get_valid_table,
-    include_batch_into_table,
+    make_batch_ready_for_table,
+    check_pxt_table_has_primary_key,
+    get_max_value_in_column,
 )
 from goldener.torch_utils import get_dataset_sample_dict
 from goldener.utils import filter_batch_from_indices
-from goldener.vectorize import TensorVectorizer, vectorize_and_insert_batch_in_table
+from goldener.vectorize import TensorVectorizer, vectorize_and_unwrap_in_batch
 
 logger = getLogger(__name__)
 
@@ -58,6 +60,7 @@ class GoldDescriptor:
         description_key: Column name to store the extracted features in the PixelTable table. Default is "features".
         to_keep_schema: Optional dictionary defining additional columns to keep from the original dataset/table
             into the description table. The keys are the column names and the values are the PixelTable types.
+        min_pxt_insert_size: Minimum number of rows to accumulate before inserting into PixelTable. Default is 100.
         batch_size: Batch size used when iterating over the data.
         num_workers: Number of workers for the PyTorch DataLoader during iteration on data.
         allow_existing: If False, an error will be raised when the table already exists. Default is True.
@@ -69,7 +72,7 @@ class GoldDescriptor:
     """
 
     _MINIMAL_SCHEMA: dict[str, type] = {
-        "idx": pxt.Int,
+        "idx": pxt.Required[pxt.Int],
     }
 
     def __init__(
@@ -83,6 +86,7 @@ class GoldDescriptor:
         target_key: str = "target",
         description_key: str = "features",
         to_keep_schema: dict[str, type] | None = None,
+        min_pxt_insert_size: int = 100,
         batch_size: int = 1,
         num_workers: int = 0,
         allow_existing: bool = True,
@@ -103,6 +107,7 @@ class GoldDescriptor:
             target_key: Key in the batch dictionary containing the target/label. Defaults to "target".
             description_key: Key for storing extracted features. Defaults to "features".
             to_keep_schema: Optional schema for additional columns to preserve.
+            min_pxt_insert_size: Minimum number of rows to accumulate before inserting into PixelTable. Defaults to 100.
             batch_size: Batch size used when iterating over the data.
             num_workers: Number of workers for the PyTorch DataLoader during iteration on data.
             allow_existing: Whether to allow using an existing table. Defaults to True.
@@ -120,6 +125,7 @@ class GoldDescriptor:
         self.target_key = target_key
         self.description_key = description_key
         self.to_keep_schema = to_keep_schema
+        self.min_pxt_insert_size = min_pxt_insert_size
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.allow_existing = allow_existing
@@ -201,6 +207,11 @@ class GoldDescriptor:
             logger.info(f"No existing description table from {self.table_path}")
             old_description_table = None
 
+        # description table are expected to have a primary key allowing to idempotent updates
+        if old_description_table is not None:
+            primary_key = "idx" if self.vectorizer is None else "idx_vector"
+            check_pxt_table_has_primary_key(old_description_table, set([primary_key]))
+
         if not self.allow_existing and old_description_table is not None:
             raise ValueError(
                 f"Table at path {self.table_path} already exists and "
@@ -273,18 +284,7 @@ class GoldDescriptor:
         Returns:
             The description table with proper schema.
         """
-        minimal_schema = self._MINIMAL_SCHEMA
-        if self.vectorizer is not None:
-            minimal_schema["idx_vector"] = pxt.Int
-        if self.to_keep_schema is not None:
-            minimal_schema |= self.to_keep_schema
-
-        description_table = get_valid_table(
-            table=old_description_table
-            if old_description_table is not None
-            else self.table_path,
-            minimal_schema=minimal_schema,
-        )
+        description_table = self._get_description_valid_table(old_description_table)
 
         if self.description_key not in description_table.columns():
             logger.info(f"Add the description column in {self.table_path}")
@@ -344,18 +344,7 @@ class GoldDescriptor:
         Returns:
             The description table with proper schema.
         """
-        minimal_schema = self._MINIMAL_SCHEMA
-        if self.vectorizer is not None:
-            minimal_schema["idx_vector"] = pxt.Int
-        if self.to_keep_schema is not None:
-            minimal_schema |= self.to_keep_schema
-
-        description_table = get_valid_table(
-            table=old_description_table
-            if old_description_table is not None
-            else self.table_path,
-            minimal_schema=minimal_schema,
-        )
+        description_table = self._get_description_valid_table(old_description_table)
 
         if self.description_key not in description_table.columns():
             logger.info(f"Add the description column in {self.table_path}")
@@ -401,6 +390,23 @@ class GoldDescriptor:
             )
 
         return description_table
+
+    def _get_description_valid_table(
+        self, old_description_table: Table | None
+    ) -> Table:
+        minimal_schema = self._MINIMAL_SCHEMA
+        if self.vectorizer is not None:
+            minimal_schema["idx_vector"] = pxt.Required[pxt.Int]
+        if self.to_keep_schema is not None:
+            minimal_schema |= self.to_keep_schema
+
+        return get_valid_table(
+            table=old_description_table
+            if old_description_table is not None
+            else self.table_path,
+            minimal_schema=minimal_schema,
+            primary_key="idx" if self.vectorizer is None else "idx_vector",
+        )
 
     def _distributed_describe(
         self,
@@ -468,6 +474,18 @@ class GoldDescriptor:
             collate_fn=self.collate_fn,
         )
 
+        ready_to_insert: list[dict[str, Any]] = []
+
+        if self.vectorizer is not None:
+            start_idx = (
+                0
+                if description_table.count() == 0
+                else get_max_value_in_column(
+                    description_table, description_table.idx_vector
+                )
+                + 1
+            )
+
         for batch_idx, batch in tqdm(
             enumerate(dataloader),
             desc=(
@@ -527,21 +545,37 @@ class GoldDescriptor:
             if self.vectorizer is None:
                 to_insert_keys = [self.description_key] + to_keep_keys
 
-                include_batch_into_table(
-                    description_table,
+                batch_as_list = make_batch_ready_for_table(
                     batch,
                     to_insert_keys,
                     "idx",
                 )
             else:
-                vectorize_and_insert_batch_in_table(
-                    description_table,
-                    batch,
-                    self.vectorizer,
-                    self.description_key,
-                    self.description_key,
-                    self.target_key,
-                    to_keep_keys,
+                batch = vectorize_and_unwrap_in_batch(
+                    batch=batch,
+                    vectorizer=self.vectorizer,
+                    data_key=self.description_key,
+                    vectorized_key=self.description_key,
+                    target_key=self.target_key,
+                    to_keep=to_keep_keys,
+                    starts=start_idx,
                 )
+
+                start_idx = max(batch["idx_vector"]) + 1
+
+                to_insert_keys = [self.description_key, "idx"] + to_keep_keys
+                batch_as_list = make_batch_ready_for_table(
+                    batch,
+                    to_insert_keys,
+                    "idx_vector",
+                )
+
+            ready_to_insert.extend(batch_as_list)
+            if len(ready_to_insert) >= self.min_pxt_insert_size:
+                description_table.batch_update(ready_to_insert, if_not_exists="insert")
+                ready_to_insert = []
+
+        if ready_to_insert:
+            description_table.batch_update(ready_to_insert, if_not_exists="insert")
 
         return description_table

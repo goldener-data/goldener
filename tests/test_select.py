@@ -141,8 +141,8 @@ class TestGoldSelector:
         )
 
         assert set(pxt_table.columns()) == {
-            selector.vectorized_key,
             selector.selection_key,
+            selector.vectorized_key,
             "idx",
             "idx_vector",
             "chunked",
@@ -500,6 +500,7 @@ class TestGoldSelector:
                 for idx in range(100)
             ],
             if_exists="replace_force",
+            primary_key="idx_vector",
         )
 
         selector = GoldSelector(
@@ -587,5 +588,82 @@ class TestGoldSelector:
             pxt.get_table(table_path, if_not_exists="error")
 
         dataset.keep_cache = False
+
+        pxt.drop_dir("unit_test", force=True)
+
+    def test_get_selected_sample_indices(self):
+        pxt.drop_dir("unit_test", force=True)
+
+        src_path = "unit_test.test_select"
+
+        pxt.create_dir("unit_test", if_exists="ignore")
+        src_table = pxt.create_table(
+            src_path,
+            source=[
+                {
+                    "vectorized": torch.rand(5).numpy().astype(np.float32),
+                    "idx": idx,
+                    "selected": "train" if idx < 50 else None,
+                    "label": "value" if idx < 25 else "other",
+                }
+                for idx in range(100)
+            ],
+            if_exists="replace_force",
+        )
+
+        sample_indices = GoldSelector.get_selected_sample_indices(
+            table=src_table,
+            value="train",
+            selection_key="selected",
+        )
+
+        assert sample_indices == set(range(50))
+
+        sample_indices = GoldSelector.get_selected_sample_indices(
+            table=src_table,
+            value=None,
+            selection_key="selected",
+        )
+        assert sample_indices == set(range(50, 100, 1))
+
+        sample_indices = GoldSelector.get_selected_sample_indices(
+            table=src_table,
+            value="train",
+            selection_key="selected",
+            class_key="label",
+            class_value="value",
+        )
+        assert sample_indices == set(range(25))
+
+        sample_indices = GoldSelector.get_selected_sample_indices(
+            table=src_table,
+            value="train",
+            selection_key="selected",
+            class_key="label",
+            class_value="other",
+        )
+        assert sample_indices == set(range(25, 50, 1))
+
+        with pytest.raises(
+            ValueError, match="class_key and class_value must be set together"
+        ):
+            GoldSelector.get_selected_sample_indices(
+                table=src_table,
+                value="train",
+                selection_key="selected",
+                class_key="label",
+                class_value=None,
+            )
+
+        with pytest.raises(
+            ValueError, match="class_key and class_value must be set together"
+        ):
+            GoldSelector.get_selected_sample_indices(
+                table=src_table,
+                value="train",
+                selection_key="selected",
+                class_key=None,
+                class_value="other",
+            )
 
         pxt.drop_dir("unit_test", force=True)
