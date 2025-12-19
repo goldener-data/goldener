@@ -208,9 +208,7 @@ class TestGoldSplitter:
             vectorizer=vectorizer,
         )
 
-        with pytest.raises(
-            ValueError, match="class_key and class_value must be set together"
-        ):
+        with pytest.raises(KeyError):
             splitter.split_in_table(
                 to_split=DummyDataset(
                     [

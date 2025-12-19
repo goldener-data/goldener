@@ -355,6 +355,9 @@ class GoldSelector:
         if self.selection_key in select_from.columns():
             col_list.append(self.selection_key)
 
+        if self.class_key is not None and self.class_key in select_from.columns():
+            col_list.append(self.class_key)
+
         self._add_rows_to_selection_table_from_dataset(
             select_from=GoldPxtTorchDataset(
                 select_from.select(
@@ -514,7 +517,7 @@ class GoldSelector:
             to_insert_keys = ["idx", self.selection_key]
             if self.to_keep_schema is not None:
                 to_insert_keys.extend(list(self.to_keep_schema.keys()))
-            if self.class_key is not None:
+            if self.class_key is not None and self.class_key in batch:
                 to_insert_keys.append(self.class_key)
             if include_vectorized:
                 to_insert_keys.append(self.vectorized_key)
