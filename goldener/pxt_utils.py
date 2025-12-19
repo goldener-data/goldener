@@ -12,9 +12,7 @@ import pixeltable.functions as pxtf
 import torch
 from pixeltable.type_system import ArrayType
 from pixeltable.utils.pytorch import PixeltablePytorchDataset
-from torch.utils.data import Dataset
 
-from goldener.torch_utils import get_dataset_sample_dict
 from goldener.utils import get_ratios_for_counts
 
 
@@ -369,45 +367,7 @@ def get_valid_table(
     return table
 
 
-def get_table_from_dataset(
-    table_path: str,
-    dataset: Dataset,
-    collate_fn: Callable | None = None,
-    expected: list[str] | None = None,
-    excluded: list[str] | None = None,
-    if_exists: Literal["error", "replace_force"] = "error",
-) -> Table:
-    """Initialize a PixelTable table from a PyTorch dataset.
-
-    Args:
-        table_path: The full path of the PixelTable table to create (e.g., 'dir1.dir2.table_name').
-        dataset: The PyTorch dataset to get a sample from.
-        collate_fn: An optional collate function to apply to the sample.
-        expected: A list of keys that must be present in the sample.
-        excluded: A list of keys that must not be present in the sample.
-        if_exists: Behavior if the table already exists. Options are 'error' or 'replace_force'.
-
-    Returns:
-        The created PixelTable table.
-    """
-    sample = get_dataset_sample_dict(
-        dataset,
-        collate_fn=collate_fn,
-        expected=expected,
-        excluded=excluded,
-    )
-
-    return create_pxt_table_from_sample(
-        table_path,
-        sample,
-        unwrap=collate_fn is not None,
-        add={"idx": 0} if "idx" not in sample else None,
-        if_exists=if_exists,
-    )
-
-
 def make_batch_ready_for_table(
-    table: Table,
     batch: dict[str, Any],
     to_insert: list[str],
     index_key: str = "idx",
@@ -425,21 +385,12 @@ def make_batch_ready_for_table(
     Raises:
         ValueError: If the index key is not found in the batch or if it is included in the to_insert list.
     """
-    if index_key not in batch:
-        raise ValueError(f"Index key '{index_key}' not found in the batch.")
-
-    if index_key in to_insert:
-        raise ValueError(
-            f"Index key '{index_key}' should not be in the to_insert list."
-        )
-
     to_insert_list = []
     for batch_idx, idx_value in enumerate(batch[index_key]):
         sample_idx = (
             idx_value.item() if isinstance(idx_value, torch.Tensor) else idx_value
         )
 
-        idx_query = table.where(table.idx == sample_idx)
         to_insert_dict = {
             key: (
                 (
@@ -452,16 +403,12 @@ def make_batch_ready_for_table(
             )
             for key in to_insert
         }
-
-        if idx_query.count() == 0:
-            to_insert_list.append(
-                {
-                    index_key: sample_idx,
-                }
-                | to_insert_dict
-            )
-        else:
-            to_insert_list.append(to_insert_dict)
+        to_insert_list.append(
+            {
+                index_key: sample_idx,
+            }
+            | to_insert_dict
+        )
 
     return to_insert_list
 
@@ -519,6 +466,6 @@ def get_max_value_in_column(
     max_value = [row["max"] for row in table.select(pxtf.max(col_expr)).collect()][0]  # type: ignore[call-arg]
 
     if not isinstance(max_value, int):
-        raise ValueError("The maximum value is not an integer.")
+        raise TypeError("The maximum value is not an integer.")
 
     return max_value

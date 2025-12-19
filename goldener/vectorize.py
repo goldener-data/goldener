@@ -813,7 +813,6 @@ class GoldVectorizer:
 
             to_insert_keys = [self.vectorized_key, "idx"] + to_keep_keys
             batch_as_list = make_batch_ready_for_table(
-                vectorized_table,
                 batch,
                 to_insert_keys,
                 "idx_vector",

@@ -500,6 +500,7 @@ class TestGoldSelector:
                 for idx in range(100)
             ],
             if_exists="replace_force",
+            primary_key="idx_vector",
         )
 
         selector = GoldSelector(

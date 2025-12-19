@@ -306,6 +306,7 @@ class GoldSelector:
             if old_selection_table is not None
             else self.table_path,
             minimal_schema=minimal_schema,
+            primary_key="idx_vector",
         )
 
         if self.vectorized_key not in select_from.columns():
@@ -397,6 +398,7 @@ class GoldSelector:
             if old_selection_table is not None
             else self.table_path,
             minimal_schema=minimal_schema,
+            primary_key="idx_vector",
         )
 
         if self.vectorized_key not in selection_table.columns():
@@ -518,7 +520,6 @@ class GoldSelector:
                 to_insert_keys.append(self.vectorized_key)
 
             batch_as_list = make_batch_ready_for_table(
-                selection_table,
                 batch,
                 to_insert_keys,
                 "idx_vector",

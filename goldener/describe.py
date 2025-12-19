@@ -546,7 +546,6 @@ class GoldDescriptor:
                 to_insert_keys = [self.description_key] + to_keep_keys
 
                 batch_as_list = make_batch_ready_for_table(
-                    description_table,
                     batch,
                     to_insert_keys,
                     "idx",
@@ -566,7 +565,6 @@ class GoldDescriptor:
 
                 to_insert_keys = [self.description_key, "idx"] + to_keep_keys
                 batch_as_list = make_batch_ready_for_table(
-                    description_table,
                     batch,
                     to_insert_keys,
                     "idx_vector",
