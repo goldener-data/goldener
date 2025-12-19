@@ -248,17 +248,25 @@ def benchmark_feature_extractor(
 
 
 def benchmark_gold_descriptor(
-    descriptor: GoldDescriptor,
-    dataset: Dataset,
+    extractor: Any,
+    vectorizer: Any,
+    collate_fn: Any,
+    min_pxt_insert_size: int,
+    batch_size: int,
     device: torch.device,
+    dataset: Dataset,
     num_samples: int = 100,
 ) -> BenchmarkResult:
     """Benchmark GoldDescriptor performance.
     
     Args:
-        descriptor: GoldDescriptor to benchmark
-        dataset: Dataset to process
+        extractor: Feature extractor to use
+        vectorizer: Optional vectorizer to use
+        collate_fn: Collate function
+        min_pxt_insert_size: Min insert size for pixeltable
+        batch_size: Batch size to use
         device: Device to run on
+        dataset: Dataset to process
         num_samples: Number of samples to process
         
     Returns:
@@ -282,25 +290,55 @@ def benchmark_gold_descriptor(
     
     # We need to use a temporary table path for benchmarking
     import tempfile
-    with tempfile.TemporaryDirectory() as tmpdir:
-        table_path = os.path.join(tmpdir, "benchmark_table")
-        descriptor.table_path = table_path
+    import shutil
+    tmpdir = None
+    try:
+        # Pixeltable uses a database.table format, not file paths
+        # We'll use a temporary database name
+        import uuid
+        db_name = f"benchmark_{uuid.uuid4().hex[:8]}"
+        table_name = "benchmark_table"
+        table_path = f"{db_name}.{table_name}"
         
-        try:
-            _ = descriptor.describe_in_dataset(limited_dataset)
-        except Exception as e:
-            print(f"Warning: Error during benchmarking: {e}")
-            # Continue with partial results
+        # Create the database directory
+        import pixeltable as pxt
+        pxt.create_dir(db_name, if_exists="ignore")
+        
+        descriptor = GoldDescriptor(
+            table_path=table_path,
+            extractor=extractor,
+            vectorizer=vectorizer,
+            collate_fn=collate_fn,
+            min_pxt_insert_size=min_pxt_insert_size,
+            batch_size=batch_size,
+            device=device,
+            max_batches=num_samples // batch_size if batch_size > 0 else 1,
+        )
+        
+        _ = descriptor.describe_in_dataset(limited_dataset)
         
         # Track peak memory
         memory_peak = get_memory_usage()
+        
+        # Clean up the database directory
+        pxt.drop_dir(db_name, force=True)
+    except Exception as e:
+        print(f"Warning: Error during benchmarking: {e}")
+        # Continue with partial results
+        memory_peak = get_memory_usage()
+        # Try to clean up if something was created
+        try:
+            import pixeltable as pxt
+            pxt.drop_dir(db_name, force=True)
+        except Exception:
+            pass
     
     end_time = time.time()
     
     # Calculate metrics
     total_time = end_time - start_time
-    avg_time_ms = (total_time / num_samples) * 1000
-    throughput = num_samples / total_time
+    avg_time_ms = (total_time / num_samples) * 1000 if num_samples > 0 else 0
+    throughput = num_samples / total_time if total_time > 0 else 0
     
     memory_after = get_memory_usage()
     
@@ -568,26 +606,17 @@ Examples:
             print(f"\nVectorizer Configuration:")
             print(f"  Vector Count: {args.vector_count}")
         
-        # Create temporary directory for benchmark
-        import tempfile
-        with tempfile.TemporaryDirectory() as tmpdir:
-            table_path = os.path.join(tmpdir, "benchmark_table")
-            
-            descriptor = GoldDescriptor(
-                table_path=table_path,
-                extractor=extractor,
-                vectorizer=vectorizer,
-                collate_fn=collate_fn,
-                min_pxt_insert_size=args.min_pxt_insert_size,
-                batch_size=args.batch_size,
-                device=device,
-                max_batches=args.num_samples // args.batch_size,
-            )
-            
-            descriptor_results = benchmark_gold_descriptor(
-                descriptor, dataset, device, args.num_samples
-            )
-            print_benchmark_results(descriptor_results, "GoldDescriptor Benchmark Results")
+        descriptor_results = benchmark_gold_descriptor(
+            extractor=extractor,
+            vectorizer=vectorizer,
+            collate_fn=collate_fn,
+            min_pxt_insert_size=args.min_pxt_insert_size,
+            batch_size=args.batch_size,
+            device=device,
+            dataset=dataset,
+            num_samples=args.num_samples,
+        )
+        print_benchmark_results(descriptor_results, "GoldDescriptor Benchmark Results")
     
     # Recommend optimal settings
     if not args.skip_extractor_benchmark or not args.skip_descriptor_benchmark:
