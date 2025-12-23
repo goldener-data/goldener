@@ -1,6 +1,11 @@
 import torch
 import pytest
-from goldener.utils import check_x_and_y_shapes, get_size_and_sampling_count_per_chunk
+from goldener.utils import (
+    check_x_and_y_shapes,
+    get_size_and_sampling_count_per_chunk,
+    check_sampling_size,
+    check_all_same_type,
+)
 
 
 class TestCheckXAndYShapes:
@@ -107,3 +112,41 @@ class TestGetSizeAndSamplingCountPerChunk:
         )
         assert sizes == [1, 1, 3]
         assert samplings == [0, 0, 2]
+
+
+class TestCheckSamplingSizes:
+    def test_valid_integer_sampling(self):
+        check_size = 5
+        total_size = 10
+        check_sampling_size(check_size, total_size)
+
+    def test_invalid_integer_sampling_raises(self):
+        check_size = 15
+        total_size = 10
+        with pytest.raises(
+            ValueError,
+            match="Sampling size as int must be greater than 0 and less than the total number of samples",
+        ):
+            check_sampling_size(check_size, total_size)
+
+    def test_valid_float_sampling(self):
+        check_size = 0.5
+        check_sampling_size(check_size)
+
+    def test_invalid_float_sampling_raises(self):
+        check_size = 1.5
+        with pytest.raises(
+            ValueError,
+            match="Sampling size as float must be greater than 0.0 and at most 1.0",
+        ):
+            check_sampling_size(check_size)
+
+
+class TestCheckAllSameType:
+    def test_all_same_type(self):
+        check_all_same_type([1, 2, 3])
+
+    def test_not_all_same_type(self):
+        items = [1, "2", 3]
+        with pytest.raises(TypeError, match="All elements must be of the same type"):
+            check_all_same_type(items)
