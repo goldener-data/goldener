@@ -15,6 +15,11 @@ from goldener.pxt_utils import (
     GoldPxtTorchDataset,
 )
 from goldener.select import GoldSelector
+from goldener.utils import (
+    check_sampling_size,
+    check_all_same_type,
+    get_sampling_count_from_size,
+)
 from goldener.vectorize import GoldVectorizer
 
 
@@ -27,12 +32,13 @@ class GoldSet:
 
     Attributes:
         name: Name of the gold set (None if the set is for not selected data).
-        ratio: Ratio of samples to assign to this set (between 0 and 1). This value
-        cannot be one of 0 or 1 (goal is to select a subset of the full dataset).
+        size: Size (ratio or actual number) of samples to assign to this set (between 0 and 1). If a ratio, this value
+        cannot be one of 0 or 1 (goal is to select a subset of the full dataset). If a number, it must be strictly
+        positive and less than the total number of samples in the dataset.
     """
 
     name: str | None
-    ratio: float
+    size: float | int
 
     def __post_init__(self) -> None:
         """Validate the GoldSet configuration after initialization.
@@ -40,8 +46,31 @@ class GoldSet:
         Raises:
             ValueError: If ratio is not between 0 and 1 (exclusive).
         """
-        if not (0 < self.ratio < 1):
-            raise ValueError("Ratio must be between 0 and 1.")
+        if isinstance(self.size, float) and not (0 < self.size < 1):
+            raise ValueError("Size as float must be between 0 and 1.")
+        elif isinstance(self.size, int) and self.size <= 0:
+            raise ValueError("Size as int must be strictly positive.")
+
+
+def check_sets_validity(sets: list[GoldSet], total: int | None = None) -> None:
+    """Validate the sets configuration.
+
+    This private method ensures that the sum of ratios is valid and that set names are unique.
+
+    Args:
+        sets: List of GoldSet configurations to validate.
+        total: Optional total number of samples (used if sizes are integers).
+
+    Raises:
+        ValueError: If the set's sizes are not valid, or if set names are not unique.
+    """
+    sizes = [s.size for s in sets]
+    check_all_same_type(sizes)
+    check_sampling_size(sum(sizes), total_size=total)
+
+    set_names = [s.name for s in sets]
+    if len(set_names) != len(set(set_names)):
+        raise ValueError(f"Set names must be unique, got {set_names}")
 
 
 class GoldSplitter:
@@ -109,13 +138,15 @@ class GoldSplitter:
 
     @max_batches.setter
     def max_batches(self, value: int | None) -> None:
-        """Set the maximum number of batches to process in both descriptor and selector."""
+        """Set the maximum number of batches to process during splitting."""
         self._max_batches = value
         if self.descriptor is not None:
             self.descriptor.max_batches = value
-
-        if self.vectorizer is not None:
-            self.vectorizer.max_batches = value
+        else:
+            if self.vectorizer is not None:
+                self.vectorizer.max_batches = value
+            else:
+                self.selector.max_batches = value
 
     @property
     def allow_existing(self) -> bool:
@@ -132,27 +163,6 @@ class GoldSplitter:
             self.vectorizer.allow_existing = value
         self.selector.allow_existing = value
 
-    def _check_sets_validity(self, sets: list[GoldSet], ratios_sum: float) -> None:
-        """Validate the sets configuration.
-
-        This private method ensures that the sum of ratios is valid and that set names are unique.
-
-        Args:
-            sets: List of GoldSet configurations to validate.
-            ratios_sum: Sum of all set ratios.
-
-        Raises:
-            ValueError: If ratios_sum is not between 0 and 1, or if set names are not unique.
-        """
-        if not (0 < ratios_sum <= 1.0):
-            raise ValueError(
-                "Sum of split ratios must be greater than 0.0 and at most 1.0"
-            )
-
-        set_names = [s.name for s in sets]
-        if len(set_names) != len(set(set_names)):
-            raise ValueError(f"Set names must be unique, got {set_names}")
-
     @property
     def sets(self) -> list[GoldSet]:
         """Get the current sets configuration for the splitter."""
@@ -165,18 +175,9 @@ class GoldSplitter:
         Args:
             sets: New list of GoldSet configurations defining the splits.
         """
-        ratios_sum = sum([s.ratio for s in sets])
 
-        self._check_sets_validity(sets, ratios_sum)
-
+        check_sets_validity(sets)
         self._sets = sets
-        if ratios_sum < 1.0:
-            self._sets.append(
-                GoldSet(
-                    name=None,
-                    ratio=1.0 - ratios_sum,
-                )
-            )
 
     @staticmethod
     def get_split_indices(
@@ -314,56 +315,24 @@ class GoldSplitter:
 
         if isinstance(vectorized, Table):
             sample_count = vectorized.select(vectorized.idx).distinct().count()
+        elif hasattr(vectorized, "__len__"):
+            sample_count = len(vectorized)
         else:
-            if not hasattr(vectorized, "__len__"):
-                raise ValueError(
-                    "When providing a Dataset to split_in_table without Descriptor nor Vectorizer, "
-                    "to_split must implement __len__ to determine the number of samples."
-                )
-            sample_count = len(vectorized)  # type: ignore[arg-type]
+            sample_count = None
 
         # select data for all sets except the last one
-        for idx_set, gold_set in enumerate(self._sets[:-1]):
+        for idx_set, gold_set in enumerate(self._sets):
             logger.info(
-                f"Selecting samples for set '{gold_set.name}' with ratio {gold_set.ratio}."
+                f"Selecting samples for set '{gold_set.name}' with size {gold_set.size}."
             )
-            set_count = int(gold_set.ratio * sample_count)
-            if set_count == 0:
-                raise ValueError(
-                    f"Set '{gold_set.name}' has ratio {gold_set.ratio} which results "
-                    f"in zero samples for dataset of size {sample_count}."
-                )
+            set_count = get_sampling_count_from_size(
+                sampling_size=gold_set.size, total_size=sample_count
+            )
+
             selected_table = self.selector.select_in_table(
                 vectorized, set_count, value=gold_set.name
             )
 
-        # remaining samples are assigned to the last set
-        already_selected = self.selector.get_selected_sample_indices(
-            selected_table,
-            selection_key=self.selector.selection_key,
-            value=self._sets[-1].name,
-        )
-        remaining_idx_list = self.selector.get_selected_sample_indices(
-            selected_table,
-            selection_key=self.selector.selection_key,
-            value=None,
-        )
-        if len(remaining_idx_list) == 0 and len(already_selected) == 0:
-            raise ValueError(
-                f"Set '{self._sets[-1].name}' has ratio {self._sets[-1].ratio} which results "
-                f"in zero samples for dataset of size {len(remaining_idx_list)}."
-            )
-        selection_col = get_expr_from_column_name(
-            selected_table,
-            self.selector.selection_key,
-        )
-        set_value_to_idx_rows(
-            table=selected_table,
-            col_expr=selection_col,
-            idx_expr=selected_table.idx,
-            indices=remaining_idx_list,
-            value=self._sets[-1].name,
-        )
         split_table = selected_table
         if self.in_described_table:
             if not isinstance(description, Table):
