@@ -193,11 +193,11 @@ class TestGetSamplingCountFromSize:
             )
 
     def test_invalid_float_sampling_raises(self):
-        sampling_size = 1.0
+        sampling_size = 1.0001
         total_size = 10
         with pytest.raises(
             ValueError,
-            match="Sampling size as float must be greater than 0.0 and less than 1.0",
+            match="Sampling size as float must be greater than 0.0 and at most 1.0",
         ):
             get_sampling_count_from_size(
                 sampling_size,
