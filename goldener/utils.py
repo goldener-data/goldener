@@ -55,10 +55,10 @@ def get_ratio_list_sum(ratios: list[float]) -> float:
     """
     ratio_sum = sum(ratios)
     if not all(ratio >= 0 for ratio in ratios):
-        raise ValueError("Ratios must be non-negative")
+        raise ValueError("Ratios must be non-negative.")
 
     if not (0 < ratio_sum <= 1.0):
-        raise ValueError("Sum of ratios must be 1.0")
+        raise ValueError("Sum of ratios must be 1.0.")
 
     return ratio_sum
 
