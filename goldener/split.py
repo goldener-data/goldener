@@ -94,7 +94,7 @@ class GoldSplitter:
         vectorizer: Optional GoldVectorizer used to vectorize the described dataset.
         in_described_table: Whether to return the splitting in the described table or the selected table.
         allow_existing: Whether to allow existing tables in all components.
-        drop_table: Whether to drop the described table after splitting.
+        drop_table: Whether to drop intermediate tables. Defaults to False.
         max_batches: Optional maximum number of batches to process in both descriptor and selector. Useful for testing on a small subset of the dataset.
     """
 
@@ -121,6 +121,36 @@ class GoldSplitter:
             drop_table: Whether to drop intermediate tables. Defaults to False.
             max_batches: Optional maximum number of batches to process.
         """
+        if descriptor is None and in_described_table:
+            raise ValueError(
+                "in_described_table is set to True, but no descriptor is provided."
+            )
+
+        if vectorizer is not None:
+            if vectorizer.vectorized_key != selector.vectorized_key:
+                raise ValueError(
+                    f"Vectorizer vectorized_key '{vectorizer.vectorized_key}' does not match "
+                    f"selector's vectorized_key '{selector.vectorized_key}'. They must be the same."
+                )
+
+            if (
+                descriptor is not None
+                and descriptor.description_key != vectorizer.data_key
+            ):
+                raise ValueError(
+                    f"Descriptor described_key '{descriptor.description_key}' does not match "
+                    f"vectorizer's data_key '{vectorizer.data_key}'. They must be the same."
+                )
+
+        elif (
+            descriptor is not None
+            and descriptor.description_key != selector.vectorized_key
+        ):
+            raise ValueError(
+                f"Descriptor described_key '{descriptor.description_key}' does not match "
+                f"selector's vectorized_key '{selector.vectorized_key}'. They must be the same."
+            )
+
         self.sets = sets
         self.descriptor = descriptor
         self.vectorizer = vectorizer
@@ -264,13 +294,11 @@ class GoldSplitter:
             the other columns are either from the described table (if `in_described_table` is True)
             or from the selected table (if `in_described_table` is False).
         """
-
         split_table = self.split_in_table(to_split)
 
         split_dataset = GoldPxtTorchDataset(split_table, keep_cache=True)
 
-        if self.drop_table:
-            self._drop_tables()
+        self._drop_tables(drop_all=True)
 
         return split_dataset
 
@@ -362,39 +390,31 @@ class GoldSplitter:
                 )
             split_table = description
 
-        if self.drop_table:
-            to_drop = []
-            if (
-                self.vectorizer is not None
-                and self.vectorizer.table_path != self.selector.table_path
-            ):
-                to_drop.append(self.vectorizer.table_path)
-
-            if self.in_described_table:
-                to_drop.append(self.selector.table_path)
-            else:
-                if self.descriptor is not None:
-                    to_drop.append(self.descriptor.table_path)
-
-            for table_name in to_drop:
-                pxt.drop_table(table_name, if_not_exists="ignore")
+        self._drop_tables(drop_all=False)
 
         return split_table
 
-    def _drop_tables(self, all: bool = True) -> None:
+    def _drop_tables(self, drop_all: bool = True) -> None:
         """Drop all intermediate tables created during the splitting process.
 
-        This private method cleans up the descriptor, vectorizer, and selector tables
-        if drop_table is enabled.
+        Args:
+            all: Whether to drop all tables including the selected table.
+            The selected table is either the selector's table or the descriptor's table
+            depending on the `in_described_table` flag.
         """
         if self.drop_table:
-            tables_names = [
+            table_names = [
                 self.selector.table_path,
+                *([self.descriptor.table_path] if self.descriptor is not None else []),
+                *([self.vectorizer.table_path] if self.vectorizer is not None else []),
             ]
-            if self.descriptor is not None:
-                tables_names.append(self.descriptor.table_path)
-            if self.vectorizer is not None:
-                tables_names.append(self.vectorizer.table_path)
 
-            for table_name in tables_names:
-                pxt.drop_table(table_name, if_not_exists="ignore")
+            to_not_drop = (
+                self.descriptor.table_path
+                if self.in_described_table and self.descriptor is not None
+                else self.selector.table_path
+            )
+
+            for table in table_names:
+                if table != to_not_drop or drop_all:
+                    pxt.drop_table(table, if_not_exists="ignore")
