@@ -40,11 +40,7 @@ class DummyDataset(Dataset):
         return len(self._samples)
 
     def __getitem__(self, idx):
-        return (
-            self._samples[idx].copy()
-            if isinstance(self._samples[idx], dict)
-            else self._samples[idx]
-        )
+        return self._samples[idx]
 
 
 @pytest.fixture(scope="function")
@@ -527,5 +523,61 @@ class TestGoldSplitter:
         assert len(splitted) == 2
         # Only 2 items total (1 batch with batch_size=2)
         assert len(splitted["train"]) + len(splitted["val"]) == 2
+
+        pxt.drop_dir("unit_test", if_not_exists="ignore", force=True)
+
+    def test_without_descriptor(self, basic_splitter):
+        pxt.drop_dir("unit_test", force=True)
+
+        basic_splitter.descriptor = None
+        basic_splitter.vectorizer.collate_fn = None
+        split_table = basic_splitter.split_in_table(
+            to_split=DummyDataset(
+                [
+                    {"features": torch.rand(4, 8, 8), "idx": idx, "label": "dummy"}
+                    for idx in range(10)
+                ]
+            )
+        )
+        splitted = basic_splitter.get_split_indices(
+            split_table,
+            selection_key=basic_splitter.selector.selection_key,
+            idx_key="idx",
+        )
+
+        assert len(splitted) == 2
+        # Only 2 items total (1 batch with batch_size=2)
+        assert len(splitted["train"]) + len(splitted["val"]) == 10
+
+        pxt.drop_dir("unit_test", if_not_exists="ignore", force=True)
+
+    def test_without_descriptor_nor_vectorizer(self, basic_splitter):
+        pxt.drop_dir("unit_test", force=True)
+
+        basic_splitter.descriptor = None
+        basic_splitter.vectorizer = None
+        split_table = basic_splitter.split_in_table(
+            to_split=DummyDataset(
+                [
+                    {
+                        "vectorized": torch.rand(
+                            4,
+                        ),
+                        "idx": idx,
+                        "label": "dummy",
+                    }
+                    for idx in range(10)
+                ]
+            )
+        )
+        splitted = basic_splitter.get_split_indices(
+            split_table,
+            selection_key=basic_splitter.selector.selection_key,
+            idx_key="idx",
+        )
+
+        assert len(splitted) == 2
+        # Only 2 items total (1 batch with batch_size=2)
+        assert len(splitted["train"]) + len(splitted["val"]) == 10
 
         pxt.drop_dir("unit_test", if_not_exists="ignore", force=True)
