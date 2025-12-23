@@ -271,12 +271,12 @@ class GoldSplitter:
         if self.drop_table:
             # Drop the final result table (either descriptor or selector table)
             # The dataset has cached the data, so the table can be safely dropped
-            result_table_path = (
-                self.descriptor.table_path
-                if self.in_described_table and self.descriptor is not None
-                else self.selector.table_path
-            )
-            pxt.drop_table(result_table_path, if_not_exists="ignore")
+            # Only drop tables created by our components, not user input tables
+            if self.in_described_table:
+                if self.descriptor is not None:
+                    pxt.drop_table(self.descriptor.table_path, if_not_exists="ignore")
+            else:
+                pxt.drop_table(self.selector.table_path, if_not_exists="ignore")
 
         return split_dataset
 
@@ -405,11 +405,13 @@ class GoldSplitter:
         return split_table
 
     def _drop_tables(self) -> None:
-        """Drop all intermediate tables created during the splitting process.
+        """Drop intermediate tables created during the splitting process.
 
-        This private method cleans up the descriptor, vectorizer, and selector tables
-        if drop_table is enabled. The tables to drop depend on whether the split
-        is returned in the described table or the selected table.
+        This private method cleans up intermediate tables (descriptor, vectorizer, and selector)
+        while preserving the final result table. When drop_table is enabled, the tables to drop
+        depend on whether the split is returned in the described table or the selected table:
+        - If in_described_table is True: drops selector and vectorizer tables, keeps descriptor table
+        - If in_described_table is False: drops descriptor and vectorizer tables, keeps selector table
         """
         if self.drop_table:
             to_drop = []
