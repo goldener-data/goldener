@@ -58,11 +58,11 @@ class GoldSplitter:
 
     Attributes:
         sets: List of GoldSet configurations defining the splits.
-        descriptor: GoldDescriptor used to describe the dataset.
-        vectorizer: Optional GoldVectorizer used to vectorize the described dataset.
         selector: GoldSelector used to select samples for each set. The collate_fn of the selector
         will be set to `pxt_torch_dataset_collate_fn`, and the select_key will be forced to "features"
         to match the descriptor's output column.
+        descriptor: Optional GoldDescriptor used to describe the dataset.
+        vectorizer: Optional GoldVectorizer used to vectorize the described dataset.
         in_described_table: Whether to return the splitting in the described table or the selected table.
         allow_existing: Whether to allow existing tables in all components.
         drop_table: Whether to drop the described table after splitting.
@@ -72,9 +72,9 @@ class GoldSplitter:
     def __init__(
         self,
         sets: list[GoldSet],
-        descriptor: GoldDescriptor,
-        vectorizer: GoldVectorizer | None,
         selector: GoldSelector,
+        descriptor: GoldDescriptor | None = None,
+        vectorizer: GoldVectorizer | None = None,
         in_described_table: bool = False,
         allow_existing: bool = True,
         drop_table: bool = False,
@@ -84,9 +84,9 @@ class GoldSplitter:
 
         Args:
             sets: List of GoldSet configurations defining the splits.
-            descriptor: GoldDescriptor for extracting features from the dataset.
-            vectorizer: Optional GoldVectorizer for vectorizing described features.
             selector: GoldSelector for selecting samples for each set.
+            descriptor: Optional GoldDescriptor for extracting features from the dataset.
+            vectorizer: Optional GoldVectorizer for vectorizing described features.
             in_described_table: Whether to return splits in the described table. Defaults to False.
             allow_existing: Whether to allow existing tables. Defaults to True.
             drop_table: Whether to drop intermediate tables. Defaults to False.
@@ -111,7 +111,11 @@ class GoldSplitter:
     def max_batches(self, value: int | None) -> None:
         """Set the maximum number of batches to process in both descriptor and selector."""
         self._max_batches = value
-        self.descriptor.max_batches = value
+        if self.descriptor is not None:
+            self.descriptor.max_batches = value
+
+        if self.vectorizer is not None:
+            self.vectorizer.max_batches = value
 
     @property
     def allow_existing(self) -> bool:
@@ -122,7 +126,8 @@ class GoldSplitter:
     def allow_existing(self, value: bool) -> None:
         """Set whether existing tables are allowed in all components."""
         self._allow_existing = value
-        self.descriptor.allow_existing = value
+        if self.descriptor is not None:
+            self.descriptor.allow_existing = value
         if self.vectorizer is not None:
             self.vectorizer.allow_existing = value
         self.selector.allow_existing = value
@@ -295,16 +300,27 @@ class GoldSplitter:
             ValueError: If any set results in zero samples due to its ratio, if class_key is not found,
             or if class stratification results in zero samples for any class in a set.
         """
-        description_table = self.descriptor.describe_in_table(to_split)
-        sample_count = (
-            description_table.select(description_table.idx).distinct().count()
+        description = (
+            self.descriptor.describe_in_table(to_split)
+            if self.descriptor is not None
+            else to_split
         )
 
-        vectorized_table = (
-            self.vectorizer.vectorize_in_table(description_table)
+        vectorized = (
+            self.vectorizer.vectorize_in_table(description)
             if self.vectorizer is not None
-            else description_table
+            else description
         )
+
+        if isinstance(vectorized, Table):
+            sample_count = vectorized.select(vectorized.idx).distinct().count()
+        else:
+            if not hasattr(vectorized, "__len__"):
+                raise ValueError(
+                    "When providing a Dataset to split_in_table without Descriptor nor Vectorizer, "
+                    "to_split must implement __len__ to determine the number of samples."
+                )
+            sample_count = len(vectorized)  # type: ignore[arg-type]
 
         # select data for all sets except the last one
         for idx_set, gold_set in enumerate(self._sets[:-1]):
@@ -318,7 +334,7 @@ class GoldSplitter:
                     f"in zero samples for dataset of size {sample_count}."
                 )
             selected_table = self.selector.select_in_table(
-                vectorized_table, set_count, value=gold_set.name
+                vectorized, set_count, value=gold_set.name
             )
 
         # remaining samples are assigned to the last set
@@ -350,6 +366,10 @@ class GoldSplitter:
         )
         split_table = selected_table
         if self.in_described_table:
+            if not isinstance(description, Table):
+                raise ValueError(
+                    "in_described_table is set to True, but description is not a PixelTable Table."
+                )
             for set_cfg in self._sets:
                 set_name = set_cfg.name
                 set_indices = self.selector.get_selected_sample_indices(
@@ -357,21 +377,21 @@ class GoldSplitter:
                     selection_key=self.selector.selection_key,
                     value=set_name,
                 )
-                if self.selector.selection_key not in description_table.columns():
-                    description_table.add_column(
+                if self.selector.selection_key not in description.columns():
+                    description.add_column(
                         if_exists="error",
                         **{self.selector.selection_key: pxt.String},
                     )
                 set_value_to_idx_rows(
-                    description_table,
+                    description,
                     col_expr=get_expr_from_column_name(
-                        description_table, self.selector.selection_key
+                        description, self.selector.selection_key
                     ),
-                    idx_expr=description_table.idx,
+                    idx_expr=description.idx,
                     indices=set_indices,
                     value=set_name,
                 )
-            split_table = description_table
+            split_table = description
 
         if self.drop_table:
             to_drop = []
@@ -384,7 +404,8 @@ class GoldSplitter:
             if self.in_described_table:
                 to_drop.append(self.selector.table_path)
             else:
-                to_drop.append(self.descriptor.table_path)
+                if self.descriptor is not None:
+                    to_drop.append(self.descriptor.table_path)
 
             for table_name in to_drop:
                 pxt.drop_table(table_name, if_not_exists="ignore")
@@ -399,9 +420,10 @@ class GoldSplitter:
         """
         if self.drop_table:
             tables_names = [
-                self.descriptor.table_path,
                 self.selector.table_path,
             ]
+            if self.descriptor is not None:
+                tables_names.append(self.descriptor.table_path)
             if self.vectorizer is not None:
                 tables_names.append(self.vectorizer.table_path)
 
