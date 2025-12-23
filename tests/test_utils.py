@@ -126,7 +126,7 @@ class TestCheckSamplingSizes:
         total_size = 10
         with pytest.raises(
             ValueError,
-            match="Sampling size as int must be greater than 0 and less than the total number of samples",
+            match="Sampling size as int must be greater than 0 and less or equal than the total number of samples",
         ):
             check_sampling_size(check_size, total_size)
 
