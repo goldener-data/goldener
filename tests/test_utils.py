@@ -3,6 +3,9 @@ import pytest
 from goldener.utils import (
     check_x_and_y_shapes,
     get_size_and_sampling_count_per_chunk,
+    get_ratio_list_sum,
+    get_ratios_for_counts,
+    filter_batch_from_indices,
     check_sampling_size,
     check_all_same_type,
     get_sampling_count_from_size,
@@ -212,3 +215,109 @@ class TestGetSamplingCountFromSize:
                 0.5,
                 None,
             )
+
+
+class TestGetRatioListSum:
+    def test_valid_ratios_sum_to_one(self):
+        ratios = [0.3, 0.3, 0.4]
+        result = get_ratio_list_sum(ratios)
+        assert result == 1.0
+
+    def test_valid_ratios_sum_less_than_one(self):
+        ratios = [0.2, 0.3, 0.4]
+        result = get_ratio_list_sum(ratios)
+        assert result == 0.9
+
+    def test_invalid_ratios_sum_zero(self):
+        ratios = [0.0]
+        with pytest.raises(ValueError):
+            get_ratio_list_sum(ratios)
+
+    def test_invalid_ratios_negative(self):
+        ratios = [-0.1, 0.5]
+        with pytest.raises(ValueError, match="Ratios must be non-negative."):
+            get_ratio_list_sum(ratios)
+
+    def test_invalid_ratios_sum_greater_than_one(self):
+        ratios = [0.6, 0.6]
+        with pytest.raises(ValueError, match="Sum of ratios must be 1.0."):
+            get_ratio_list_sum(ratios)
+
+
+class TestGetRatiosForCounts:
+    def test_simple_counts(self):
+        counts = [10, 20, 30]
+        ratios = get_ratios_for_counts(counts)
+        assert ratios == [10 / 60, 20 / 60, 30 / 60]
+
+
+class TestFilterBatchFromIndices:
+    def test_filter_some_indices(self):
+        batch = {
+            "idx": [0, 1, 2, 3, 4],
+            "data": ["a", "b", "c", "d", "e"],
+        }
+        to_remove = {1, 3}
+        result = filter_batch_from_indices(batch, to_remove)
+        assert result["idx"] == [0, 2, 4]
+        assert result["data"] == ["a", "c", "e"]
+
+    def test_filter_no_indices(self):
+        batch = {
+            "idx": [0, 1, 2],
+            "data": ["a", "b", "c"],
+        }
+        to_remove = set()
+        result = filter_batch_from_indices(batch, to_remove)
+        assert result["idx"] == [0, 1, 2]
+        assert result["data"] == ["a", "b", "c"]
+
+    def test_filter_all_indices(self):
+        batch = {
+            "idx": [0, 1, 2],
+            "data": ["a", "b", "c"],
+        }
+        to_remove = {0, 1, 2}
+        result = filter_batch_from_indices(batch, to_remove)
+        assert result == {}
+
+    def test_filter_with_torch_tensors(self):
+        batch = {
+            "idx": torch.tensor([0, 1, 2, 3]),
+            "features": torch.tensor([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0], [7.0, 8.0]]),
+        }
+        to_remove = {1, 3}
+        result = filter_batch_from_indices(batch, to_remove)
+        assert torch.equal(result["idx"], torch.tensor([0, 2]))
+        assert torch.equal(result["features"], torch.tensor([[1.0, 2.0], [5.0, 6.0]]))
+
+    def test_filter_with_mixed_types(self):
+        batch = {
+            "idx": torch.tensor([0, 1, 2]),
+            "data": ["a", "b", "c"],
+            "values": [10, 20, 30],
+        }
+        to_remove = {1}
+        result = filter_batch_from_indices(batch, to_remove)
+        assert torch.equal(result["idx"], torch.tensor([0, 2]))
+        assert result["data"] == ["a", "c"]
+        assert result["values"] == [10, 30]
+
+    def test_filter_with_torch_tensor_indices(self):
+        batch = {
+            "idx": torch.tensor([10, 20, 30, 40]),
+            "data": ["a", "b", "c", "d"],
+        }
+        to_remove = {20, 40}
+        result = filter_batch_from_indices(batch, to_remove)
+        assert torch.equal(result["idx"], torch.tensor([10, 30]))
+        assert result["data"] == ["a", "c"]
+
+    def test_filter_empty_batch(self):
+        batch = {
+            "idx": [],
+            "data": [],
+        }
+        to_remove = {0, 1}
+        result = filter_batch_from_indices(batch, to_remove)
+        assert result == {}
