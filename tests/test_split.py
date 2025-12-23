@@ -8,7 +8,7 @@ from torch.utils.data import Dataset
 from goldener.describe import GoldDescriptor
 from goldener.extract import TorchGoldFeatureExtractorConfig, TorchGoldFeatureExtractor
 from goldener.pxt_utils import pxt_torch_dataset_collate_fn
-from goldener.split import GoldSplitter, GoldSet
+from goldener.split import GoldSplitter, GoldSet, check_sets_validity
 from goldener.vectorize import TensorVectorizer, GoldVectorizer
 from goldener.select import GoldSelector
 
@@ -628,3 +628,42 @@ class TestGoldSplitter:
         assert len(splitted["train"]) + len(splitted["val"]) == 10
 
         pxt.drop_dir("unit_test", if_not_exists="ignore", force=True)
+
+
+class TestCheckSetsValidity:
+    def test_sum_of_sizes_less_than_one(self):
+        sets = [GoldSet(name="train", size=0.4), GoldSet(name="val", size=0.5)]
+        check_sets_validity(sets)
+
+    def test_sum_of_sizes_equal_one(self):
+        sets = [GoldSet(name="train", size=0.5), GoldSet(name="val", size=0.5)]
+        check_sets_validity(sets)
+
+    def test_sum_of_sizes_more_than_one(self):
+        sets = [GoldSet(name="train", size=0.51), GoldSet(name="val", size=0.5)]
+        with pytest.raises(
+            ValueError,
+            match="Sampling size as float must be greater than 0.0 and at most 1.0",
+        ):
+            check_sets_validity(sets)
+
+    def test_sum_of_sizes_less_than_total(self):
+        sets = [GoldSet(name="train", size=2), GoldSet(name="val", size=2)]
+        check_sets_validity(sets, total=5)
+
+    def test_sum_of_sizes_equal_total(self):
+        sets = [GoldSet(name="train", size=2), GoldSet(name="val", size=3)]
+        check_sets_validity(sets, total=5)
+
+    def test_sum_of_sizes_more_than_total(self):
+        sets = [GoldSet(name="train", size=3), GoldSet(name="val", size=3)]
+        with pytest.raises(
+            ValueError,
+            match="Sampling size as int must be greater than 0 and less or equal than the total number",
+        ):
+            check_sets_validity(sets, total=5)
+
+    def test_same_name(self):
+        sets = [GoldSet(name="train", size=3), GoldSet(name="train", size=2)]
+        with pytest.raises(ValueError, match="Set names must be unique"):
+            check_sets_validity(sets, total=5)
