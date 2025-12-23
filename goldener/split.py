@@ -381,7 +381,7 @@ class GoldSplitter:
 
         return split_table
 
-    def _drop_tables(self) -> None:
+    def _drop_tables(self, all: bool = True) -> None:
         """Drop all intermediate tables created during the splitting process.
 
         This private method cleans up the descriptor, vectorizer, and selector tables
