@@ -8,9 +8,6 @@ from goldener.utils import (
     filter_batch_from_indices,
     check_sampling_size,
     check_all_same_type,
-    get_ratio_list_sum,
-    get_ratios_for_counts,
-    filter_batch_from_indices,
     get_sampling_count_from_size,
 )
 
@@ -121,6 +118,105 @@ class TestGetSizeAndSamplingCountPerChunk:
         assert samplings == [0, 0, 2]
 
 
+class TestCheckSamplingSizes:
+    def test_valid_integer_sampling(self):
+        check_size = 5
+        total_size = 10
+        check_sampling_size(check_size, total_size)
+
+    def test_invalid_integer_sampling_raises(self):
+        check_size = 15
+        total_size = 10
+        with pytest.raises(
+            ValueError,
+            match="Sampling size as int must be greater than 0 and less or equal than the total number of samples",
+        ):
+            check_sampling_size(check_size, total_size)
+
+    def test_valid_float_sampling(self):
+        check_size = 0.5
+        check_sampling_size(check_size)
+
+    def test_invalid_float_sampling_raises(self):
+        check_size = 1.5
+        with pytest.raises(
+            ValueError,
+            match="Sampling size as float must be greater than 0.0 and at most 1.0",
+        ):
+            check_sampling_size(check_size)
+
+
+class TestCheckAllSameType:
+    def test_all_same_type(self):
+        check_all_same_type([1, 2, 3])
+
+    def test_not_all_same_type(self):
+        items = [1, "2", 3]
+        with pytest.raises(TypeError, match="All elements must be of the same type"):
+            check_all_same_type(items)
+
+
+class TestGetSamplingCountFromSize:
+    def test_integer_sampling_size(self):
+        sampling_size = 5
+        total_size = 10
+        count = get_sampling_count_from_size(
+            sampling_size,
+            total_size,
+        )
+        assert count == 5
+
+    def test_float_sampling_size(self):
+        sampling_size = 0.5
+        total_size = 10
+        count = get_sampling_count_from_size(
+            sampling_size,
+            total_size,
+        )
+        assert count == 5
+
+    def test_invalid_integer_sampling_raises(self):
+        sampling_size = 0
+        total_size = 10
+        with pytest.raises(
+            ValueError, match="Sampling size as int must be greater than 0"
+        ):
+            get_sampling_count_from_size(
+                sampling_size,
+                total_size,
+            )
+
+        with pytest.raises(
+            ValueError,
+            match="Sampling size as int must be less than the total number of ",
+        ):
+            get_sampling_count_from_size(
+                10,
+                total_size,
+            )
+
+    def test_invalid_float_sampling_raises(self):
+        sampling_size = 1.0001
+        total_size = 10
+        with pytest.raises(
+            ValueError,
+            match="Sampling size as float must be greater than 0.0 and at most 1.0",
+        ):
+            get_sampling_count_from_size(
+                sampling_size,
+                total_size,
+            )
+
+        with pytest.raises(
+            ValueError,
+            match="Total size must be provided when sampling size is a float",
+        ):
+            get_sampling_count_from_size(
+                0.5,
+                None,
+            )
+
+
 class TestGetRatioListSum:
     def test_valid_ratios_sum_to_one(self):
         ratios = [0.3, 0.3, 0.4]
@@ -225,102 +321,3 @@ class TestFilterBatchFromIndices:
         to_remove = {0, 1}
         result = filter_batch_from_indices(batch, to_remove)
         assert result == {}
-
-
-class TestCheckSamplingSizes:
-    def test_valid_integer_sampling(self):
-        check_size = 5
-        total_size = 10
-        check_sampling_size(check_size, total_size)
-
-    def test_invalid_integer_sampling_raises(self):
-        check_size = 15
-        total_size = 10
-        with pytest.raises(
-            ValueError,
-            match="Sampling size as int must be greater than 0 and less or equal than the total number of samples",
-        ):
-            check_sampling_size(check_size, total_size)
-
-    def test_valid_float_sampling(self):
-        check_size = 0.5
-        check_sampling_size(check_size)
-
-    def test_invalid_float_sampling_raises(self):
-        check_size = 1.5
-        with pytest.raises(
-            ValueError,
-            match="Sampling size as float must be greater than 0.0 and at most 1.0",
-        ):
-            check_sampling_size(check_size)
-
-
-class TestCheckAllSameType:
-    def test_all_same_type(self):
-        check_all_same_type([1, 2, 3])
-
-    def test_not_all_same_type(self):
-        items = [1, "2", 3]
-        with pytest.raises(TypeError, match="All elements must be of the same type"):
-            check_all_same_type(items)
-
-
-class TestGetSamplingCountFromSize:
-    def test_integer_sampling_size(self):
-        sampling_size = 5
-        total_size = 10
-        count = get_sampling_count_from_size(
-            sampling_size,
-            total_size,
-        )
-        assert count == 5
-
-    def test_float_sampling_size(self):
-        sampling_size = 0.5
-        total_size = 10
-        count = get_sampling_count_from_size(
-            sampling_size,
-            total_size,
-        )
-        assert count == 5
-
-    def test_invalid_integer_sampling_raises(self):
-        sampling_size = 0
-        total_size = 10
-        with pytest.raises(
-            ValueError, match="Sampling size as int must be greater than 0"
-        ):
-            get_sampling_count_from_size(
-                sampling_size,
-                total_size,
-            )
-
-        with pytest.raises(
-            ValueError,
-            match="Sampling size as int must be less than the total number of ",
-        ):
-            get_sampling_count_from_size(
-                10,
-                total_size,
-            )
-
-    def test_invalid_float_sampling_raises(self):
-        sampling_size = 1.0001
-        total_size = 10
-        with pytest.raises(
-            ValueError,
-            match="Sampling size as float must be greater than 0.0 and at most 1.0",
-        ):
-            get_sampling_count_from_size(
-                sampling_size,
-                total_size,
-            )
-
-        with pytest.raises(
-            ValueError,
-            match="Total size must be provided when sampling size is a float",
-        ):
-            get_sampling_count_from_size(
-                0.5,
-                None,
-            )
