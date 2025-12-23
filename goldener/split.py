@@ -59,11 +59,10 @@ def check_sets_validity(sets: list[GoldSet], total: int | None = None) -> None:
 
     Args:
         sets: List of GoldSet configurations to validate.
-        sizes_sum: Sum of all set ratios.
         total: Optional total number of samples (used if sizes are integers).
 
     Raises:
-        ValueError: If ratios_sum is not between 0 and 1, or if set names are not unique.
+        ValueError: If the set's sizes are not valid, or if set names are not unique.
     """
     sizes = [s.size for s in sets]
     check_all_same_type(sizes)
@@ -334,7 +333,6 @@ class GoldSplitter:
                 vectorized, set_count, value=gold_set.name
             )
 
-        # remaining samples are assigned to the last set
         split_table = selected_table
         if self.in_described_table:
             if not isinstance(description, Table):
