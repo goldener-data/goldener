@@ -725,6 +725,20 @@ class GoldSelector:
             # initialize the chunk settings: chunk size, number of chunks, selection per chunk
             to_chunk_from_count = to_chunk_from.count()
             still_to_select = select_count - selection_count
+            if still_to_select == to_chunk_from_count:
+                # take all the remaining samples
+                set_value_to_idx_rows(
+                    table=selection_table,
+                    col_expr=selection_col,
+                    idx_expr=selection_table.idx,
+                    indices=set(
+                        row["idx"]
+                        for row in to_chunk_from.select(selection_table.idx).collect()
+                    ),
+                    value=value,
+                )
+                break
+
             chunk_sizes, chunk_selection_counts = get_size_and_sampling_count_per_chunk(
                 to_chunk_from_count, still_to_select, self.chunk or to_chunk_from_count
             )
