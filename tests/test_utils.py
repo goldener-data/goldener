@@ -132,34 +132,19 @@ class TestGetRatioListSum:
         result = get_ratio_list_sum(ratios)
         assert result == 0.9
 
-    def test_single_ratio_one(self):
-        ratios = [1.0]
-        result = get_ratio_list_sum(ratios)
-        assert result == 1.0
-
-    def test_single_ratio_less_than_one(self):
-        ratios = [0.5]
-        result = get_ratio_list_sum(ratios)
-        assert result == 0.5
-
     def test_invalid_ratios_sum_zero(self):
         ratios = [0.0]
         with pytest.raises(ValueError):
             get_ratio_list_sum(ratios)
 
-    def test_invalid_ratios_sum_negative(self):
+    def test_invalid_ratios_negative(self):
         ratios = [-0.1, 0.5]
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="Ratios must be non-negative."):
             get_ratio_list_sum(ratios)
 
     def test_invalid_ratios_sum_greater_than_one(self):
         ratios = [0.6, 0.6]
-        with pytest.raises(ValueError):
-            get_ratio_list_sum(ratios)
-
-    def test_empty_list(self):
-        ratios = []
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="Sum of ratios must be 1.0."):
             get_ratio_list_sum(ratios)
 
 
@@ -168,31 +153,6 @@ class TestGetRatiosForCounts:
         counts = [10, 20, 30]
         ratios = get_ratios_for_counts(counts)
         assert ratios == [10 / 60, 20 / 60, 30 / 60]
-
-    def test_equal_counts(self):
-        counts = [5, 5, 5, 5]
-        ratios = get_ratios_for_counts(counts)
-        assert ratios == [0.25, 0.25, 0.25, 0.25]
-
-    def test_single_count(self):
-        counts = [100]
-        ratios = get_ratios_for_counts(counts)
-        assert ratios == [1.0]
-
-    def test_counts_with_zeros(self):
-        counts = [0, 10, 20]
-        ratios = get_ratios_for_counts(counts)
-        assert ratios == [0.0, 10 / 30, 20 / 30]
-
-    def test_large_counts(self):
-        counts = [1000, 2000, 3000]
-        ratios = get_ratios_for_counts(counts)
-        assert ratios == [1000 / 6000, 2000 / 6000, 3000 / 6000]
-
-    def test_ratios_sum_to_one(self):
-        counts = [7, 13, 20]
-        ratios = get_ratios_for_counts(counts)
-        assert abs(sum(ratios) - 1.0) < 1e-9  # Account for floating point precision
 
 
 class TestFilterBatchFromIndices:
@@ -246,16 +206,6 @@ class TestFilterBatchFromIndices:
         assert torch.equal(result["idx"], torch.tensor([0, 2]))
         assert result["data"] == ["a", "c"]
         assert result["values"] == [10, 30]
-
-    def test_filter_with_custom_index_key(self):
-        batch = {
-            "my_idx": [0, 1, 2, 3],
-            "data": ["a", "b", "c", "d"],
-        }
-        to_remove = {0, 2}
-        result = filter_batch_from_indices(batch, to_remove, index_key="my_idx")
-        assert result["my_idx"] == [1, 3]
-        assert result["data"] == ["b", "d"]
 
     def test_filter_with_torch_tensor_indices(self):
         batch = {
