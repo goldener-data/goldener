@@ -178,7 +178,7 @@ def check_sampling_size(
         and not (0 < sampling_size <= total_size)
     ):
         raise ValueError(
-            "Sampling size as int must be greater than 0 and less than the total number of samples"
+            "Sampling size as int must be greater than 0 and less or equal than the total number of samples"
         )
 
 
@@ -211,7 +211,7 @@ def get_sampling_count_from_size(
     Args:
         sampling_size: The sampling size (can be int or float). If int, it represents the exact number of samples
         and it is required to be less than total_size. If float, it represents the fraction of total size and it
-        is required to be in the range (0.0, 1.0) excluded.
+        is required to be in the range (0.0, 1.0].
         total_size: The total size of the data (Optional, required if sampling_size is float).
 
     Returns:
@@ -231,9 +231,9 @@ def get_sampling_count_from_size(
 
         return sampling_size
 
-    if not (0 < sampling_size < 1.0):
+    if not (0 < sampling_size <= 1.0):
         raise ValueError(
-            "Sampling size as float must be greater than 0.0 and less than 1.0."
+            "Sampling size as float must be greater than 0.0 and at most 1.0."
         )
 
     if total_size is None:

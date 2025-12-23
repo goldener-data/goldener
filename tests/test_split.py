@@ -625,7 +625,6 @@ class TestGoldSplitter:
         )
 
         assert len(splitted) == 2
-        # Only 2 items total (1 batch with batch_size=2)
         assert len(splitted["train"]) + len(splitted["val"]) == 10
 
         pxt.drop_dir("unit_test", if_not_exists="ignore", force=True)
