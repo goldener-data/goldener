@@ -269,7 +269,14 @@ class GoldSplitter:
         split_dataset = GoldPxtTorchDataset(split_table, keep_cache=True)
 
         if self.drop_table:
-            self._drop_tables()
+            # Drop the final result table (either descriptor or selector table)
+            # The dataset has cached the data, so the table can be safely dropped
+            result_table_path = (
+                self.descriptor.table_path
+                if self.in_described_table and self.descriptor is not None
+                else self.selector.table_path
+            )
+            pxt.drop_table(result_table_path, if_not_exists="ignore")
 
         return split_dataset
 
@@ -393,6 +400,17 @@ class GoldSplitter:
                 )
             split_table = description
 
+        self._drop_tables()
+
+        return split_table
+
+    def _drop_tables(self) -> None:
+        """Drop all intermediate tables created during the splitting process.
+
+        This private method cleans up the descriptor, vectorizer, and selector tables
+        if drop_table is enabled. The tables to drop depend on whether the split
+        is returned in the described table or the selected table.
+        """
         if self.drop_table:
             to_drop = []
             if (
@@ -408,24 +426,4 @@ class GoldSplitter:
                     to_drop.append(self.descriptor.table_path)
 
             for table_name in to_drop:
-                pxt.drop_table(table_name, if_not_exists="ignore")
-
-        return split_table
-
-    def _drop_tables(self) -> None:
-        """Drop all intermediate tables created during the splitting process.
-
-        This private method cleans up the descriptor, vectorizer, and selector tables
-        if drop_table is enabled.
-        """
-        if self.drop_table:
-            tables_names = [
-                self.selector.table_path,
-            ]
-            if self.descriptor is not None:
-                tables_names.append(self.descriptor.table_path)
-            if self.vectorizer is not None:
-                tables_names.append(self.vectorizer.table_path)
-
-            for table_name in tables_names:
                 pxt.drop_table(table_name, if_not_exists="ignore")
