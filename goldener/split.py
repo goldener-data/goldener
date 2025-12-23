@@ -15,7 +15,11 @@ from goldener.pxt_utils import (
     GoldPxtTorchDataset,
 )
 from goldener.select import GoldSelector
-from goldener.utils import check_sampling_size, check_all_same_type
+from goldener.utils import (
+    check_sampling_size,
+    check_all_same_type,
+    get_sampling_count_from_size,
+)
 from goldener.vectorize import GoldVectorizer
 
 
@@ -139,11 +143,11 @@ class GoldSplitter:
         self._max_batches = value
         if self.descriptor is not None:
             self.descriptor.max_batches = value
-
-        if self.vectorizer is not None:
-            self.vectorizer.max_batches = value
-
-        self.selector.max_batches = value
+        else:
+            if self.vectorizer is not None:
+                self.vectorizer.max_batches = value
+            else:
+                self.selector.max_batches = value
 
     @property
     def allow_existing(self) -> bool:
@@ -312,56 +316,25 @@ class GoldSplitter:
 
         if isinstance(vectorized, Table):
             sample_count = vectorized.select(vectorized.idx).distinct().count()
+        elif hasattr(vectorized, "__len__"):
+            sample_count = len(vectorized)
         else:
-            if not hasattr(vectorized, "__len__"):
-                raise ValueError(
-                    "When providing a Dataset to split_in_table without Descriptor nor Vectorizer, "
-                    "to_split must implement __len__ to determine the number of samples."
-                )
-            sample_count = len(vectorized)  # type: ignore[arg-type]
+            sample_count = None
 
         # select data for all sets except the last one
-        for idx_set, gold_set in enumerate(self._sets[:-1]):
+        for idx_set, gold_set in enumerate(self._sets):
             logger.info(
-                f"Selecting samples for set '{gold_set.name}' with ratio {gold_set.size}."
+                f"Selecting samples for set '{gold_set.name}' with size {gold_set.size}."
             )
-            set_count = int(gold_set.size * sample_count)
-            if set_count == 0:
-                raise ValueError(
-                    f"Set '{gold_set.name}' has ratio {gold_set.size} which results "
-                    f"in zero samples for dataset of size {sample_count}."
-                )
+            set_count = get_sampling_count_from_size(
+                sampling_size=gold_set.size, total_size=sample_count
+            )
+
             selected_table = self.selector.select_in_table(
                 vectorized, set_count, value=gold_set.name
             )
 
         # remaining samples are assigned to the last set
-        already_selected = self.selector.get_selected_sample_indices(
-            selected_table,
-            selection_key=self.selector.selection_key,
-            value=self._sets[-1].name,
-        )
-        remaining_idx_list = self.selector.get_selected_sample_indices(
-            selected_table,
-            selection_key=self.selector.selection_key,
-            value=None,
-        )
-        if len(remaining_idx_list) == 0 and len(already_selected) == 0:
-            raise ValueError(
-                f"Set '{self._sets[-1].name}' has ratio {self._sets[-1].size} which results "
-                f"in zero samples for dataset of size {len(remaining_idx_list)}."
-            )
-        selection_col = get_expr_from_column_name(
-            selected_table,
-            self.selector.selection_key,
-        )
-        set_value_to_idx_rows(
-            table=selected_table,
-            col_expr=selection_col,
-            idx_expr=selected_table.idx,
-            indices=remaining_idx_list,
-            value=self._sets[-1].name,
-        )
         split_table = selected_table
         if self.in_described_table:
             if not isinstance(description, Table):

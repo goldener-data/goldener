@@ -201,3 +201,42 @@ def check_all_same_type(iterable: Iterable[Any]) -> None:
         raise TypeError(
             f"All elements must be of the same type {first_type}. Found different types: {different}"
         )
+
+
+def get_sampling_count_from_size(
+    sampling_size: int | float, total_size: int | None = None
+) -> int:
+    """Get the sampling count from the sampling size.
+
+    Args:
+        sampling_size: The sampling size (can be int or float). If int, it represents the exact number of samples
+        and it is required to be less than total_size. If float, it represents the fraction of total size and it
+        is required to be in the range (0.0, 1.0) excluded.
+        total_size: The total size of the data (Optional, required if sampling_size is float).
+
+    Returns:
+        The calculated sampling count as an integer.
+
+    Raises:
+        ValueError: If the sampling size is invalid based on its type and total size.
+    """
+    if isinstance(sampling_size, int):
+        if sampling_size <= 0:
+            raise ValueError("Sampling size as int must be greater than 0.")
+
+        if total_size is not None and not (sampling_size < total_size):
+            raise ValueError(
+                "Sampling size as int must be less than the total number of samples."
+            )
+
+        return sampling_size
+
+    if not (0 < sampling_size < 1.0):
+        raise ValueError(
+            "Sampling size as float must be greater than 0.0 and less than 1.0."
+        )
+
+    if total_size is None:
+        raise ValueError("Total size must be provided when sampling size is a float.")
+
+    return math.ceil(sampling_size * total_size)

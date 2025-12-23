@@ -79,7 +79,7 @@ def vectorizer():
 
 @pytest.fixture(scope="function")
 def basic_splitter(descriptor, vectorizer, selector):
-    sets = [GoldSet(name="train", ratio=0.5), GoldSet(name="val", ratio=0.5)]
+    sets = [GoldSet(name="train", size=0.5), GoldSet(name="val", size=0.5)]
     return GoldSplitter(
         sets=sets, descriptor=descriptor, selector=selector, vectorizer=vectorizer
     )
@@ -150,7 +150,7 @@ class TestGoldSplitter:
         pxt.drop_dir("unit_test", force=True)
 
         sets = [
-            GoldSet(name="train", ratio=0.5),
+            GoldSet(name="train", size=0.5),
         ]
         selector.class_key = "label"
         splitter = GoldSplitter(
@@ -182,7 +182,7 @@ class TestGoldSplitter:
     def test_duplicated_set_names(self, descriptor, selector, vectorizer):
         pxt.drop_dir("unit_test", force=True)
 
-        sets = [GoldSet(name="train", ratio=0.5), GoldSet(name="train", ratio=0.3)]
+        sets = [GoldSet(name="train", size=0.5), GoldSet(name="train", size=0.3)]
         with pytest.raises(ValueError, match="Set names must be unique"):
             GoldSplitter(
                 sets=sets,
@@ -196,7 +196,7 @@ class TestGoldSplitter:
     def test_class_key_not_found(self, descriptor, selector, vectorizer):
         pxt.drop_dir("unit_test", force=True)
         selector.class_key = "nonexistent"
-        sets = [GoldSet(name="only", ratio=0.5)]
+        sets = [GoldSet(name="only", size=0.5)]
         splitter = GoldSplitter(
             sets=sets,
             descriptor=descriptor,
@@ -218,30 +218,40 @@ class TestGoldSplitter:
 
         pxt.drop_dir("unit_test", if_not_exists="ignore", force=True)
 
-    def test_set_with_0_population(self, descriptor, selector, vectorizer):
+    def test_set_with_small_population(self, descriptor, selector, vectorizer):
         pxt.drop_dir("unit_test", force=True)
 
-        sets = [GoldSet(name="only", ratio=0.01)]
+        sets = [GoldSet(name="only", size=0.01)]
         splitter = GoldSplitter(
             sets=sets, descriptor=descriptor, selector=selector, vectorizer=vectorizer
         )
 
-        with pytest.raises(ValueError, match="in zero samples for dataset of size"):
-            splitter.split_in_table(
-                to_split=DummyDataset(
-                    [
-                        {"data": torch.rand(3, 8, 8), "idx": idx, "label": "dummy"}
-                        for idx in range(1)
-                    ]
-                )
+        split_table = splitter.split_in_table(
+            to_split=DummyDataset(
+                [
+                    {"data": torch.rand(3, 8, 8), "idx": idx, "label": "dummy"}
+                    for idx in range(1)
+                ]
             )
+        )
+
+        splitted = splitter.get_split_indices(
+            split_table,
+            selection_key=splitter.selector.selection_key,
+            idx_key="idx",
+        )
+
+        assert set(splitted.keys()) == {"only"}
+        assert len(splitted["only"]) == 1
 
         pxt.drop_dir("unit_test", if_not_exists="ignore", force=True)
 
-    def test_class_with_0_population(self, descriptor, selector, vectorizer):
+    def test_class_with_small_population_failure(
+        self, descriptor, selector, vectorizer
+    ):
         pxt.drop_dir("unit_test", force=True)
         selector.class_key = "label"
-        sets = [GoldSet(name="only", ratio=0.01)]
+        sets = [GoldSet(name="only", size=0.01)]
         splitter = GoldSplitter(
             sets=sets,
             descriptor=descriptor,
@@ -249,7 +259,7 @@ class TestGoldSplitter:
             vectorizer=vectorizer,
         )
 
-        with pytest.raises(ValueError, match="in zero samples for dataset of size"):
+        with pytest.raises(ValueError, match="which results in zero samples"):
             splitter.split_in_table(
                 to_split=DummyDataset(
                     [
@@ -268,7 +278,7 @@ class TestGoldSplitter:
     def test_max_batches(self, descriptor, selector, vectorizer):
         pxt.drop_dir("unit_test", force=True)
 
-        sets = [GoldSet(name="train", ratio=0.5), GoldSet(name="val", ratio=0.5)]
+        sets = [GoldSet(name="train", size=0.5), GoldSet(name="val", size=0.5)]
         splitter = GoldSplitter(
             sets=sets,
             descriptor=descriptor,
@@ -302,7 +312,7 @@ class TestGoldSplitter:
     def test_with_no_remaining_indices(self, descriptor, selector, vectorizer):
         pxt.drop_dir("unit_test", force=True)
 
-        sets = [GoldSet(name="train", ratio=0.5), GoldSet(name="val", ratio=0.5)]
+        sets = [GoldSet(name="train", size=0.5), GoldSet(name="val", size=0.5)]
         selector.max_batches = 1
         vectorizer.max_batches = 1
         splitter = GoldSplitter(
@@ -313,7 +323,10 @@ class TestGoldSplitter:
             max_batches=1,
         )
 
-        with pytest.raises(ValueError, match="in zero samples for dataset of size"):
+        with pytest.raises(
+            ValueError,
+            match="Cannot select more unique data points than available in the dataset",
+        ):
             splitter.split_in_table(
                 to_split=DummyDataset(
                     [
@@ -495,7 +508,7 @@ class TestGoldSplitter:
             batch_size=2,
         )
 
-        sets = [GoldSet(name="train", ratio=0.5), GoldSet(name="val", ratio=0.5)]
+        sets = [GoldSet(name="train", size=0.5), GoldSet(name="val", size=0.5)]
         splitter = GoldSplitter(
             sets=sets,
             descriptor=descriptor,
@@ -556,6 +569,41 @@ class TestGoldSplitter:
 
         basic_splitter.descriptor = None
         basic_splitter.vectorizer = None
+        split_table = basic_splitter.split_in_table(
+            to_split=DummyDataset(
+                [
+                    {
+                        "vectorized": torch.rand(
+                            4,
+                        ),
+                        "idx": idx,
+                        "label": "dummy",
+                    }
+                    for idx in range(10)
+                ]
+            )
+        )
+        splitted = basic_splitter.get_split_indices(
+            split_table,
+            selection_key=basic_splitter.selector.selection_key,
+            idx_key="idx",
+        )
+
+        assert len(splitted) == 2
+        # Only 2 items total (1 batch with batch_size=2)
+        assert len(splitted["train"]) + len(splitted["val"]) == 10
+
+        pxt.drop_dir("unit_test", if_not_exists="ignore", force=True)
+
+    def test_with_int_sizes(self, basic_splitter):
+        pxt.drop_dir("unit_test", force=True)
+
+        basic_splitter.descriptor = None
+        basic_splitter.vectorizer = None
+        basic_splitter.sets = [
+            GoldSet(name="train", size=6),
+            GoldSet(name="val", size=4),
+        ]
         split_table = basic_splitter.split_in_table(
             to_split=DummyDataset(
                 [

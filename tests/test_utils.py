@@ -5,6 +5,7 @@ from goldener.utils import (
     get_size_and_sampling_count_per_chunk,
     check_sampling_size,
     check_all_same_type,
+    get_sampling_count_from_size,
 )
 
 
@@ -150,3 +151,64 @@ class TestCheckAllSameType:
         items = [1, "2", 3]
         with pytest.raises(TypeError, match="All elements must be of the same type"):
             check_all_same_type(items)
+
+
+class TestGetSamplingCountFromSize:
+    def test_integer_sampling_size(self):
+        sampling_size = 5
+        total_size = 10
+        count = get_sampling_count_from_size(
+            sampling_size,
+            total_size,
+        )
+        assert count == 5
+
+    def test_float_sampling_size(self):
+        sampling_size = 0.5
+        total_size = 10
+        count = get_sampling_count_from_size(
+            sampling_size,
+            total_size,
+        )
+        assert count == 5
+
+    def test_invalid_integer_sampling_raises(self):
+        sampling_size = 0
+        total_size = 10
+        with pytest.raises(
+            ValueError, match="Sampling size as int must be greater than 0"
+        ):
+            get_sampling_count_from_size(
+                sampling_size,
+                total_size,
+            )
+
+        with pytest.raises(
+            ValueError,
+            match="Sampling size as int must be less than the total number of ",
+        ):
+            get_sampling_count_from_size(
+                10,
+                total_size,
+            )
+
+    def test_invalid_float_sampling_raises(self):
+        sampling_size = 1.0
+        total_size = 10
+        with pytest.raises(
+            ValueError,
+            match="Sampling size as float must be greater than 0.0 and less than 1.0",
+        ):
+            get_sampling_count_from_size(
+                sampling_size,
+                total_size,
+            )
+
+        with pytest.raises(
+            ValueError,
+            match="Total size must be provided when sampling size is a float",
+        ):
+            get_sampling_count_from_size(
+                0.5,
+                None,
+            )
