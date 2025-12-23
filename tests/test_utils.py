@@ -3,6 +3,9 @@ import pytest
 from goldener.utils import (
     check_x_and_y_shapes,
     get_size_and_sampling_count_per_chunk,
+    get_ratio_list_sum,
+    get_ratios_for_counts,
+    filter_batch_from_indices,
     check_sampling_size,
     check_all_same_type,
     get_ratio_list_sum,
