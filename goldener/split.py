@@ -27,21 +27,28 @@ class GoldSet:
 
     Attributes:
         name: Name of the gold set (None if the set is for not selected data).
-        ratio: Ratio of samples to assign to this set (between 0 and 1). This value
-        cannot be one of 0 or 1 (goal is to select a subset of the full dataset).
+        ratio: Ratio of samples to assign to this set. Can be either:
+            - A float between 0 and 1 (exclusive): represents a proportion of the dataset
+            - An integer >= 1: represents an absolute count of samples
     """
 
     name: str | None
-    ratio: float
+    ratio: float | int
 
     def __post_init__(self) -> None:
         """Validate the GoldSet configuration after initialization.
 
         Raises:
-            ValueError: If ratio is not between 0 and 1 (exclusive).
+            ValueError: If ratio is not valid (float not in (0, 1) or int < 1).
         """
-        if not (0 < self.ratio < 1):
-            raise ValueError("Ratio must be between 0 and 1.")
+        if isinstance(self.ratio, float):
+            if not (0 < self.ratio < 1):
+                raise ValueError("Float ratio must be between 0 and 1 (exclusive).")
+        elif isinstance(self.ratio, int):
+            if self.ratio < 1:
+                raise ValueError("Integer ratio must be at least 1.")
+        else:
+            raise ValueError("Ratio must be either a float or an int.")
 
 
 class GoldSplitter:
@@ -127,26 +134,39 @@ class GoldSplitter:
             self.vectorizer.allow_existing = value
         self.selector.allow_existing = value
 
-    def _check_sets_validity(self, sets: list[GoldSet], ratios_sum: float) -> None:
+    def _check_sets_validity(self, sets: list[GoldSet]) -> None:
         """Validate the sets configuration.
 
-        This private method ensures that the sum of ratios is valid and that set names are unique.
+        This private method ensures that ratios are valid and that set names are unique.
 
         Args:
             sets: List of GoldSet configurations to validate.
-            ratios_sum: Sum of all set ratios.
 
         Raises:
-            ValueError: If ratios_sum is not between 0 and 1, or if set names are not unique.
+            ValueError: If float ratios sum to more than 1, if mixing float and int ratios,
+                or if set names are not unique.
         """
-        if not (0 < ratios_sum <= 1.0):
-            raise ValueError(
-                "Sum of split ratios must be greater than 0.0 and at most 1.0"
-            )
-
+        # Check that set names are unique
         set_names = [s.name for s in sets]
         if len(set_names) != len(set(set_names)):
             raise ValueError(f"Set names must be unique, got {set_names}")
+        
+        # Check if we have float ratios, int ratios, or a mix
+        has_float = any(isinstance(s.ratio, float) for s in sets)
+        has_int = any(isinstance(s.ratio, int) for s in sets)
+        
+        if has_float and has_int:
+            raise ValueError(
+                "Cannot mix float ratios (proportions) and int ratios (absolute counts) in the same splitter"
+            )
+        
+        if has_float:
+            # For float ratios, check that sum is valid
+            ratios_sum = sum([s.ratio for s in sets])
+            if not (0 < ratios_sum <= 1.0):
+                raise ValueError(
+                    "Sum of float ratios must be greater than 0.0 and at most 1.0"
+                )
 
     @property
     def sets(self) -> list[GoldSet]:
@@ -160,16 +180,29 @@ class GoldSplitter:
         Args:
             sets: New list of GoldSet configurations defining the splits.
         """
-        ratios_sum = sum([s.ratio for s in sets])
-
-        self._check_sets_validity(sets, ratios_sum)
-
+        self._check_sets_validity(sets)
+        
+        # For float ratios, add a remainder set if needed
+        # For int ratios, add a remainder set (will get all unselected samples)
+        has_float = any(isinstance(s.ratio, float) for s in sets)
+        
         self._sets = sets
-        if ratios_sum < 1.0:
+        if has_float:
+            ratios_sum = sum([s.ratio for s in sets])
+            if ratios_sum < 1.0:
+                self._sets.append(
+                    GoldSet(
+                        name=None,
+                        ratio=1.0 - ratios_sum,
+                    )
+                )
+        else:
+            # For int ratios, always add a remainder set for unselected samples
+            # The ratio value doesn't matter here as it will get all remaining samples
             self._sets.append(
                 GoldSet(
                     name=None,
-                    ratio=1.0 - ratios_sum,
+                    ratio=0.5,  # Dummy value, will be overridden by remaining samples
                 )
             )
 
@@ -311,7 +344,17 @@ class GoldSplitter:
             logger.info(
                 f"Selecting samples for set '{gold_set.name}' with ratio {gold_set.ratio}."
             )
-            set_count = int(gold_set.ratio * sample_count)
+            # Calculate set_count based on ratio type
+            if isinstance(gold_set.ratio, float):
+                set_count = int(gold_set.ratio * sample_count)
+            else:  # int ratio - absolute count
+                set_count = gold_set.ratio
+                # Validate that int ratio doesn't exceed sample count
+                if set_count > sample_count:
+                    raise ValueError(
+                        f"Set '{gold_set.name}' has ratio {gold_set.ratio} which exceeds "
+                        f"dataset size of {sample_count} samples."
+                    )
             if set_count == 0:
                 raise ValueError(
                     f"Set '{gold_set.name}' has ratio {gold_set.ratio} which results "

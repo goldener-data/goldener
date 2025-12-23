@@ -529,3 +529,136 @@ class TestGoldSplitter:
         assert len(splitted["train"]) + len(splitted["val"]) == 2
 
         pxt.drop_dir("unit_test", if_not_exists="ignore", force=True)
+
+    def test_int_ratio_basic(self, descriptor, vectorizer, selector):
+        """Test basic splitting with integer ratios (absolute counts)."""
+        pxt.drop_dir("unit_test", force=True)
+
+        # Create sets with absolute counts: 3 for train, 2 for val
+        sets = [GoldSet(name="train", ratio=3), GoldSet(name="val", ratio=2)]
+        splitter = GoldSplitter(
+            sets=sets,
+            descriptor=descriptor,
+            selector=selector,
+            vectorizer=vectorizer,
+        )
+
+        split_table = splitter.split_in_table(
+            to_split=DummyDataset(
+                [
+                    {"data": torch.rand(3, 8, 8), "idx": idx, "label": "dummy"}
+                    for idx in range(10)
+                ]
+            )
+        )
+
+        splitted = splitter.get_split_indices(
+            split_table,
+            selection_key=splitter.selector.selection_key,
+            idx_key="idx",
+        )
+
+        assert len(splitted) == 2
+        assert len(splitted["train"]) == 3
+        assert len(splitted["val"]) == 2
+
+        pxt.drop_dir("unit_test", if_not_exists="ignore", force=True)
+
+    def test_int_ratio_with_remainder(self, descriptor, vectorizer, selector):
+        """Test splitting with integer ratios that leaves remainder samples."""
+        pxt.drop_dir("unit_test", force=True)
+
+        # Create sets with absolute counts: 4 for train only (6 samples remain unassigned)
+        sets = [GoldSet(name="train", ratio=4)]
+        splitter = GoldSplitter(
+            sets=sets,
+            descriptor=descriptor,
+            selector=selector,
+            vectorizer=vectorizer,
+        )
+
+        split_table = splitter.split_in_table(
+            to_split=DummyDataset(
+                [
+                    {"data": torch.rand(3, 8, 8), "idx": idx, "label": "dummy"}
+                    for idx in range(10)
+                ]
+            )
+        )
+
+        splitted = splitter.get_split_indices(
+            split_table,
+            selection_key=splitter.selector.selection_key,
+            idx_key="idx",
+        )
+
+        # Only named sets should appear in splitted dict (None set is excluded)
+        assert set(splitted.keys()) == {"train"}
+        assert len(splitted["train"]) == 4
+
+        pxt.drop_dir("unit_test", if_not_exists="ignore", force=True)
+
+    def test_int_ratio_exceeds_dataset_size(self, descriptor, vectorizer, selector):
+        """Test that requesting more samples than available raises an error."""
+        pxt.drop_dir("unit_test", force=True)
+
+        # Request 15 samples when only 10 are available
+        sets = [GoldSet(name="train", ratio=15)]
+        splitter = GoldSplitter(
+            sets=sets,
+            descriptor=descriptor,
+            selector=selector,
+            vectorizer=vectorizer,
+        )
+
+        with pytest.raises(ValueError, match="exceeds dataset size"):
+            splitter.split_in_table(
+                to_split=DummyDataset(
+                    [
+                        {"data": torch.rand(3, 8, 8), "idx": idx, "label": "dummy"}
+                        for idx in range(10)
+                    ]
+                )
+            )
+
+        pxt.drop_dir("unit_test", if_not_exists="ignore", force=True)
+
+    def test_mixing_float_and_int_ratios_raises_error(
+        self, descriptor, vectorizer, selector
+    ):
+        """Test that mixing float and int ratios raises an error."""
+        pxt.drop_dir("unit_test", force=True)
+
+        with pytest.raises(ValueError, match="Cannot mix float ratios.*and int ratios"):
+            GoldSplitter(
+                sets=[GoldSet(name="train", ratio=0.5), GoldSet(name="val", ratio=3)],
+                descriptor=descriptor,
+                selector=selector,
+                vectorizer=vectorizer,
+            )
+
+        pxt.drop_dir("unit_test", if_not_exists="ignore", force=True)
+
+    def test_int_ratio_validation(self):
+        """Test that integer ratio validation works correctly."""
+        # Valid int ratio
+        gold_set = GoldSet(name="train", ratio=5)
+        assert gold_set.ratio == 5
+
+        # Invalid int ratio (< 1)
+        with pytest.raises(ValueError, match="Integer ratio must be at least 1"):
+            GoldSet(name="train", ratio=0)
+
+    def test_float_ratio_validation(self):
+        """Test that float ratio validation still works correctly."""
+        # Valid float ratio
+        gold_set = GoldSet(name="train", ratio=0.5)
+        assert gold_set.ratio == 0.5
+
+        # Invalid float ratio (>= 1)
+        with pytest.raises(ValueError, match="Float ratio must be between 0 and 1"):
+            GoldSet(name="train", ratio=1.0)
+
+        # Invalid float ratio (<= 0)
+        with pytest.raises(ValueError, match="Float ratio must be between 0 and 1"):
+            GoldSet(name="train", ratio=0.0)
