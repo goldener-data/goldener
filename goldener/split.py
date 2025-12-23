@@ -269,14 +269,10 @@ class GoldSplitter:
         split_dataset = GoldPxtTorchDataset(split_table, keep_cache=True)
 
         if self.drop_table:
-            # Drop the final result table (either descriptor or selector table)
-            # The dataset has cached the data, so the table can be safely dropped
-            # Only drop tables created by our components, not user input tables
-            if self.in_described_table:
-                if self.descriptor is not None:
-                    pxt.drop_table(self.descriptor.table_path, if_not_exists="ignore")
-            else:
-                pxt.drop_table(self.selector.table_path, if_not_exists="ignore")
+            # Drop the final result table after the dataset has cached the data
+            result_table_path = self._get_result_table_path()
+            if result_table_path is not None:
+                pxt.drop_table(result_table_path, if_not_exists="ignore")
 
         return split_dataset
 
@@ -429,3 +425,16 @@ class GoldSplitter:
 
             for table_name in to_drop:
                 pxt.drop_table(table_name, if_not_exists="ignore")
+
+    def _get_result_table_path(self) -> str | None:
+        """Get the path of the final result table based on configuration.
+
+        Returns:
+            The table path of the final result table, or None if it should not be dropped
+            (e.g., when in_described_table is True but descriptor is None, meaning the
+            result is the user's input table).
+        """
+        if self.in_described_table:
+            return self.descriptor.table_path if self.descriptor is not None else None
+        else:
+            return self.selector.table_path
