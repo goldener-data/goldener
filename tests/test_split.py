@@ -341,6 +341,7 @@ class TestGoldSplitter:
     def test_split_in_dataset_from_dataset(self, basic_splitter):
         pxt.drop_dir("unit_test", force=True)
         basic_splitter.in_described_table = True
+        basic_splitter.drop_table = True
         split_dataset = basic_splitter.split_in_dataset(
             to_split=DummyDataset(
                 [
@@ -362,6 +363,49 @@ class TestGoldSplitter:
 
         assert train_count == 5
         assert val_count == 5
+
+        assert (
+            pxt.get_table(basic_splitter.descriptor.table_path, if_not_exists="ignore")
+            is None
+        )
+        assert (
+            pxt.get_table(basic_splitter.vectorizer.table_path, if_not_exists="ignore")
+            is None
+        )
+        assert (
+            pxt.get_table(basic_splitter.selector.table_path, if_not_exists="ignore")
+            is None
+        )
+
+        split_dataset.keep_cache = False
+
+        pxt.drop_dir("unit_test", if_not_exists="ignore", force=True)
+
+    def test_split_in_dataset_without_drop(self, basic_splitter):
+        pxt.drop_dir("unit_test", force=True)
+        basic_splitter.in_described_table = True
+        basic_splitter.drop_table = False
+        split_dataset = basic_splitter.split_in_dataset(
+            to_split=DummyDataset(
+                [
+                    {"data": torch.rand(3, 8, 8), "idx": idx, "label": "dummy"}
+                    for idx in range(10)
+                ]
+            )
+        )
+
+        assert (
+            pxt.get_table(basic_splitter.descriptor.table_path, if_not_exists="ignore")
+            is not None
+        )
+        assert (
+            pxt.get_table(basic_splitter.vectorizer.table_path, if_not_exists="ignore")
+            is not None
+        )
+        assert (
+            pxt.get_table(basic_splitter.selector.table_path, if_not_exists="ignore")
+            is not None
+        )
 
         split_dataset.keep_cache = False
 
@@ -626,6 +670,74 @@ class TestGoldSplitter:
 
         assert len(splitted) == 2
         assert len(splitted["train"]) + len(splitted["val"]) == 10
+
+        pxt.drop_dir("unit_test", if_not_exists="ignore", force=True)
+
+    def test_with_no_descriptor_but_in_described_table(self, selector):
+        pxt.drop_dir("unit_test", force=True)
+
+        with pytest.raises(
+            ValueError,
+            match="in_described_table is set to True, but no descriptor is provided",
+        ):
+            GoldSplitter(
+                sets=[GoldSet(name="train", size=0.5), GoldSet(name="val", size=0.5)],
+                descriptor=None,
+                selector=selector,
+                vectorizer=None,
+                in_described_table=True,
+            )
+
+        pxt.drop_dir("unit_test", if_not_exists="ignore", force=True)
+
+    def test_with_vectorizer_but_wrong_selection_key(self, selector, vectorizer):
+        pxt.drop_dir("unit_test", force=True)
+
+        vectorizer.vectorized_key = "wrong_key"
+        with pytest.raises(
+            ValueError, match="does not match selector's vectorized_key"
+        ):
+            GoldSplitter(
+                sets=[GoldSet(name="train", size=0.5), GoldSet(name="val", size=0.5)],
+                descriptor=None,
+                selector=selector,
+                vectorizer=vectorizer,
+                in_described_table=False,
+            )
+
+        pxt.drop_dir("unit_test", if_not_exists="ignore", force=True)
+
+    def test_with_descriptor_but_wrong_selection_key(self, selector, descriptor):
+        pxt.drop_dir("unit_test", force=True)
+
+        descriptor.description_key = "wrong_key"
+        with pytest.raises(
+            ValueError, match="does not match selector's vectorized_key"
+        ):
+            GoldSplitter(
+                sets=[GoldSet(name="train", size=0.5), GoldSet(name="val", size=0.5)],
+                descriptor=descriptor,
+                selector=selector,
+                vectorizer=None,
+                in_described_table=False,
+            )
+
+        pxt.drop_dir("unit_test", if_not_exists="ignore", force=True)
+
+    def test_with_descriptor_and_vectorizer_but_wrong_key(
+        self, selector, descriptor, vectorizer
+    ):
+        pxt.drop_dir("unit_test", force=True)
+
+        descriptor.description_key = "wrong_key"
+        with pytest.raises(ValueError, match="does not match vectorizer's data_key"):
+            GoldSplitter(
+                sets=[GoldSet(name="train", size=0.5), GoldSet(name="val", size=0.5)],
+                descriptor=descriptor,
+                selector=selector,
+                vectorizer=vectorizer,
+                in_described_table=False,
+            )
 
         pxt.drop_dir("unit_test", if_not_exists="ignore", force=True)
 
