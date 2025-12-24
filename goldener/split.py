@@ -138,7 +138,7 @@ class GoldSplitter:
                 and descriptor.description_key != vectorizer.data_key
             ):
                 raise ValueError(
-                    f"Descriptor described_key '{descriptor.description_key}' does not match "
+                    f"Descriptor description_key '{descriptor.description_key}' does not match "
                     f"vectorizer's data_key '{vectorizer.data_key}'. They must be the same."
                 )
 
@@ -147,7 +147,7 @@ class GoldSplitter:
             and descriptor.description_key != selector.vectorized_key
         ):
             raise ValueError(
-                f"Descriptor described_key '{descriptor.description_key}' does not match "
+                f"Descriptor description_key '{descriptor.description_key}' does not match "
                 f"selector's vectorized_key '{selector.vectorized_key}'. They must be the same."
             )
 
@@ -398,7 +398,7 @@ class GoldSplitter:
         """Drop all intermediate tables created during the splitting process.
 
         Args:
-            all: Whether to drop all tables including the selected table.
+            drop_all: Whether to drop all tables including the selected table.
             The selected table is either the selector's table or the descriptor's table
             depending on the `in_described_table` flag.
         """
