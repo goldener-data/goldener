@@ -1,6 +1,6 @@
 [project]
 name = "goldener"
-version = "2.1.0"
+version = "2.2.0"
 description = "Goldener - Make your data even more valuable"
 readme = "README.md"
 license-files= ["LICENSE"]
@@ -18,7 +18,7 @@ classifiers = [
 
 dependencies = [
   "torch",
-  "numpy",
+  "numpy<=2.3.5",
   "pixeltable",
   "nvidia-ml-py",
   "scikit-learn",
