@@ -73,6 +73,7 @@ class GoldSelector:
         drop_table: Whether to drop the selection table after creating the dataset with selection results. It is only applied
             when using `select_in_dataset`. Default is False.
         max_batches: Optional maximum number of batches to process. Useful for testing on a small subset of the dataset.
+        seed: Random seed for selection reproducibility. Default is 42.
     """
 
     _MINIMAL_SCHEMA: dict[str, type] = {
@@ -851,7 +852,7 @@ class GoldSelector:
     def _coresubset_selection(
         self, x: torch.Tensor, select_count: int, indices: torch.Tensor
     ) -> set[int]:
-        """Apply kernel herding coresubset selection algorithm.
+        """Apply kernel coresubset selection.
 
         This private method uses the coreax library's GreedyKernelPoints solver with a
         LinearKernel to select a diverse subset of vectors.
