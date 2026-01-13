@@ -1,6 +1,8 @@
 from logging import getLogger
 from typing import Callable, Any
 
+import jax
+import numpy as np
 import pixeltable as pxt
 from pixeltable import Error
 from pixeltable.catalog import Table
@@ -8,9 +10,9 @@ from pixeltable.catalog import Table
 import torch
 import jax.numpy as jnp
 
-from coreax import SquaredExponentialKernel, Data
-from coreax.kernels import median_heuristic
-from coreax.solvers import KernelHerding
+from coreax import SupervisedData
+from coreax.kernels import LinearKernel
+from coreax.solvers import GreedyKernelPoints
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 
@@ -95,6 +97,7 @@ class GoldSelector:
         distribute: bool = False,
         drop_table: bool = False,
         max_batches: int | None = None,
+        seed: int = 42,
     ) -> None:
         """Initialize the GoldSelector.
 
@@ -114,6 +117,7 @@ class GoldSelector:
             distribute: Whether to use distributed selection. Defaults to False.
             drop_table: Whether to drop the table after dataset creation. Defaults to False.
             max_batches: Optional maximum number of batches to process.
+            seed: Random seed for selection reproducibility. Default is 42.
         """
         self.table_path = table_path
         self.reducer = reducer
@@ -130,6 +134,7 @@ class GoldSelector:
         self.distribute = distribute
         self.drop_table = drop_table
         self.max_batches = max_batches
+        self.seed = seed
 
     def select_in_dataset(
         self, select_from: Dataset | Table, select_count: int, value: str
@@ -848,8 +853,8 @@ class GoldSelector:
     ) -> set[int]:
         """Apply kernel herding coresubset selection algorithm.
 
-        This private method uses the coreax library's KernelHerding solver with a
-        SquaredExponentialKernel to select a diverse subset of vectors.
+        This private method uses the coreax library's GreedyKernelPoints solver with a
+        LinearKernel to select a diverse subset of vectors.
 
         Args:
             x: Input vectors to select from.
@@ -859,14 +864,14 @@ class GoldSelector:
         Returns:
             Set of selected indices from the original index space.
         """
-        herding_solver = KernelHerding(
-            select_count,
-            kernel=SquaredExponentialKernel(
-                length_scale=float(median_heuristic(jnp.asarray(x.mean(1).numpy())))
-            ),
+        in_data = SupervisedData(
+            data=jnp.array(x.numpy()), supervision=jnp.array(np.ones(len(x)))
         )
-        herding_coreset, _ = herding_solver.reduce(Data(jnp.array(x.numpy())))  # type: ignore[arg-type]
+        solver: GreedyKernelPoints = GreedyKernelPoints(
+            coreset_size=select_count,
+            random_key=jax.random.key(self.seed),
+            feature_kernel=LinearKernel(output_scale=1, constant=0),
+        )
+        coreset, _ = solver.reduce(in_data)
 
-        return set(
-            indices[torch.tensor(herding_coreset.unweighted_indices.tolist())].tolist()
-        )
+        return set(indices[torch.tensor(coreset.unweighted_indices.tolist())].tolist())
