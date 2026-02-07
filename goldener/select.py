@@ -1,3 +1,4 @@
+from abc import ABC, abstractmethod
 from logging import getLogger
 from typing import Callable, Any
 
@@ -10,7 +11,7 @@ from pixeltable.catalog import Table
 import torch
 import jax.numpy as jnp
 
-from coreax import SupervisedData
+from coreax import SupervisedData, ScalarValuedKernel
 from coreax.kernels import LinearKernel
 from coreax.solvers import GreedyKernelPoints
 from torch.utils.data import Dataset, DataLoader
@@ -35,6 +36,120 @@ from goldener.utils import (
 logger = getLogger(__name__)
 
 
+class GoldSelectionTool(ABC):
+    @abstractmethod
+    def select(
+        self,
+        x: torch.Tensor,
+        k: int,
+    ) -> list[int]:
+        """Select a subset of data points from the input data.
+
+        Args:
+            x: A 2D torch.Tensor where each row represents a data point.
+            k: The number of data points to select.
+
+        Returns:
+            A list of indices corresponding to the selected data points.
+        """
+
+
+class GoldGreedyKernelPoints(GoldSelectionTool):
+    """Coresubset selection using Coreax's GreedyKernelPoints solver.
+
+    The solver is created at each request depending on the specified k points to select.
+
+    Attributes:
+        feature_kernel: The kernel to use for the GreedyKernelPoints solver.
+        random_key: Random key for reproducibility in the GreedyKernelPoints solver.
+    """
+
+    def __init__(
+        self,
+        feature_kernel: ScalarValuedKernel,
+        random_key: int = 42,
+    ) -> None:
+        self.random_key = random_key
+        self.feature_kernel = feature_kernel
+
+    def select(
+        self,
+        x: torch.Tensor,
+        k: int,
+    ) -> list[int]:
+        """Select a subset of data points from the input data using greedy kernel point coresubset sampling.
+
+        Args:
+            x: A 2D torch.Tensor where each row represents a data point.
+            k: The number of data points to select.
+
+        Returns:
+            A list of indices corresponding to the selected data points.
+        """
+        in_data = SupervisedData(
+            data=jnp.array(x.numpy(force=True)), supervision=jnp.array(np.ones(len(x)))
+        )
+        solver: GreedyKernelPoints = GreedyKernelPoints(
+            coreset_size=k,
+            random_key=jax.random.key(self.random_key),
+            feature_kernel=self.feature_kernel,
+        )
+        coreset, _ = solver.reduce(in_data)
+
+        return coreset.unweighted_indices.tolist()
+
+
+class GoldGreedyClosestPointSelection(GoldSelectionTool):
+    def __init__(self, device: torch.device | str) -> None:
+        self.device = device
+
+    def select(
+        self,
+        x: torch.Tensor,
+        k: int,
+    ) -> list[int]:
+        """Select a subset of data points from the input data by choosing iteratively the point
+        with the closest nearest neighbors among the not selected points.
+
+        Args:
+            x: A 2D torch.Tensor where each row represents a data point.
+            k: The number of data points to select.
+
+        Returns:
+            A list of indices corresponding to the selected data points.
+        """
+        x_len = len(x)
+        if k > x_len:
+            raise ValueError("k cannot be greater than the number of data points in x.")
+
+        if k == x_len:
+            return list(range(x_len))
+
+        x = x.to(self.device)
+
+        selected_indices: list[int] = []
+        remaining_indices = set(range(len(x)))
+
+        for selection_idx in range(k):
+            remaining_indices_as_list = list(remaining_indices)
+            remaining_vectors = x[remaining_indices_as_list]
+
+            distance = torch.cdist(remaining_vectors, remaining_vectors)
+            distance = (
+                distance
+                + torch.eye(len(remaining_vectors), device=x.device, dtype=x.dtype)
+                * distance.max()
+            )  # set self-distance to max
+
+            point_with_closest = int(distance.min(dim=1).values.argmin().item())
+            index_in_original = remaining_indices_as_list[point_with_closest]
+
+            selected_indices.append(index_in_original)
+            remaining_indices.remove(index_in_original)
+
+        return selected_indices
+
+
 class GoldSelector:
     """Select a subset of data points from vectorized samples and store results in a PixelTable table.
 
@@ -55,6 +170,7 @@ class GoldSelector:
 
     Attributes:
         table_path: Path to the PixelTable table where selection results will be stored locally.
+        selection_tool: The GoldSelectionTool implementing the selection algorithm.
         reducer: Optional GoldReducer instance for dimensionality reduction before selection.
         chunk: Optional chunk size for processing data in chunks to reduce memory consumption.
         collate_fn: Optional function to collate dataset samples into batches composed of
@@ -73,7 +189,6 @@ class GoldSelector:
         drop_table: Whether to drop the selection table after creating the dataset with selection results. It is only applied
             when using `select_in_dataset`. Default is False.
         max_batches: Optional maximum number of batches to process. Useful for testing on a small subset of the dataset.
-        seed: Random seed for selection reproducibility. Default is 42.
     """
 
     _MINIMAL_SCHEMA: dict[str, type] = {
@@ -84,6 +199,9 @@ class GoldSelector:
     def __init__(
         self,
         table_path: str,
+        selection_tool: GoldSelectionTool = GoldGreedyKernelPoints(
+            feature_kernel=LinearKernel(output_scale=1, constant=0)
+        ),
         reducer: GoldReducer | None = None,
         chunk: int | None = None,
         collate_fn: Callable | None = None,
@@ -98,12 +216,12 @@ class GoldSelector:
         distribute: bool = False,
         drop_table: bool = False,
         max_batches: int | None = None,
-        seed: int = 42,
     ) -> None:
         """Initialize the GoldSelector.
 
         Args:
             table_path: Path to store the PixelTable table.
+            selection_tool: The GoldSelectionTool implementing the selection algorithm.
             reducer: Optional dimensionality reducer to apply before selection.
             chunk: Optional chunk size for processing data in chunks.
             collate_fn: Optional collate function for the DataLoader.
@@ -118,9 +236,9 @@ class GoldSelector:
             distribute: Whether to use distributed selection. Defaults to False.
             drop_table: Whether to drop the table after dataset creation. Defaults to False.
             max_batches: Optional maximum number of batches to process.
-            seed: Random seed for selection reproducibility. Default is 42.
         """
         self.table_path = table_path
+        self.selection_tool = selection_tool
         self.reducer = reducer
         self.chunk = chunk
         self.collate_fn = collate_fn
@@ -135,7 +253,6 @@ class GoldSelector:
         self.distribute = distribute
         self.drop_table = drop_table
         self.max_batches = max_batches
-        self.seed = seed
 
     def select_in_dataset(
         self, select_from: Dataset | Table, select_count: int, value: str
@@ -852,10 +969,7 @@ class GoldSelector:
     def _coresubset_selection(
         self, x: torch.Tensor, select_count: int, indices: torch.Tensor
     ) -> set[int]:
-        """Apply kernel coresubset selection.
-
-        This private method uses the coreax library's GreedyKernelPoints solver with a
-        LinearKernel to select a diverse subset of vectors.
+        """Apply the selection algorithm.
 
         Args:
             x: Input vectors to select from.
@@ -865,14 +979,6 @@ class GoldSelector:
         Returns:
             Set of selected indices from the original index space.
         """
-        in_data = SupervisedData(
-            data=jnp.array(x.numpy()), supervision=jnp.array(np.ones(len(x)))
-        )
-        solver: GreedyKernelPoints = GreedyKernelPoints(
-            coreset_size=select_count,
-            random_key=jax.random.key(self.seed),
-            feature_kernel=LinearKernel(output_scale=1, constant=0),
-        )
-        coreset, _ = solver.reduce(in_data)
+        selected_indices = self.selection_tool.select(x, select_count)
 
-        return set(indices[torch.tensor(coreset.unweighted_indices.tolist())].tolist())
+        return set(indices[torch.tensor(selected_indices)].tolist())

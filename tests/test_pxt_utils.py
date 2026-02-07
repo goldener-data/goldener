@@ -160,7 +160,7 @@ class TestCreatePxtDirsForPath:
         assert "test_dir1" in dirs
 
         dirs = pxt.list_dirs("test_dir1")
-        assert "test_dir1.test_dir2" in dirs
+        assert "test_dir1/test_dir2" in dirs
 
         pxt.drop_dir("test_dir1", force=True)
 
