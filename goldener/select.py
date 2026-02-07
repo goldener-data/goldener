@@ -87,7 +87,7 @@ class GoldGreedyKernelPoints(GoldSelectionTool):
             A list of indices corresponding to the selected data points.
         """
         in_data = SupervisedData(
-            data=jnp.array(x.numpy()), supervision=jnp.array(np.ones(len(x)))
+            data=jnp.array(x.numpy(force=True)), supervision=jnp.array(np.ones(len(x)))
         )
         solver: GreedyKernelPoints = GreedyKernelPoints(
             coreset_size=k,
@@ -136,7 +136,9 @@ class GoldGreedyClosestPointSelection(GoldSelectionTool):
 
             distance = torch.cdist(remaining_vectors, remaining_vectors)
             distance = (
-                distance + torch.eye(len(remaining_vectors)) * distance.max()
+                distance
+                + torch.eye(len(remaining_vectors), device=x.device, dtype=x.dtype)
+                * distance.max()
             )  # set self-distance to max
 
             point_with_closest = int(distance.min(dim=1).values.argmin().item())
@@ -187,7 +189,6 @@ class GoldSelector:
         drop_table: Whether to drop the selection table after creating the dataset with selection results. It is only applied
             when using `select_in_dataset`. Default is False.
         max_batches: Optional maximum number of batches to process. Useful for testing on a small subset of the dataset.
-        seed: Random seed for selection reproducibility. Default is 42.
     """
 
     _MINIMAL_SCHEMA: dict[str, type] = {
@@ -215,7 +216,6 @@ class GoldSelector:
         distribute: bool = False,
         drop_table: bool = False,
         max_batches: int | None = None,
-        seed: int = 42,
     ) -> None:
         """Initialize the GoldSelector.
 
@@ -236,7 +236,6 @@ class GoldSelector:
             distribute: Whether to use distributed selection. Defaults to False.
             drop_table: Whether to drop the table after dataset creation. Defaults to False.
             max_batches: Optional maximum number of batches to process.
-            seed: Random seed for selection reproducibility. Default is 42.
         """
         self.table_path = table_path
         self.selection_tool = selection_tool
@@ -254,7 +253,6 @@ class GoldSelector:
         self.distribute = distribute
         self.drop_table = drop_table
         self.max_batches = max_batches
-        self.seed = seed
 
     def select_in_dataset(
         self, select_from: Dataset | Table, select_count: int, value: str
