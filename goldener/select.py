@@ -971,10 +971,7 @@ class GoldSelector:
     def _coresubset_selection(
         self, x: torch.Tensor, select_count: int, indices: torch.Tensor
     ) -> set[int]:
-        """Apply kernel coresubset selection.
-
-        This private method uses the coreax library's GreedyKernelPoints solver with a
-        LinearKernel to select a diverse subset of vectors.
+        """Apply the selection algorithm.
 
         Args:
             x: Input vectors to select from.
