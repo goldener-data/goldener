@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 import torch
+from coreax.kernels import LinearKernel
 from pixeltable import Error
 from sklearn.decomposition import PCA
 
@@ -13,6 +14,10 @@ from torch.utils.data import Dataset
 from goldener.pxt_utils import GoldPxtTorchDataset
 from goldener.reduce import GoldReducer
 from goldener.select import GoldSelector
+from goldener.select import (
+    GoldGreedyClosestPointSelection,
+    GoldGreedyKernelPoints,
+)
 
 
 class DummyDataset(Dataset):
@@ -667,3 +672,81 @@ class TestGoldSelector:
             )
 
         pxt.drop_dir("unit_test", force=True)
+
+
+class TestGoldGreedyClosestPointSelection:
+    def test_basic_selection_properties(self) -> None:
+        x = torch.tensor([[0.0], [1.0], [10.0], [10.1], [1.1]], dtype=torch.float32)
+
+        tool = GoldGreedyClosestPointSelection(device="cpu")
+        indices = tool.select(x, k=2)
+
+        assert indices == [1, 2]
+
+    def test_select_all_points(self) -> None:
+        x = torch.tensor(
+            [[0.0], [1.0], [2.0], [3.0]],
+            dtype=torch.float32,
+        )
+
+        tool = GoldGreedyClosestPointSelection(device="cpu")
+        indices = tool.select(x, k=x.size(0))
+
+        assert indices == [0, 1, 2, 3]
+
+    def test_selection_with_multidimensional_features(self) -> None:
+        x = torch.tensor(
+            [[0.0, 0.0], [1.0, 1.0], [2.0, 2.0]],
+            dtype=torch.float32,
+        )
+
+        tool = GoldGreedyClosestPointSelection(device="cpu")
+        indices = tool.select(x, k=2)
+
+        assert indices == [0, 1]
+
+    def test_with_k_greater_than_size(self) -> None:
+        x = torch.tensor([[0.0], [1.0]], dtype=torch.float32)
+
+        tool = GoldGreedyClosestPointSelection(device="cpu")
+        with pytest.raises(
+            ValueError, match="k cannot be greater than the number of data points in x"
+        ):
+            tool.select(x, k=5)
+
+
+class TestGoldGreedyKernelPoints:
+    def test_basic_selection_with_linear_kernel(self) -> None:
+        tool = GoldGreedyKernelPoints(
+            feature_kernel=LinearKernel(output_scale=1, constant=0)
+        )
+
+        x = torch.arange(12, dtype=torch.float32).view(4, 3)
+        k = 2
+
+        indices = tool.select(x, k)
+
+        assert len(indices) == k
+        assert len(set(indices)) == k
+
+    def test_select_all_points_with_linear_kernel(self) -> None:
+        tool = GoldGreedyKernelPoints(
+            feature_kernel=LinearKernel(output_scale=1, constant=0)
+        )
+
+        x = torch.arange(12, dtype=torch.float32).view(4, 3)
+        k = 4
+
+        indices = tool.select(x, k)
+
+        assert len(indices) == k
+        assert len(set(indices)) == k
+
+    def test_with_k_greater_than_size(self) -> None:
+        x = torch.tensor([[0.0], [1.0]], dtype=torch.float32)
+
+        tool = GoldGreedyKernelPoints(
+            feature_kernel=LinearKernel(output_scale=1, constant=0)
+        )
+        with pytest.raises(ValueError, match="must be less than"):
+            tool.select(x, k=5)

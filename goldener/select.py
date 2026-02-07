@@ -118,6 +118,13 @@ class GoldGreedyClosestPointSelection(GoldSelectionTool):
         Returns:
             A list of indices corresponding to the selected data points.
         """
+        x_len = len(x)
+        if k > x_len:
+            raise ValueError("k cannot be greater than the number of data points in x.")
+
+        if k == x_len:
+            return list(range(x_len))
+
         x = x.to(self.device)
 
         selected_indices: list[int] = []
