@@ -131,13 +131,14 @@ class GoldGreedyClosestPointSelection(GoldSelectionTool):
         remaining_indices = set(range(len(x)))
 
         for selection_idx in range(k):
-            remaining_vectors = x[list(remaining_indices)]
+            remaining_indices_as_list = list(remaining_indices)
+            remaining_vectors = x[remaining_indices_as_list]
 
             distance = torch.cdist(remaining_vectors, remaining_vectors)
             distance = distance + torch.eye(len(remaining_vectors)) * distance.max()
 
             point_with_closest = int(distance.min(dim=1).values.argmin().item())
-            index_in_original = list(remaining_indices)[point_with_closest]
+            index_in_original = remaining_indices_as_list[point_with_closest]
 
             selected_indices.append(index_in_original)
             remaining_indices.remove(index_in_original)
