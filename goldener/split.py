@@ -55,7 +55,7 @@ class GoldSet:
 def check_sets_validity(sets: list[GoldSet], total: int | None = None) -> None:
     """Validate the sets configuration.
 
-    This private method ensures that the sum of ratios is valid and that set names are unique.
+    This function ensures that the sum of ratios is valid and that set names are unique.
 
     Args:
         sets: List of GoldSet configurations to validate.
@@ -66,7 +66,7 @@ def check_sets_validity(sets: list[GoldSet], total: int | None = None) -> None:
     """
     sizes = [s.size for s in sets]
     check_all_same_type(sizes)
-    check_sampling_size(sum(sizes), total_size=total)
+    check_sampling_size(sum(sizes), total_size=total, force_max=True)
 
     set_names = [s.name for s in sets]
     if len(set_names) != len(set(set_names)):
@@ -82,6 +82,9 @@ class GoldSplitter:
 
     The splitting can operate in a sequential (single-process) mode or a
     distributed mode (not implemented).
+
+    At least 2 sets are required to split data and every sample
+    will be associated to a unique set using a GoldSelector.
 
     See GoldDescriptor, GoldVectorizer, and GoldSelector for more details on each component.
 
@@ -205,7 +208,8 @@ class GoldSplitter:
         Args:
             sets: New list of GoldSet configurations defining the splits.
         """
-
+        if len(sets) < 2:
+            raise ValueError("Splitting data requires at least two sets.")
         check_sets_validity(sets)
         self._sets = sets
 
@@ -279,6 +283,9 @@ class GoldSplitter:
         The dataset is first described using the gold descriptor (extracts features), and then samples are selected
         for each set based on the specified ratios after vectorization.
 
+        At least 2 sets are required to split data and every sample
+        will be associated to a unique set using a GoldSelector.
+
         This method is idempotent (i.e. failure proof), meaning that if it is called
         multiple times on the same dataset or table, it will not duplicate or recompute the splitting decisions
         already present in the PixelTable table.
@@ -307,6 +314,9 @@ class GoldSplitter:
 
         The dataset is first described using the gold descriptor (extracts features), and then samples are selected
         for each set based on the specified ratios after vectorization.
+
+        At least 2 sets are required to split data and every sample
+        will be associated to a unique set using a GoldSelector.
 
         This method is idempotent (i.e. failure proof), meaning that if it is called
         multiple times on the same dataset or table, it will not duplicate or recompute the splitting decisions
@@ -357,9 +367,18 @@ class GoldSplitter:
                 sampling_size=gold_set.size, total_size=sample_count
             )
 
-            selected_table = self.selector.select_in_table(
-                vectorized, set_count, value=gold_set.name
-            )
+            if idx_set < len(self._sets) - 1:
+                selected_table = self.selector.select_in_table(
+                    vectorized, set_count, value=gold_set.name
+                )
+            else:
+                # The last set is gathering all the remaining samples
+                selection_col = get_expr_from_column_name(
+                    selected_table, self.selector.selection_key
+                )
+                selected_table.where(selection_col == None).update(  # noqa: E711
+                    {self.selector.selection_key: gold_set.name}
+                )
 
         split_table = selected_table
         if self.in_described_table:
