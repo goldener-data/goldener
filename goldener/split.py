@@ -86,9 +86,9 @@ class GoldSplitter:
     The splitting can operate in a sequential (single-process) mode or a
     distributed mode (not implemented).
 
-    At least 2 sets are required to split data and every sample
-    will be associated with a unique set using a GoldSelector. The last set is filled with the remaining elements.
-    Every set is at least associated with 1 points (ratio might not be fully matched for small data regime).
+    At least 2 sets are required to split the data. Every sample
+    will be associated with exactly one set using a GoldSelector. The last set is filled with any remaining elements.
+    Every set is at least associated with at least 1 points (the ratio might not be fully matched for small data regimes).
 
     See GoldDescriptor, GoldVectorizer, and GoldSelector for more details on each component.
 
@@ -297,9 +297,9 @@ class GoldSplitter:
         The dataset is first described using the gold descriptor (extracts features), and then samples are selected
         for each set based on the specified ratios after vectorization.
 
-        At least 2 sets are required to split data and every sample
-        will be associated with a unique set using a GoldSelector. The last set is filled with the remaining elements.
-        Every set is at least associated with 1 points (ratio might not be fully matched for small data regime).
+        At least 2 sets are required to split the data. Every sample
+        will be associated with exactly one set using a GoldSelector. The last set is filled with any remaining elements.
+        Every set is at least associated with at least 1 points (the ratio might not be fully matched for small data regimes).
 
         This method is idempotent (i.e. failure proof), meaning that if it is called
         multiple times on the same dataset or table, it will not duplicate or recompute the splitting decisions
@@ -330,9 +330,9 @@ class GoldSplitter:
         The dataset is first described using the gold descriptor (extracts features), and then samples are selected
         for each set based on the specified ratios after vectorization.
 
-        At least 2 sets are required to split data and every sample
-        will be associated with a unique set using a GoldSelector. The last set is filled with the remaining elements.
-        Every set is at least associated with 1 points (ratio might not be fully matched for small data regime).
+        At least 2 sets are required to split the data. Every sample
+        will be associated with exactly one set using a GoldSelector. The last set is filled with any remaining elements.
+        Every set is at least associated with at least 1 points (the ratio might not be fully matched for small data regimes).
 
         This method is idempotent (i.e. failure proof), meaning that if it is called
         multiple times on the same dataset or table, it will not duplicate or recompute the splitting decisions
