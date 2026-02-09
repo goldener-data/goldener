@@ -173,7 +173,7 @@ def check_sampling_size(
     """
     if isinstance(sampling_size, float):
         if force_max:
-            if not sampling_size == 1.0:
+            if not math.isclose(sampling_size, 1.0, rel_tol=1e-9, abs_tol=0.0):
                 raise ValueError("Sampling size as float must be equal to 1.0")
         else:
             if not 0 < sampling_size <= 1.0:

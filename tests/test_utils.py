@@ -139,7 +139,7 @@ class TestCheckSamplingSizes:
 
     def test_valid_float_sampling(self):
         check_sampling_size(0.5)
-        check_sampling_size(1, force_max=True)
+        check_sampling_size(1.0, force_max=True)
 
     def test_invalid_float_sampling_raises(self):
         with pytest.raises(
@@ -150,9 +150,9 @@ class TestCheckSamplingSizes:
 
         with pytest.raises(
             ValueError,
-            match="Sampling size as float must be greater than 0.0 and at most 1.0",
+            match="Sampling size as float must be equal to 1.0",
         ):
-            check_sampling_size(1.5)
+            check_sampling_size(0.99, force_max=True)
 
 
 class TestCheckAllSameType:

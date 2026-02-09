@@ -87,7 +87,7 @@ class GoldSplitter:
     distributed mode (not implemented).
 
     At least 2 sets are required to split data and every sample
-    will be associated to a unique set using a GoldSelector. The last set is filled with the remaining elements.
+    will be associated with a unique set using a GoldSelector. The last set is filled with the remaining elements.
     Every set is at least associated with 1 points (ratio might not be fully matched for small data regime).
 
     See GoldDescriptor, GoldVectorizer, and GoldSelector for more details on each component.
@@ -222,7 +222,9 @@ class GoldSplitter:
                 f"All set sizes must be of the same type, got types {size_types}."
             )
 
-        check_sets_validity(sets, force_max=True if size_types[0] is float else False)
+        check_sets_validity(
+            sets, force_max=True if issubclass(size_types[0], float) else False
+        )
         self._sets = sets
 
     @staticmethod
@@ -296,7 +298,7 @@ class GoldSplitter:
         for each set based on the specified ratios after vectorization.
 
         At least 2 sets are required to split data and every sample
-        will be associated to a unique set using a GoldSelector. The last set is filled with the remaining elements.
+        will be associated with a unique set using a GoldSelector. The last set is filled with the remaining elements.
         Every set is at least associated with 1 points (ratio might not be fully matched for small data regime).
 
         This method is idempotent (i.e. failure proof), meaning that if it is called
@@ -329,7 +331,7 @@ class GoldSplitter:
         for each set based on the specified ratios after vectorization.
 
         At least 2 sets are required to split data and every sample
-        will be associated to a unique set using a GoldSelector. The last set is filled with the remaining elements.
+        will be associated with a unique set using a GoldSelector. The last set is filled with the remaining elements.
         Every set is at least associated with 1 points (ratio might not be fully matched for small data regime).
 
         This method is idempotent (i.e. failure proof), meaning that if it is called
@@ -383,7 +385,6 @@ class GoldSplitter:
             set_count = get_sampling_count_from_size(
                 sampling_size=gold_set.size, total_size=sample_count
             )
-
             if idx_set < len(self._sets) - 1:
                 selected_table = self.selector.select_in_table(
                     vectorized, set_count, value=gold_set.name
@@ -401,12 +402,21 @@ class GoldSplitter:
                 already_in_set_count = selected_table.where(
                     selection_col == gold_set.name
                 ).count()
-                query = selected_table.where(selection_col == None)  # noqa: E711
-                if query.count() == 0 and already_in_set_count == 0:
+                not_yet_selected = selected_table.where(selection_col == None)  # noqa: E711
+                not_yet_selected_count = not_yet_selected.count()
+                if not_yet_selected_count == 0 and already_in_set_count == 0:
                     raise ValueError(
                         f"Not enough data to split among {len(self._sets)} sets."
                     )
-                query.update(  # noqa: E711
+
+                if (already_in_set_count + not_yet_selected_count) != set_count:
+                    logger.warning(
+                        f"For the set '{gold_set.name}', the expected count was {set_count}, "
+                        f"but got {already_in_set_count} already selected and {not_yet_selected_count} not yet selected samples. "
+                        f"This might be due to rounding issues."
+                    )
+
+                not_yet_selected.update(  # noqa: E711
                     {self.selector.selection_key: gold_set.name}
                 )
 
