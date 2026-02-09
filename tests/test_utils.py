@@ -120,30 +120,39 @@ class TestGetSizeAndSamplingCountPerChunk:
 
 class TestCheckSamplingSizes:
     def test_valid_integer_sampling(self):
-        check_size = 5
         total_size = 10
-        check_sampling_size(check_size, total_size)
+        check_sampling_size(5, total_size)
+        check_sampling_size(10, total_size, force_max=True)
 
     def test_invalid_integer_sampling_raises(self):
-        check_size = 15
-        total_size = 10
         with pytest.raises(
             ValueError,
             match="Sampling size as int must be greater than 0 and less or equal than the total number of samples",
         ):
-            check_sampling_size(check_size, total_size)
+            check_sampling_size(15, 10)
+
+        with pytest.raises(
+            ValueError,
+            match="Sampling size as int must be equal to the total number of samples",
+        ):
+            check_sampling_size(14, 15, force_max=True)
 
     def test_valid_float_sampling(self):
-        check_size = 0.5
-        check_sampling_size(check_size)
+        check_sampling_size(0.5)
+        check_sampling_size(1, force_max=True)
 
     def test_invalid_float_sampling_raises(self):
-        check_size = 1.5
         with pytest.raises(
             ValueError,
             match="Sampling size as float must be greater than 0.0 and at most 1.0",
         ):
-            check_sampling_size(check_size)
+            check_sampling_size(1.5)
+
+        with pytest.raises(
+            ValueError,
+            match="Sampling size as float must be greater than 0.0 and at most 1.0",
+        ):
+            check_sampling_size(1.5)
 
 
 class TestCheckAllSameType:
