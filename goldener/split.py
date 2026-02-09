@@ -52,21 +52,24 @@ class GoldSet:
             raise ValueError("Size as int must be strictly positive.")
 
 
-def check_sets_validity(sets: list[GoldSet], total: int | None = None) -> None:
+def check_sets_validity(
+    sets: list[GoldSet], total: int | None = None, force_max: bool = True
+) -> None:
     """Validate the sets configuration.
 
-    This private method ensures that the sum of ratios is valid and that set names are unique.
+    This function ensures that the sum of ratios is valid and that set names are unique.
 
     Args:
         sets: List of GoldSet configurations to validate.
         total: Optional total number of samples (used if sizes are integers).
+        force_max: Whether to enforce that the sum of ratios equals 1.0 (for float sizes) or total (for int sizes).
 
     Raises:
         ValueError: If the set's sizes are not valid, or if set names are not unique.
     """
     sizes = [s.size for s in sets]
     check_all_same_type(sizes)
-    check_sampling_size(sum(sizes), total_size=total)
+    check_sampling_size(sum(sizes), total_size=total, force_max=force_max)
 
     set_names = [s.name for s in sets]
     if len(set_names) != len(set(set_names)):
@@ -82,6 +85,10 @@ class GoldSplitter:
 
     The splitting can operate in a sequential (single-process) mode or a
     distributed mode (not implemented).
+
+    At least 2 sets are required to split the data. Every sample
+    will be associated with exactly one set using a GoldSelector. The last set is filled with any remaining elements.
+    Every set is at least associated with at least 1 points (the ratio might not be fully matched for small data regimes).
 
     See GoldDescriptor, GoldVectorizer, and GoldSelector for more details on each component.
 
@@ -205,8 +212,19 @@ class GoldSplitter:
         Args:
             sets: New list of GoldSet configurations defining the splits.
         """
+        if len(sets) < 2:
+            raise ValueError("Splitting data requires at least two sets.")
 
-        check_sets_validity(sets)
+        size_types = [type(s.size) for s in sets]
+
+        if len(set(size_types)) > 1:
+            raise ValueError(
+                f"All set sizes must be of the same type, got types {size_types}."
+            )
+
+        check_sets_validity(
+            sets, force_max=True if issubclass(size_types[0], float) else False
+        )
         self._sets = sets
 
     @staticmethod
@@ -279,6 +297,10 @@ class GoldSplitter:
         The dataset is first described using the gold descriptor (extracts features), and then samples are selected
         for each set based on the specified ratios after vectorization.
 
+        At least 2 sets are required to split the data. Every sample
+        will be associated with exactly one set using a GoldSelector. The last set is filled with any remaining elements.
+        Every set is at least associated with at least 1 points (the ratio might not be fully matched for small data regimes).
+
         This method is idempotent (i.e. failure proof), meaning that if it is called
         multiple times on the same dataset or table, it will not duplicate or recompute the splitting decisions
         already present in the PixelTable table.
@@ -307,6 +329,10 @@ class GoldSplitter:
 
         The dataset is first described using the gold descriptor (extracts features), and then samples are selected
         for each set based on the specified ratios after vectorization.
+
+        At least 2 sets are required to split the data. Every sample
+        will be associated with exactly one set using a GoldSelector. The last set is filled with any remaining elements.
+        Every set is at least associated with at least 1 points (the ratio might not be fully matched for small data regimes).
 
         This method is idempotent (i.e. failure proof), meaning that if it is called
         multiple times on the same dataset or table, it will not duplicate or recompute the splitting decisions
@@ -348,6 +374,9 @@ class GoldSplitter:
         else:
             sample_count = None
 
+        if sample_count is not None:
+            check_sets_validity(self._sets, total=sample_count, force_max=True)
+
         # select data for all sets except the last one
         for idx_set, gold_set in enumerate(self._sets):
             logger.info(
@@ -356,10 +385,40 @@ class GoldSplitter:
             set_count = get_sampling_count_from_size(
                 sampling_size=gold_set.size, total_size=sample_count
             )
+            if idx_set < len(self._sets) - 1:
+                selected_table = self.selector.select_in_table(
+                    vectorized, set_count, value=gold_set.name
+                )
+                if sample_count is None:
+                    sample_count = (
+                        selected_table.select(selected_table.idx).distinct().count()
+                    )
+                    check_sets_validity(self._sets, total=sample_count, force_max=True)
+            else:
+                # The last set is gathering all the remaining samples
+                selection_col = get_expr_from_column_name(
+                    selected_table, self.selector.selection_key
+                )
+                already_in_set_count = selected_table.where(
+                    selection_col == gold_set.name
+                ).count()
+                not_yet_selected = selected_table.where(selection_col == None)  # noqa: E711
+                not_yet_selected_count = not_yet_selected.count()
+                if not_yet_selected_count == 0 and already_in_set_count == 0:
+                    raise ValueError(
+                        f"Not enough data to split among {len(self._sets)} sets."
+                    )
 
-            selected_table = self.selector.select_in_table(
-                vectorized, set_count, value=gold_set.name
-            )
+                if (already_in_set_count + not_yet_selected_count) != set_count:
+                    logger.warning(
+                        f"For the set '{gold_set.name}', the expected count was {set_count}, "
+                        f"but got {already_in_set_count} already selected and {not_yet_selected_count} not yet selected samples. "
+                        f"This might be due to rounding issues."
+                    )
+
+                not_yet_selected.update(  # noqa: E711
+                    {self.selector.selection_key: gold_set.name}
+                )
 
         split_table = selected_table
         if self.in_described_table:

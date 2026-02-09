@@ -151,6 +151,7 @@ class TestGoldSplitter:
 
         sets = [
             GoldSet(name="train", size=0.5),
+            GoldSet(name="val", size=0.5),
         ]
         selector.class_key = "label"
         splitter = GoldSplitter(
@@ -174,15 +175,16 @@ class TestGoldSplitter:
             idx_key="idx",
         )
 
-        assert set(splitted.keys()) == {"train"}
+        assert set(splitted.keys()) == {"train", "val"}
         assert len(splitted["train"]) == 5
+        assert len(splitted["val"]) == 5
 
         pxt.drop_dir("unit_test", if_not_exists="ignore", force=True)
 
     def test_duplicated_set_names(self, descriptor, selector, vectorizer):
         pxt.drop_dir("unit_test", force=True)
 
-        sets = [GoldSet(name="train", size=0.5), GoldSet(name="train", size=0.3)]
+        sets = [GoldSet(name="train", size=0.5), GoldSet(name="train", size=0.5)]
         with pytest.raises(ValueError, match="Set names must be unique"):
             GoldSplitter(
                 sets=sets,
@@ -193,10 +195,66 @@ class TestGoldSplitter:
 
         pxt.drop_dir("unit_test", if_not_exists="ignore", force=True)
 
+    def test_not_complete_set_sizes_as_float(self, descriptor, selector, vectorizer):
+        pxt.drop_dir("unit_test", force=True)
+
+        with pytest.raises(
+            ValueError, match="Sampling size as float must be equal to 1.0"
+        ):
+            GoldSplitter(
+                sets=[GoldSet(name="train", size=0.5), GoldSet(name="val", size=0.4)],
+                descriptor=descriptor,
+                selector=selector,
+                vectorizer=vectorizer,
+            )
+
+        pxt.drop_dir("unit_test", if_not_exists="ignore", force=True)
+
+    def test_not_complete_set_sizes_as_int(self, descriptor, selector, vectorizer):
+        pxt.drop_dir("unit_test", force=True)
+
+        gold_splitter = GoldSplitter(
+            sets=[GoldSet(name="train", size=2), GoldSet(name="val", size=2)],
+            descriptor=descriptor,
+            selector=selector,
+            vectorizer=vectorizer,
+        )
+
+        with pytest.raises(
+            ValueError,
+            match="Sampling size as int must be equal to the total number of samples",
+        ):
+            gold_splitter.split_in_table(
+                to_split=DummyDataset(
+                    [
+                        {"data": torch.rand(3, 8, 8), "idx": idx, "label": "dummy"}
+                        for idx in range(10)
+                    ]
+                )
+            )
+
+        pxt.drop_dir("unit_test", if_not_exists="ignore", force=True)
+
+    def test_different_type_set_size(self, descriptor, selector, vectorizer):
+        pxt.drop_dir("unit_test", force=True)
+
+        with pytest.raises(ValueError, match="All set sizes must be of the same type"):
+            GoldSplitter(
+                sets=[GoldSet(name="train", size=0.5), GoldSet(name="val", size=3)],
+                descriptor=descriptor,
+                selector=selector,
+                vectorizer=vectorizer,
+            )
+
+        pxt.drop_dir("unit_test", if_not_exists="ignore", force=True)
+
     def test_class_key_not_found(self, descriptor, selector, vectorizer):
         pxt.drop_dir("unit_test", force=True)
         selector.class_key = "nonexistent"
-        sets = [GoldSet(name="only", size=0.5)]
+        sets = [
+            GoldSet(name="train", size=0.5),
+            GoldSet(name="val", size=0.5),
+        ]
         splitter = GoldSplitter(
             sets=sets,
             descriptor=descriptor,
@@ -221,7 +279,10 @@ class TestGoldSplitter:
     def test_set_with_small_population(self, descriptor, selector, vectorizer):
         pxt.drop_dir("unit_test", force=True)
 
-        sets = [GoldSet(name="only", size=0.01)]
+        sets = [
+            GoldSet(name="train", size=0.001),
+            GoldSet(name="val", size=0.999),
+        ]
         splitter = GoldSplitter(
             sets=sets, descriptor=descriptor, selector=selector, vectorizer=vectorizer
         )
@@ -230,7 +291,7 @@ class TestGoldSplitter:
             to_split=DummyDataset(
                 [
                     {"data": torch.rand(3, 8, 8), "idx": idx, "label": "dummy"}
-                    for idx in range(1)
+                    for idx in range(2)
                 ]
             )
         )
@@ -241,8 +302,8 @@ class TestGoldSplitter:
             idx_key="idx",
         )
 
-        assert set(splitted.keys()) == {"only"}
-        assert len(splitted["only"]) == 1
+        assert set(splitted.keys()) == {"train", "val"}
+        assert len(splitted["train"]) == 1
 
         pxt.drop_dir("unit_test", if_not_exists="ignore", force=True)
 
@@ -251,7 +312,10 @@ class TestGoldSplitter:
     ):
         pxt.drop_dir("unit_test", force=True)
         selector.class_key = "label"
-        sets = [GoldSet(name="only", size=0.01)]
+        sets = [
+            GoldSet(name="train", size=0.0001),
+            GoldSet(name="val", size=0.9999),
+        ]
         splitter = GoldSplitter(
             sets=sets,
             descriptor=descriptor,
@@ -325,7 +389,7 @@ class TestGoldSplitter:
 
         with pytest.raises(
             ValueError,
-            match="Cannot select more unique data points than available in the dataset",
+            match="Not enough data to split among",
         ):
             splitter.split_in_table(
                 to_split=DummyDataset(
@@ -745,35 +809,49 @@ class TestGoldSplitter:
 class TestCheckSetsValidity:
     def test_sum_of_sizes_less_than_one(self):
         sets = [GoldSet(name="train", size=0.4), GoldSet(name="val", size=0.5)]
-        check_sets_validity(sets)
+        check_sets_validity(sets, force_max=False)
 
     def test_sum_of_sizes_equal_one(self):
         sets = [GoldSet(name="train", size=0.5), GoldSet(name="val", size=0.5)]
-        check_sets_validity(sets)
+        check_sets_validity(sets, force_max=True)
 
-    def test_sum_of_sizes_more_than_one(self):
-        sets = [GoldSet(name="train", size=0.51), GoldSet(name="val", size=0.5)]
+    def test_with_float_failure(self):
         with pytest.raises(
             ValueError,
             match="Sampling size as float must be greater than 0.0 and at most 1.0",
         ):
-            check_sets_validity(sets)
+            sets = [GoldSet(name="train", size=0.51), GoldSet(name="val", size=0.5)]
+            check_sets_validity(sets, force_max=False)
+
+        with pytest.raises(
+            ValueError,
+            match="Sampling size as float must be equal to 1.0",
+        ):
+            sets = [GoldSet(name="train", size=0.49), GoldSet(name="val", size=0.5)]
+            check_sets_validity(sets, force_max=True)
 
     def test_sum_of_sizes_less_than_total(self):
         sets = [GoldSet(name="train", size=2), GoldSet(name="val", size=2)]
-        check_sets_validity(sets, total=5)
+        check_sets_validity(sets, total=5, force_max=False)
 
     def test_sum_of_sizes_equal_total(self):
         sets = [GoldSet(name="train", size=2), GoldSet(name="val", size=3)]
-        check_sets_validity(sets, total=5)
+        check_sets_validity(sets, total=5, force_max=True)
 
-    def test_sum_of_sizes_more_than_total(self):
-        sets = [GoldSet(name="train", size=3), GoldSet(name="val", size=3)]
+    def test_with_int_failure(self):
         with pytest.raises(
             ValueError,
-            match="Sampling size as int must be greater than 0 and less or equal than the total number",
+            match="Sampling size as int must be equal to the total number of samples",
         ):
-            check_sets_validity(sets, total=5)
+            sets = [GoldSet(name="train", size=3), GoldSet(name="val", size=1)]
+            check_sets_validity(sets, total=5, force_max=True)
+
+        with pytest.raises(
+            ValueError,
+            match="Sampling size as int must be greater than 0 and less or equal than the total number of samples",
+        ):
+            sets = [GoldSet(name="train", size=3), GoldSet(name="val", size=3)]
+            check_sets_validity(sets, total=5, force_max=False)
 
     def test_same_name(self):
         sets = [GoldSet(name="train", size=3), GoldSet(name="train", size=2)]
