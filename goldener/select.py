@@ -100,6 +100,15 @@ class GoldGreedyKernelPoints(GoldSelectionTool):
 
 
 class GoldGreedyClosestPointSelection(GoldSelectionTool):
+    """Create a coresubset from selecting the closest points iteratively.
+
+    This is a greedy algorithm that selects iteratively the point with the closest nearest neighbors
+    among the not selected points.
+
+    Attributes:
+        device: The torch device to use for computations.
+    """
+
     def __init__(self, device: torch.device | str) -> None:
         self.device = device
 
