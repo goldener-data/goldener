@@ -235,7 +235,7 @@ class GoldClusterizer:
         assert isinstance(cluster_from, Table)
 
         # define the number of element to sample
-        total_size = cluster_from.select(cluster_from.idx).distinct().count()
+        total_size = cluster_from.select(cluster_from.idx_vector).distinct().count()
 
         if (
             len(self.get_cluster_sample_indices(cluster_table, self.cluster_key))
@@ -501,29 +501,35 @@ class GoldClusterizer:
     def get_cluster_sample_indices(
         table: Table,
         cluster_key: str,
+        cluster_idx: int | None = None,
         class_key: str | None = None,
         class_value: str | None = None,
-        idx_key: str = "idx",
+        idx_key: str = "idx_vector",
     ) -> set[int]:
         """Get the indices of samples clustered in a given cluster.
 
         Args:
             table: PixelTable table to query.
-            cluster_idx: Value in the cluster column to filter clustered samples.
             cluster_key: Column name used to store the clustering values.
+            cluster_idx: Optional cluster index to filter samples by cluster.
+            If None, all clustered samples are returned.
             class_key: Optional column name used to filter samples by class.
             class_value: Optional class value to filter samples by class.
             idx_key: Column name used to get sample indices.
         """
         idx_col = get_expr_from_column_name(table, idx_key)
         cluster_col = get_expr_from_column_name(table, cluster_key)
+        query = (
+            cluster_col != None  # noqa: E711
+            if cluster_idx is None
+            else cluster_col == cluster_idx
+        )
         if class_value is not None and class_key is not None:
             class_col = get_expr_from_column_name(table, class_key)
-            query = (cluster_col != None) & (class_col == class_value)  # noqa: E711
+            query = query & (class_col == class_value)
         else:
             if class_key is not None or class_value is not None:
                 raise ValueError("class_key and class_value must be set together.")
-            query = cluster_col != None  # noqa: E711
 
         return set(
             [
@@ -574,7 +580,7 @@ class GoldClusterizer:
                     cluster_table.where(
                         class_col == class_value  # noqa: E712
                     )
-                    .select(cluster_table.idx)
+                    .select(cluster_table.idx_vector)
                     .distinct()
                     .count()
                 )
@@ -606,7 +612,7 @@ class GoldClusterizer:
                     cluster_key=self.cluster_key,
                 )
             )
-            sample_count = cluster_table.select(cluster_table.idx).distinct().count()
+            sample_count = cluster_table.count()
             still_to_cluster_count = sample_count - already_clustered
             logger.info(
                 f"Clustering {still_to_cluster_count} samples in {n_clusters} clusters."
@@ -684,7 +690,7 @@ class GoldClusterizer:
 
         for chunk_indices in chunk_assignment:
             to_cluster_from = cluster_from.where(
-                cluster_from.idx.isin(chunk_indices)
+                cluster_from.idx_vector.isin(chunk_indices)
             ).select(vectorized_col, cluster_from.idx_vector)
 
             to_cluster_for_chunk = [
@@ -704,7 +710,7 @@ class GoldClusterizer:
             cluster_assignment = self.clustering_tool.fit(vectors, n_clusters)
 
             # update table with selected indices
-            for cluster_idx in set(cluster_assignment):
+            for cluster_idx in set(cluster_assignment.tolist()):
                 indices_in_cluster = indices[cluster_assignment == cluster_idx].tolist()
                 set_value_to_idx_rows(
                     table=cluster_table,
