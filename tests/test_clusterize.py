@@ -164,9 +164,7 @@ class TestGoldClusterizer:
 
         cluster_table = clusterizer.cluster_in_table(dataset, n_clusters=4)
 
-        # all rows present
         assert cluster_table.count() == 20
-        # all rows clustered (no None in cluster column)
         assert (
             cluster_table.where(
                 cluster_table[clusterizer.cluster_key] != None  # noqa: E711
@@ -176,7 +174,6 @@ class TestGoldClusterizer:
             .count()
             == 20
         )
-        # cluster ids in expected range
         distinct_clusters = [
             row[clusterizer.cluster_key]
             for row in cluster_table.select(cluster_table[clusterizer.cluster_key])
@@ -324,12 +321,10 @@ class TestGoldClusterizer:
 
         assert isinstance(clustered_dataset, GoldPxtTorchDataset)
 
-        # we can iterate over it without error
         first_item = next(iter(clustered_dataset))
         assert isinstance(first_item, dict)
         assert "idx" in first_item
 
-        # underlying table should have been dropped
         with pytest.raises(pxt.Error):
             pxt.get_table(table_path)
 
@@ -339,7 +334,6 @@ class TestGoldClusterizer:
 
         src_table = self._make_src_table(src_path, n=5)
 
-        # Create an existing cluster table
         pxt.create_table(
             cluster_path,
             source=[{"idx": 0, "idx_vector": 0, "cluster": 0}],
@@ -358,14 +352,12 @@ class TestGoldClusterizer:
             clusterizer.cluster_in_table(src_table, n_clusters=2)
 
     def test_cluster_in_table_with_restart_allowed(self):
-        """Running clustering twice with allow_existing=True should keep all rows clustered."""
         table_path = "unit_test.test_cluster_restart_allowed"
 
         dataset = DummyDataset(
             [{"vectorized": torch.rand(4), "idx": idx} for idx in range(30)]
         )
 
-        # First run: create table and cluster
         clusterizer = GoldClusterizer(
             table_path=table_path,
             clustering_tool=GoldRandomClusteringTool(random_state=0),
@@ -386,7 +378,6 @@ class TestGoldClusterizer:
         )
         assert clustered_count_1 == 30
 
-        # Second run: reuse existing table with allow_existing=True
         clusterizer_restart = GoldClusterizer(
             table_path=table_path,
             clustering_tool=GoldRandomClusteringTool(random_state=0),
@@ -396,7 +387,6 @@ class TestGoldClusterizer:
 
         cluster_table_2 = clusterizer_restart.cluster_in_table(dataset, n_clusters=3)
 
-        # Row count stays the same
         assert cluster_table_2.count() == 30
         clustered_count_2 = (
             cluster_table_2.where(
@@ -407,5 +397,158 @@ class TestGoldClusterizer:
             .count()
         )
         assert clustered_count_2 == 30
-        # All rows remain clustered after restart
         assert clustered_count_2 == clustered_count_1
+
+    def test_cluster_in_table_with_class_key(self):
+        table_path = "unit_test.test_cluster_with_class"
+
+        dataset = DummyDataset(
+            [
+                {
+                    "vectorized": torch.rand(4),
+                    "idx": idx,
+                    "label": str(idx % 2),
+                }
+                for idx in range(40)
+            ]
+        )
+
+        clusterizer = GoldClusterizer(
+            table_path=table_path,
+            clustering_tool=GoldRandomClusteringTool(random_state=0),
+            allow_existing=True,
+            batch_size=8,
+            class_key="label",
+        )
+
+        cluster_table = clusterizer.cluster_in_table(dataset, n_clusters=4)
+
+        assert cluster_table.count() == 40
+        assert (
+            cluster_table.where(
+                cluster_table[clusterizer.cluster_key] != None  # noqa: E711
+            )
+            .select(cluster_table.idx)
+            .distinct()
+            .count()
+            == 40
+        )
+
+        label_col = cluster_table[clusterizer.class_key]
+        total_class0 = (
+            cluster_table.where(label_col == "0")
+            .select(cluster_table.idx)
+            .distinct()
+            .count()
+        )
+        total_class1 = (
+            cluster_table.where(label_col == "1")
+            .select(cluster_table.idx)
+            .distinct()
+            .count()
+        )
+        assert total_class0 == 20
+        assert total_class1 == 20
+
+        all_indices = clusterizer.get_cluster_vector_indices(
+            table=cluster_table,
+            cluster_key=clusterizer.cluster_key,
+        )
+        assert all_indices == set(range(40))
+
+        class0_indices = clusterizer.get_cluster_vector_indices(
+            table=cluster_table,
+            cluster_key=clusterizer.cluster_key,
+            class_key=clusterizer.class_key,
+            class_value="0",
+        )
+        class1_indices = clusterizer.get_cluster_vector_indices(
+            table=cluster_table,
+            cluster_key=clusterizer.cluster_key,
+            class_key=clusterizer.class_key,
+            class_value="1",
+        )
+
+        assert class0_indices.union(class1_indices) == set(range(40))
+        assert class0_indices.isdisjoint(class1_indices)
+
+    def test_cluster_in_table_with_max_batches(self):
+        table_path = "unit_test.test_cluster_max_batches"
+
+        dataset = DummyDataset(
+            [{"vectorized": torch.rand(4), "idx": idx} for idx in range(50)]
+        )
+
+        clusterizer = GoldClusterizer(
+            table_path=table_path,
+            clustering_tool=GoldRandomClusteringTool(random_state=0),
+            allow_existing=True,
+            batch_size=10,
+            max_batches=2,
+        )
+
+        cluster_table = clusterizer.cluster_in_table(dataset, n_clusters=3)
+
+        clustered = (
+            cluster_table.where(
+                cluster_table[clusterizer.cluster_key] != None  # noqa: E711
+            )
+            .select(cluster_table.idx)
+            .distinct()
+            .count()
+        )
+        assert clustered == 20
+
+    def test_get_cluster_vector_indices(self):
+        src_path = "unit_test.test_cluster_indices_explicit_src"
+        cluster_path = "unit_test.test_cluster_indices_explicit"
+
+        src_table = self._make_src_table(src_path, n=6, with_class=True)
+
+        clusterizer = GoldClusterizer(
+            table_path=cluster_path,
+            clustering_tool=GoldRandomClusteringTool(random_state=0),
+            allow_existing=True,
+            class_key="label",
+        )
+
+        cluster_table = clusterizer._cluster_table_from_table(
+            cluster_from=src_table,
+            old_cluster_table=None,
+        )
+
+        cluster_table.where(cluster_table.idx_vector.isin([0, 1, 2])).update(
+            {clusterizer.cluster_key: 0}
+        )
+        cluster_table.where(cluster_table.idx_vector.isin([3, 4, 5])).update(
+            {clusterizer.cluster_key: 1}
+        )
+
+        all_indices = clusterizer.get_cluster_vector_indices(
+            table=cluster_table,
+            cluster_key=clusterizer.cluster_key,
+        )
+        assert all_indices == {0, 1, 2, 3, 4, 5}
+
+        class0_indices = clusterizer.get_cluster_vector_indices(
+            table=cluster_table,
+            cluster_key=clusterizer.cluster_key,
+            class_key=clusterizer.class_key,
+            class_value="0",
+        )
+        class1_indices = clusterizer.get_cluster_vector_indices(
+            table=cluster_table,
+            cluster_key=clusterizer.cluster_key,
+            class_key=clusterizer.class_key,
+            class_value="1",
+        )
+
+        assert class0_indices.union(class1_indices) == {0, 1, 2, 3, 4, 5}
+        assert class0_indices.isdisjoint(class1_indices)
+
+        with pytest.raises(ValueError, match="must be set together"):
+            clusterizer.get_cluster_vector_indices(
+                table=cluster_table,
+                cluster_key=clusterizer.cluster_key,
+                class_key=clusterizer.class_key,
+            )
