@@ -37,6 +37,8 @@ logger = getLogger(__name__)
 
 
 class GoldSelectionTool(ABC):
+    """Run selection of a subset of data points from vectorized samples using a coresubset selection algorithm."""
+
     @abstractmethod
     def select(
         self,
@@ -163,7 +165,7 @@ class GoldSelector:
     """Select a subset of data points from vectorized samples and store results in a PixelTable table.
 
     The GoldSelector processes a dataset or PixelTable table to perform coresubset selection using a
-    kernel herding algorithm on already vectorized representations. The selection results are stored
+    selection algorithm on already vectorized representations. The selection results are stored
     in a local PixelTable table (specified by `table_path`) so that the selection process is idempotent:
     calling the same operation multiple times will not duplicate or recompute selections that are already
     present in the table.
@@ -800,7 +802,7 @@ class GoldSelector:
     ) -> None:
         """Perform coresubset selection for a specific class or all data.
 
-        This private method implements chunked coresubset selection using kernel herding.
+        This private method implements chunked coresubset selection.
         It processes data in chunks to manage memory, applies optional dimensionality reduction,
         and updates the selection table with selected samples.
 
