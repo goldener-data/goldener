@@ -72,7 +72,6 @@ class TestGoldSelector:
             selector.selection_key,
             "idx",
             "idx_vector",
-            "chunked",
         }
         row_indices = [
             row["idx_vector"]
@@ -150,7 +149,6 @@ class TestGoldSelector:
             selector.vectorized_key,
             "idx",
             "idx_vector",
-            "chunked",
         }
         row_indices = [
             row["idx_vector"]

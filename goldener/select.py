@@ -202,7 +202,7 @@ class GoldSelector:
         drop_table: Whether to drop the selection table after creating the dataset with selection results. It is only applied
             when using `select_in_dataset`. Default is False.
         max_batches: Optional maximum number of batches to process. Useful for testing on a small subset of the dataset.
-        random_state: Optional random state for reproducibility during chunk assignment.
+        random_state: Optional random state for reproducibility during chunk assignment. Default is None.
     """
 
     _MINIMAL_SCHEMA: dict[str, type] = {
@@ -230,7 +230,7 @@ class GoldSelector:
         distribute: bool = False,
         drop_table: bool = False,
         max_batches: int | None = None,
-        random_state: int = 42,
+        random_state: int | None = None,
     ) -> None:
         """Initialize the GoldSelector.
 
@@ -242,7 +242,7 @@ class GoldSelector:
             collate_fn: Optional collate function for the DataLoader.
             vectorized_key: Key pointing to the vector for selection. Defaults to "vectorized".
             selection_key: Key for storing selection values. Defaults to "selected".
-            class_key: Optional key for class stratification.random_state: Random state for reproducibility in selection algorithms that require randomness. Default is 42.
+            class_key: Optional key for class stratification.
             to_keep_schema: Optional schema for additional columns to preserve.
             min_pxt_insert_size: Minimum number of rows to accumulate before inserting into PixelTable. Default is 100.
             batch_size: Batch size used when iterating over the data.
@@ -251,7 +251,7 @@ class GoldSelector:
             distribute: Whether to use distributed selection. Defaults to False.
             drop_table: Whether to drop the table after dataset creation. Defaults to False.
             max_batches: Optional maximum number of batches to process.
-            random_state: Optional random state for reproducibility during chunk assignment.
+            random_state: Optional random state for reproducibility during chunk assignment. Default is None.
         """
         self.table_path = table_path
         self.selection_tool = selection_tool
@@ -812,7 +812,7 @@ class GoldSelector:
         selection_col = get_expr_from_column_name(selection_table, self.selection_key)
         vectorized_col = get_expr_from_column_name(select_from, self.vectorized_key)
 
-        selection_count = len(
+        already_selected_count = len(
             self.get_selected_sample_indices(
                 table=selection_table,
                 value=value,
@@ -836,52 +836,30 @@ class GoldSelector:
             .count()
         )
 
-        if available_for_selection < (select_count - selection_count):
+        if available_for_selection < (select_count - already_selected_count):
             raise ValueError(
                 "Cannot select more unique data points than available in the dataset."
             )
 
-        # The coresubset selection is done from all the vectors (after filtering) of all data point
+        # The coresubset selection is done from all the vectors (after filtering) of all data points
         # (depending on data, a data point can have multiple vectors).
         # Then, the same data point can be selected multiple times if it has multiple vectors selected.
         # To achieve select_count of unique data points, we loop until we have enough unique data points selected.
-        while selection_count < select_count:
-            # select only rows still not selected
-            to_select_vectors_and_indices = selection_table.where(available_query)
-            to_select_vector_indices = [
-                row["idx_vector"]
-                for row in to_select_vectors_and_indices.select(
-                    selection_table.idx_vector
-                ).collect()
-            ]
-            available_for_selection = len(to_select_vector_indices)
-            if available_for_selection == 0:
-                logger.info(
-                    f"No samples to select for class '{class_value}'."
-                    if class_value is not None
-                    else "No samples to select."
-                )
-                return
+        while already_selected_count < select_count:
+            to_select = selection_table.where(available_query)
 
-            # initialize the chunk settings: chunk size, number of chunks, selection per chunk
-            still_selectable = (
-                selection_table.where(selection_col == None)  # noqa: E711
-                .select(selection_table.idx)
-                .distinct()
-                .count()
-            )
-            still_to_select = select_count - selection_count
+            # check if selection can be achieved by taking all the remaining samples
+            # without running coresubset selection
+            still_selectable = to_select.select(selection_table.idx).distinct().count()
+            still_to_select = select_count - already_selected_count
             if still_to_select == still_selectable:
-                # take all the remaining samples
                 set_value_to_idx_rows(
                     table=selection_table,
                     col_expr=selection_col,
                     idx_expr=selection_table.idx,
                     indices=set(
                         row["idx"]
-                        for row in to_select_vectors_and_indices.select(
-                            selection_table.idx
-                        )
+                        for row in to_select.select(selection_table.idx)
                         .distinct()
                         .collect()
                     ),
@@ -889,10 +867,20 @@ class GoldSelector:
                 )
                 break
 
-            if self.chunk is None or self.chunk >= len(to_select_vector_indices):
+            # assign the vectors to chunks for chunked selection
+            to_select_vector_indices = [
+                row["idx_vector"]
+                for row in to_select.select(selection_table.idx_vector).collect()
+            ]
+            available_for_selection = len(to_select_vector_indices)
+            assert available_for_selection > 0
+
+            if self.chunk is None or self.chunk >= available_for_selection:
                 chunk_assignment = [to_select_vector_indices]  # all in one chunk
             else:
-                chunk_count = math.ceil(available_for_selection / self.chunk)
+                chunk_count = math.ceil(
+                    available_for_selection / self.chunk
+                )  # make sure chunk size is not above specification
                 random_assignment = (
                     GoldRandomClusteringTool(random_state=self.random_state)
                     .fit(
@@ -905,8 +893,8 @@ class GoldSelector:
                 )
                 chunk_assignment = [
                     [
-                        vector_idx
-                        for vect_pos, vector_idx in enumerate(to_select_vector_indices)
+                        idx_vector
+                        for vect_pos, idx_vector in enumerate(to_select_vector_indices)
                         if random_assignment[vect_pos] == chunk_idx
                     ]
                     for chunk_idx in range(chunk_count)
@@ -921,6 +909,12 @@ class GoldSelector:
             for chunk_indices, chunk_select_count in zip(
                 chunk_assignment, select_count_per_chunk
             ):
+                if chunk_select_count == 0:
+                    continue
+
+                # do it again because selection from previous chunks might have selected some of
+                # the samples in the current chunk, making them no longer available for selection
+                # in the current chunk
                 chunk_indices_not_selected = [
                     row["idx_vector"]
                     for row in selection_table.where(
@@ -931,11 +925,10 @@ class GoldSelector:
                 if len(chunk_indices_not_selected) == 0:
                     continue
 
-                to_select_from = select_from.where(
-                    select_from.vector_idx.isin(chunk_indices_not_selected)
-                ).select(select_from.idx, vectorized_col)
-
                 # load the vectors and the corresponding indices for the chunk
+                to_select_from = select_from.where(
+                    select_from.idx_vector.isin(chunk_indices_not_selected)
+                ).select(select_from.idx, vectorized_col)
                 to_select_for_chunk = [
                     (
                         torch.from_numpy(sample[self.vectorized_key]),
@@ -947,7 +940,6 @@ class GoldSelector:
                 vectors = torch.stack(vectors_list, dim=0)
                 indices = torch.cat(indices_list, dim=0)
 
-                # selected indices are marked as already chunked
                 if len(to_select_for_chunk) == chunk_select_count:
                     # take all the indices
                     # It can happen when the selection size is close to the total size
@@ -981,7 +973,7 @@ class GoldSelector:
                 selection_table.where(
                     selection_table.idx.isin(selected_indices)
                 ).update({self.selection_key: value})
-                selection_count = len(selected_indices)
+                already_selected_count = len(selected_indices)
 
     def _distributed_select(
         self,
