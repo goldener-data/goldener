@@ -282,7 +282,7 @@ def get_column_distinct_ratios(table: Table, class_expr: Expr) -> dict[str, floa
         A dictionary mapping distinct values to their ratios in the specified column.
     """
     value_and_count = get_distinct_value_and_count_in_column(table, class_expr)
-    ratios = get_ratios_for_counts(value_and_count.values())
+    ratios = get_ratios_for_counts(list(value_and_count.values()))
 
     return {
         class_label: class_ratio

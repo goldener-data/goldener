@@ -130,6 +130,7 @@ class GoldClusterizer:
         drop_table: Whether to drop the cluster table after creating the dataset with clustering results. It is only applied
             when using `cluster_in_dataset`. Default is False.
         max_batches: Optional maximum number of batches to process. Useful for testing on a small subset of the dataset.
+        random_state: Optional random state for reproducibility during chunk assignment.
     """
 
     _MINIMAL_SCHEMA: dict[str, type] = {
@@ -157,6 +158,31 @@ class GoldClusterizer:
         max_batches: int | None = None,
         random_state: int | None = None,
     ) -> None:
+        """Initialize the GoldClusterizer with configuration parameters.
+
+        Attributes:
+            table_path: Path to the PixelTable table where clustering results will be stored locally.
+            clustering_tool: The GoldClusteringTool implementing the clustering algorithm.
+            reducer: Optional GoldReducer instance for dimensionality reduction before clustering.
+            chunk: Optional chunk size for processing data in chunks to reduce memory consumption.
+            collate_fn: Optional function to collate dataset samples into batches composed of
+                dictionaries with at least the key specified by `vectorized_key` returning a PyTorch Tensor.
+                If None, the dataset is expected to directly provide such batches.
+            vectorized_key: Key in the batch dictionary that contains the vectorized data for the clustering. Default is "vectorized".
+            cluster_key: Column name to store the clustering value in the PixelTable table. Default is "cluster".
+            class_key: Optional key for class-based stratified clustering.
+            to_keep_schema: Optional dictionary defining additional columns to keep from the original dataset/table
+                into the cluster table. The keys are the column names and the values are the PixelTable types.
+            min_pxt_insert_size: Minimum number of rows to accumulate before inserting into PixelTable. Default is 100.
+            batch_size: Batch size used when iterating over the data.
+            num_workers: Number of workers for the PyTorch DataLoader during iteration on data.
+            allow_existing: If False, an error will be raised when the table already exists. Default is True.
+            distribute: Whether to use distributed processing for clustering and table population. Not implemented yet. Default is False.
+            drop_table: Whether to drop the cluster table after creating the dataset with clustering results. It is only applied
+                when using `cluster_in_dataset`. Default is False.
+            max_batches: Optional maximum number of batches to process. Useful for testing on a small subset of the dataset.
+            random_state: Optional random state for reproducibility during chunk assignment.
+        """
         self.table_path = table_path
         self.clustering_tool = clustering_tool
         self.reducer = reducer
@@ -714,19 +740,14 @@ class GoldClusterizer:
 
         if self.chunk is None or self.chunk >= len(to_cluster_vector_indices):
             chunk_assignment = [
-                [
-                    row["idx_vector"]
-                    for row in cluster_table.where(available_query)
-                    .select(cluster_table.idx_vector)
-                    .collect()
-                ]
+                to_cluster_vector_indices,
             ]
         else:
             chunk_count = math.ceil(available_for_clustering / self.chunk)
             random_assignment = (
                 GoldRandomClusteringTool(random_state=self.random_state)
                 .fit(
-                    torch.randn(
+                    torch.empty(
                         available_for_clustering, 1
                     ),  # dummy input for random clustering
                     chunk_count,

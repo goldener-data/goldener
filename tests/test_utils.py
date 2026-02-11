@@ -9,6 +9,7 @@ from goldener.utils import (
     check_sampling_size,
     check_all_same_type,
     get_sampling_count_from_size,
+    split_sampling_among_chunks,
 )
 
 
@@ -257,7 +258,32 @@ class TestGetRatiosForCounts:
     def test_simple_counts(self):
         counts = [10, 20, 30]
         ratios = get_ratios_for_counts(counts)
-        assert ratios == [10 / 60, 20 / 60, 30 / 60]
+        # First n-1 ratios are directly proportional
+        assert ratios[:-1] == [10 / 60, 20 / 60]
+        assert pytest.approx(sum(ratios), rel=1e-12) == 1.0
+
+    def test_single_count_gets_full_ratio(self):
+        counts = [42]
+        ratios = get_ratios_for_counts(counts)
+        assert ratios == [1.0]
+
+    def test_empty_counts_raises_value_error(self):
+        counts: list[int] = []
+        with pytest.raises(ValueError, match="Counts list cannot be empty"):
+            get_ratios_for_counts(counts)
+
+    def test_zero_total_counts_raises_value_error(self):
+        counts = [0, 0, 0]
+        with pytest.raises(ValueError, match="Total count must be greater than 0"):
+            get_ratios_for_counts(counts)
+
+    def test_last_ratio_adjustment_sums_to_one(self):
+        counts = [1, 2, 3]
+        ratios = get_ratios_for_counts(counts)
+        total = sum(counts)
+        assert ratios[:-1] == [c / total for c in counts[:-1]]
+        assert pytest.approx(sum(ratios), rel=1e-12, abs=1e-12) == 1.0
+        assert pytest.approx(ratios[-1], rel=1e-12, abs=1e-12) == 1.0 - sum(ratios[:-1])
 
 
 class TestFilterBatchFromIndices:
@@ -330,3 +356,47 @@ class TestFilterBatchFromIndices:
         to_remove = {0, 1}
         result = filter_batch_from_indices(batch, to_remove)
         assert result == {}
+
+
+class TestSplitSamplingAmongChunks:
+    def test_single_chunk(self) -> None:
+        result = split_sampling_among_chunks(10, [100])
+        assert result == [10]
+
+    def test_too_small_single_chunk(self) -> None:
+        with pytest.raises(
+            ValueError, match="Split count .* cannot be greater than chunk size"
+        ):
+            split_sampling_among_chunks(10, [9])
+
+    def test_proportional_split_two_chunks(self) -> None:
+        to_split = 10
+        chunk_sizes = [30, 70]
+        split = split_sampling_among_chunks(to_split, chunk_sizes)
+        assert sum(split) == to_split
+        assert split[0] == int((30 / sum(chunk_sizes)) * to_split)
+
+    def test_proportional_split_multiple_chunks(self) -> None:
+        to_split = 25
+        chunk_sizes = [10, 20, 30]
+        split = split_sampling_among_chunks(to_split, chunk_sizes)
+        assert sum(split) == to_split
+        assert len(split) == len(chunk_sizes)
+
+    def test_empty_chunk_sizes_raises(self) -> None:
+        with pytest.raises(ValueError, match="At least one chunk size is required"):
+            split_sampling_among_chunks(10, [])
+
+    def test_zero_total_chunk_sizes_raise(self) -> None:
+        with pytest.raises(
+            ValueError, match="Total size of chunks must be greater than 0"
+        ):
+            split_sampling_among_chunks(10, [0, 0, 0])
+
+    def test_split_count_exceeds_chunk_size_raises(self) -> None:
+        to_split = 5
+        chunk_sizes = [1, 1, 1]
+        with pytest.raises(
+            ValueError, match="Split count .* cannot be greater than chunk size"
+        ):
+            split_sampling_among_chunks(to_split, chunk_sizes)

@@ -63,17 +63,70 @@ def get_ratio_list_sum(ratios: list[float]) -> float:
     return ratio_sum
 
 
-def get_ratios_for_counts(counts: Iterable[int]) -> list[float]:
+def get_ratios_for_counts(counts: list[int]) -> list[float]:
     """Get ratios for a list of counts.
 
     Args:
-        counts: An iterable of integer counts.
+        counts: A list of integer counts.
 
     Returns:
         A list of float ratios corresponding to the input counts.
     """
+    if len(counts) == 0:
+        raise ValueError("Counts list cannot be empty.")
+
+    if len(counts) == 1:
+        return [1.0]  # single count gets all the ratio
+
     total = sum(counts)
-    return [count / total for count in counts]
+    if total == 0:
+        raise ValueError("Total count must be greater than 0.")
+
+    first_ratios = [count / total for count in counts[:-1]]
+
+    return first_ratios + [
+        1.0 - sum(first_ratios)
+    ]  # ensure the last ratio is adjusted to sum to 1.0
+
+
+def split_sampling_among_chunks(to_split: int, chunk_sizes: list[int]) -> list[int]:
+    """Split a total sampling count among chunks based on their sizes.
+
+    Args:
+        to_split: The total number of samples to split among the chunks.
+        chunk_sizes: A list of integers representing the sizes of each chunk.
+
+    Returns:
+        A list of integers representing the number of samples to draw from each chunk, summing up to to_split.
+    """
+    if len(chunk_sizes) == 0:
+        raise ValueError("At least one chunk size is required to split the sampling")
+
+    if len(chunk_sizes) == 1:
+        if to_split > chunk_sizes[0]:
+            raise ValueError(
+                f"Split count {to_split} cannot be greater than chunk size {chunk_sizes[0]}"
+            )
+        return [to_split]
+
+    total_size = sum(chunk_sizes)
+    if total_size == 0:
+        raise ValueError("Total size of chunks must be greater than 0.")
+
+    ratios = get_ratios_for_counts(chunk_sizes)
+    first_split_counts = [math.floor(ratio * to_split) for ratio in ratios[:-1]]
+
+    split_counts = first_split_counts + [
+        to_split - sum(first_split_counts)
+    ]  # ensure the last count is adjusted to sum to to_split
+
+    for split_count, chunk_size in zip(split_counts, chunk_sizes):
+        if split_count > chunk_size:
+            raise ValueError(
+                f"Split count {split_count} cannot be greater than chunk size {chunk_size}"
+            )
+
+    return split_counts
 
 
 def filter_batch_from_indices(
