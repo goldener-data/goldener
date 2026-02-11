@@ -263,6 +263,42 @@ class TestGoldClusterizer:
         ]
         assert set(distinct_clusters).issubset(set(range(5)))
 
+    def test_cluster_in_table_with_chunk_larger_than_total(self):
+        table_path = "unit_test.test_cluster_chunk_large"
+
+        dataset = DummyDataset(
+            [{"vectorized": torch.rand(4), "idx": idx} for idx in range(15)]
+        )
+
+        clusterizer = GoldClusterizer(
+            table_path=table_path,
+            clustering_tool=GoldRandomClusteringTool(random_state=0),
+            allow_existing=True,
+            batch_size=5,
+            chunk=100,  # larger than total number of vectors (15)
+        )
+
+        cluster_table = clusterizer.cluster_in_table(dataset, n_clusters=3)
+
+        assert cluster_table.count() == 15
+        clustered = (
+            cluster_table.where(
+                cluster_table[clusterizer.cluster_key] != None  # noqa: E711
+            )
+            .select(cluster_table.idx)
+            .distinct()
+            .count()
+        )
+        assert clustered == 15
+
+        distinct_clusters = [
+            row[clusterizer.cluster_key]
+            for row in cluster_table.select(cluster_table[clusterizer.cluster_key])
+            .distinct()
+            .collect()
+        ]
+        assert set(distinct_clusters).issubset(set(range(3)))
+
     def test_cluster_in_table_with_reducer(self):
         table_path = "unit_test.test_cluster_reducer"
 

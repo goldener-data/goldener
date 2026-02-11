@@ -162,7 +162,7 @@ class GoldGreedyClosestPointSelection(GoldSelectionTool):
 
 
 class GoldSelector:
-    """Select a subset of data points from vectorized samples and store results in a PixelTable table.
+    """Select a subset of data points from vectorized samples.
 
     The GoldSelector processes a dataset or PixelTable table to perform coresubset selection using a
     selection algorithm on already vectorized representations. The selection results are stored
@@ -583,6 +583,7 @@ class GoldSelector:
         Args:
             select_from: The source PyTorch Dataset.
             selection_table: The selection table to populate.
+            include_vectorized: Whether to include the vectorized data in the selection table.
         """
         dataloader = DataLoader(
             select_from,

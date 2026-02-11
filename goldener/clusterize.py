@@ -1,3 +1,4 @@
+import math
 from abc import ABC, abstractmethod
 from logging import getLogger
 from typing import Callable, Any
@@ -67,6 +68,7 @@ class GoldRandomClusteringTool(GoldClusteringTool):
 
         Args:
             x: Input vectors to select from.
+            n_clusters: Number of clusters to form.
 
         Returns: The cluster assignments for each input vector as a 1D tensor of cluster indices.
         """
@@ -78,11 +80,11 @@ class GoldRandomClusteringTool(GoldClusteringTool):
                 f"the number of samples ({total})."
             )
 
-        cluster_assignement = [i % n_clusters for i in range(total)]
-        np.random.default_rng(self.random_state).shuffle(cluster_assignement)
+        cluster_assignment = [i % n_clusters for i in range(total)]
+        np.random.default_rng(self.random_state).shuffle(cluster_assignment)
 
         return torch.tensor(
-            cluster_assignement,
+            cluster_assignment,
         )
 
     def predict(self, x: torch.Tensor) -> torch.Tensor:
@@ -90,6 +92,46 @@ class GoldRandomClusteringTool(GoldClusteringTool):
 
 
 class GoldClusterizer:
+    """Cluster data points from vectorized samples.
+
+    The GoldClusterizer processes a dataset or PixelTable table to perform clustering using a
+    clustering algorithm on already vectorized representations. The clustering results are stored
+    in a local PixelTable table (specified by `table_path`) so that the clustering process is idempotent:
+    calling the same operation multiple times will not duplicate or recompute clustering that are already
+    present in the table.
+
+    If the dataset is too big to fit into memory or the clustering algorithm is too
+    computationally expensive, the clustering can be performed in chunks.
+    All torch tensors will be converted to numpy arrays before saving.
+
+    The clustering can operate in a sequential (single-process) mode or a
+    distributed mode (not implemented). The table schema is created/validated automatically and will include
+    minimal indexing columns (`idx`, `idx_vector`) required to link clustered samples back to
+    their originating data points.
+
+    Attributes:
+        table_path: Path to the PixelTable table where clustering results will be stored locally.
+        clustering_tool: The GoldClusteringTool implementing the clustering algorithm.
+        reducer: Optional GoldReducer instance for dimensionality reduction before clustering.
+        chunk: Optional chunk size for processing data in chunks to reduce memory consumption.
+        collate_fn: Optional function to collate dataset samples into batches composed of
+            dictionaries with at least the key specified by `vectorized_key` returning a PyTorch Tensor.
+            If None, the dataset is expected to directly provide such batches.
+        vectorized_key: Key in the batch dictionary that contains the vectorized data for the clustering. Default is "vectorized".
+        cluster_key: Column name to store the clustering value in the PixelTable table. Default is "cluster".
+        class_key: Optional key for class-based stratified clustering.
+        to_keep_schema: Optional dictionary defining additional columns to keep from the original dataset/table
+            into the cluster table. The keys are the column names and the values are the PixelTable types.
+        min_pxt_insert_size: Minimum number of rows to accumulate before inserting into PixelTable. Default is 100.
+        batch_size: Batch size used when iterating over the data.
+        num_workers: Number of workers for the PyTorch DataLoader during iteration on data.
+        allow_existing: If False, an error will be raised when the table already exists. Default is True.
+        distribute: Whether to use distributed processing for clustering and table population. Not implemented yet. Default is False.
+        drop_table: Whether to drop the cluster table after creating the dataset with clustering results. It is only applied
+            when using `cluster_in_dataset`. Default is False.
+        max_batches: Optional maximum number of batches to process. Useful for testing on a small subset of the dataset.
+    """
+
     _MINIMAL_SCHEMA: dict[str, type] = {
         "idx": pxt.Required[pxt.Int],
         "idx_vector": pxt.Required[pxt.Int],
@@ -211,9 +253,9 @@ class GoldClusterizer:
             logger.info(f"No existing clustering table from {self.table_path}")
             old_cluster_table = None
 
-        # clustering table are expected to have a primary key allowing to idempotent updates
+        # clustering table is expected to have a primary key allowing to idempotent updates
         if old_cluster_table is not None:
-            check_pxt_table_has_primary_key(old_cluster_table, set(["idx_vector"]))
+            check_pxt_table_has_primary_key(old_cluster_table, {"idx_vector"})
 
         if not self.allow_existing and old_cluster_table is not None:
             raise ValueError(
@@ -413,6 +455,7 @@ class GoldClusterizer:
         Args:
             cluster_from: The source PyTorch Dataset.
             cluster_table: The clustering table to populate.
+            include_vectorized: Whether to include the vectorized data in the cluster table.
         """
         dataloader = DataLoader(
             cluster_from,
@@ -641,6 +684,9 @@ class GoldClusterizer:
             cluster_table: The table to store clustering results.
             n_clusters: Number of clusters.
             class_value: Optional class value to filter samples by class.
+
+        Raises:
+            ValueError: If an unexpected empty chunk is encountered during clustering.
         """
         cluster_col = get_expr_from_column_name(cluster_table, self.cluster_key)
         vectorized_col = get_expr_from_column_name(cluster_from, self.vectorized_key)
@@ -652,7 +698,21 @@ class GoldClusterizer:
         else:
             available_query = cluster_col == None  # noqa: E711
 
-        if self.chunk is None:
+        to_cluster = cluster_table.where(available_query)
+        to_cluster_vector_indices = [
+            row["idx_vector"]
+            for row in to_cluster.select(cluster_table.idx_vector).collect()
+        ]
+        available_for_clustering = len(to_cluster_vector_indices)
+        if available_for_clustering == 0:
+            logger.info(
+                f"No samples to cluster for class '{class_value}'."
+                if class_value is not None
+                else "No samples to cluster."
+            )
+            return
+
+        if self.chunk is None or self.chunk >= len(to_cluster_vector_indices):
             chunk_assignment = [
                 [
                     row["idx_vector"]
@@ -662,13 +722,7 @@ class GoldClusterizer:
                 ]
             ]
         else:
-            to_cluster = cluster_table.where(available_query)
-            to_cluster_vector_indices = [
-                row["idx_vector"]
-                for row in to_cluster.select(cluster_table.idx_vector).collect()
-            ]
-            available_for_clustering = len(to_cluster_vector_indices)
-            chunk_count = available_for_clustering // self.chunk
+            chunk_count = math.ceil(available_for_clustering / self.chunk)
             random_assignment = (
                 GoldRandomClusteringTool(random_state=self.random_state)
                 .fit(
@@ -693,6 +747,9 @@ class GoldClusterizer:
                 cluster_from.idx_vector.isin(chunk_indices)
             ).select(vectorized_col, cluster_from.idx_vector)
 
+            if to_cluster_from.count() == 0:
+                raise ValueError("Unexpected empty chunk for clustering.")
+
             to_cluster_for_chunk = [
                 (
                     torch.from_numpy(sample[self.vectorized_key]),
@@ -709,7 +766,7 @@ class GoldClusterizer:
 
             cluster_assignment = self.clustering_tool.fit(vectors, n_clusters)
 
-            # update table with selected indices
+            # update table with cluster information
             for cluster_idx in set(cluster_assignment.tolist()):
                 indices_in_cluster = indices[cluster_assignment == cluster_idx].tolist()
                 set_value_to_idx_rows(

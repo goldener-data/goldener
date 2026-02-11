@@ -28,7 +28,7 @@ logger = getLogger(__name__)
 
 
 class GoldDescriptor:
-    """Extract features from dataset samples using a pretrained model and store results in a PixelTable table.
+    """Extract features from dataset samples using a pretrained model.
 
     The GoldDescriptor processes a dataset or PixelTable table to extract features using a
     `GoldFeatureExtractor`. The computed features are stored in a local PixelTable table
