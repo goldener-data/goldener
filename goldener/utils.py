@@ -63,7 +63,7 @@ def get_ratio_list_sum(ratios: list[float]) -> float:
     return ratio_sum
 
 
-def get_ratios_for_counts(counts: Iterable[int]) -> list[float]:
+def get_ratios_for_counts(counts: list[int]) -> list[float]:
     """Get ratios for a list of counts.
 
     Args:
@@ -73,7 +73,34 @@ def get_ratios_for_counts(counts: Iterable[int]) -> list[float]:
         A list of float ratios corresponding to the input counts.
     """
     total = sum(counts)
-    return [count / total for count in counts]
+
+    first_ratios = [count / total for count in counts[:-1]]
+
+    return first_ratios + [
+        1.0 - sum(first_ratios)
+    ]  # ensure the last ratio is adjusted to sum to 1.0
+
+
+def split_sampling_among_chunks(to_split: int, chunk_sizes: list[int]) -> list[int]:
+    """Split a total sampling count among chunks based on their sizes.
+
+    Args:
+        to_split: The total number of samples to split among the chunks.
+        chunk_sizes: A list of integers representing the sizes of each chunk.
+
+    Returns:
+        A list of integers representing the number of samples to draw from each chunk, summing up to to_split.
+    """
+    total_size = sum(chunk_sizes)
+    if total_size == 0:
+        raise ValueError("Total size of chunks must be greater than 0.")
+
+    ratios = get_ratios_for_counts(chunk_sizes)
+    first_split_counts = [math.floor(ratio * to_split) for ratio in ratios[:-1]]
+
+    return first_split_counts + [
+        to_split - sum(first_split_counts)
+    ]  # ensure the last count is adjusted to sum to to_split
 
 
 def filter_batch_from_indices(
