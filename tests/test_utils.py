@@ -363,6 +363,12 @@ class TestSplitSamplingAmongChunks:
         result = split_sampling_among_chunks(10, [100])
         assert result == [10]
 
+    def test_too_small_single_chunk(self) -> None:
+        with pytest.raises(
+            ValueError, match="Split count .* cannot be greater than chunk size"
+        ):
+            split_sampling_among_chunks(10, [9])
+
     def test_proportional_split_two_chunks(self) -> None:
         to_split = 10
         chunk_sizes = [30, 70]

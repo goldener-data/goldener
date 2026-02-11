@@ -103,6 +103,10 @@ def split_sampling_among_chunks(to_split: int, chunk_sizes: list[int]) -> list[i
         raise ValueError("At least one chunk size is required to split the sampling")
 
     if len(chunk_sizes) == 1:
+        if to_split > chunk_sizes[0]:
+            raise ValueError(
+                f"Split count {to_split} cannot be greater than chunk size {chunk_sizes[0]}"
+            )
         return [to_split]
 
     total_size = sum(chunk_sizes)
