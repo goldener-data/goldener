@@ -67,7 +67,7 @@ def get_ratios_for_counts(counts: list[int]) -> list[float]:
     """Get ratios for a list of counts.
 
     Args:
-        counts: An list of integer counts.
+        counts: A list of integer counts.
 
     Returns:
         A list of float ratios corresponding to the input counts.
