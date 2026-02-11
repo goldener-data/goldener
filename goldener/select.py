@@ -37,6 +37,8 @@ logger = getLogger(__name__)
 
 
 class GoldSelectionTool(ABC):
+    """Run selection of a subset of data points from vectorized samples using a coresubset selection algorithm."""
+
     @abstractmethod
     def select(
         self,
@@ -100,6 +102,15 @@ class GoldGreedyKernelPoints(GoldSelectionTool):
 
 
 class GoldGreedyClosestPointSelection(GoldSelectionTool):
+    """Create a coresubset from selecting the closest points iteratively.
+
+    This is a greedy algorithm that selects iteratively the point with the closest nearest neighbors
+    among the not selected points.
+
+    Attributes:
+        device: The torch device to use for computations.
+    """
+
     def __init__(self, device: torch.device | str) -> None:
         self.device = device
 
@@ -151,10 +162,10 @@ class GoldGreedyClosestPointSelection(GoldSelectionTool):
 
 
 class GoldSelector:
-    """Select a subset of data points from vectorized samples and store results in a PixelTable table.
+    """Select a subset of data points from vectorized samples.
 
     The GoldSelector processes a dataset or PixelTable table to perform coresubset selection using a
-    kernel herding algorithm on already vectorized representations. The selection results are stored
+    selection algorithm on already vectorized representations. The selection results are stored
     in a local PixelTable table (specified by `table_path`) so that the selection process is idempotent:
     calling the same operation multiple times will not duplicate or recompute selections that are already
     present in the table.
@@ -416,7 +427,7 @@ class GoldSelector:
         Returns:
             The selection table with proper schema and initial rows.
         """
-        minimal_schema = self._MINIMAL_SCHEMA
+        minimal_schema = self._MINIMAL_SCHEMA.copy()
 
         if self.to_keep_schema is not None:
             minimal_schema |= self.to_keep_schema
@@ -512,7 +523,7 @@ class GoldSelector:
         Returns:
             The selection table with proper schema.
         """
-        minimal_schema = self._MINIMAL_SCHEMA
+        minimal_schema = self._MINIMAL_SCHEMA.copy()
         if self.to_keep_schema is not None:
             minimal_schema |= self.to_keep_schema
 
@@ -572,6 +583,7 @@ class GoldSelector:
         Args:
             select_from: The source PyTorch Dataset.
             selection_table: The selection table to populate.
+            include_vectorized: Whether to include the vectorized data in the selection table.
         """
         dataloader = DataLoader(
             select_from,
@@ -791,7 +803,7 @@ class GoldSelector:
     ) -> None:
         """Perform coresubset selection for a specific class or all data.
 
-        This private method implements chunked coresubset selection using kernel herding.
+        This private method implements chunked coresubset selection.
         It processes data in chunks to manage memory, applies optional dimensionality reduction,
         and updates the selection table with selected samples.
 
