@@ -311,7 +311,7 @@ class GoldClusterizer:
         Returns:
             The cluster table with proper schema and initial rows.
         """
-        minimal_schema = self._MINIMAL_SCHEMA
+        minimal_schema = self._MINIMAL_SCHEMA.copy()
 
         if self.to_keep_schema is not None:
             minimal_schema |= self.to_keep_schema
@@ -401,7 +401,7 @@ class GoldClusterizer:
         Returns:
             The clustering table with proper schema.
         """
-        minimal_schema = self._MINIMAL_SCHEMA
+        minimal_schema = self._MINIMAL_SCHEMA.copy()
         if self.to_keep_schema is not None:
             minimal_schema |= self.to_keep_schema
 

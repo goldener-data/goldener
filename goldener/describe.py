@@ -394,7 +394,7 @@ class GoldDescriptor:
     def _get_description_valid_table(
         self, old_description_table: Table | None
     ) -> Table:
-        minimal_schema = self._MINIMAL_SCHEMA
+        minimal_schema = self._MINIMAL_SCHEMA.copy()
         if self.vectorizer is not None:
             minimal_schema["idx_vector"] = pxt.Required[pxt.Int]
         if self.to_keep_schema is not None:
