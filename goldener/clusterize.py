@@ -747,7 +747,7 @@ class GoldClusterizer:
             random_assignment = (
                 GoldRandomClusteringTool(random_state=self.random_state)
                 .fit(
-                    torch.randn(
+                    torch.empty(
                         available_for_clustering, 1
                     ),  # dummy input for random clustering
                     chunk_count,

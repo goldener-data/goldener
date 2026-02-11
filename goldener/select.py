@@ -884,7 +884,7 @@ class GoldSelector:
                 random_assignment = (
                     GoldRandomClusteringTool(random_state=self.random_state)
                     .fit(
-                        torch.randn(
+                        torch.empty(
                             available_for_selection, 1
                         ),  # dummy input for random clustering
                         chunk_count,
@@ -920,7 +920,9 @@ class GoldSelector:
                     for row in selection_table.where(
                         (selection_table.idx_vector.isin(chunk_indices))
                         & (selection_col == None)  # noqa: E711
-                    ).collect()
+                    )
+                    .select(selection_table.idx_vector)
+                    .collect()
                 ]
                 if len(chunk_indices_not_selected) == 0:
                     continue
