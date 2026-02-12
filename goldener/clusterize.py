@@ -19,6 +19,7 @@ from goldener.pxt_utils import (
     get_valid_table,
     make_batch_ready_for_table,
     check_pxt_table_has_primary_key,
+    get_sample_row_from_idx,
 )
 from goldener.reduce import GoldReducer
 from goldener.torch_utils import get_dataset_sample_dict
@@ -118,6 +119,8 @@ class GoldClusterizer:
             dictionaries with at least the key specified by `vectorized_key` returning a PyTorch Tensor.
             If None, the dataset is expected to directly provide such batches.
         vectorized_key: Key in the batch dictionary that contains the vectorized data for the clustering. Default is "vectorized".
+        keep_vectorized_in_table: Whether to keep the vectorized data in the cluster table.
+        If False, the vectorized data will not be stored in the cluster table.
         cluster_key: Column name to store the clustering value in the PixelTable table. Default is "cluster".
         class_key: Optional key for class-based stratified clustering.
         to_keep_schema: Optional dictionary defining additional columns to keep from the original dataset/table
@@ -146,6 +149,7 @@ class GoldClusterizer:
         chunk: int | None = None,
         collate_fn: Callable | None = None,
         vectorized_key: str = "vectorized",
+        include_vectorized_in_table: bool = False,
         cluster_key: str = "cluster",
         class_key: str | None = None,
         to_keep_schema: dict[str, type] | None = None,
@@ -169,6 +173,8 @@ class GoldClusterizer:
                 dictionaries with at least the key specified by `vectorized_key` returning a PyTorch Tensor.
                 If None, the dataset is expected to directly provide such batches.
             vectorized_key: Key in the batch dictionary that contains the vectorized data for the clustering. Default is "vectorized".
+            include_vectorized_in_table: Whether to keep the vectorized data in the cluster table.
+            If False, the vectorized data will not be stored in the cluster table.
             cluster_key: Column name to store the clustering value in the PixelTable table. Default is "cluster".
             class_key: Optional key for class-based stratified clustering.
             to_keep_schema: Optional dictionary defining additional columns to keep from the original dataset/table
@@ -191,6 +197,7 @@ class GoldClusterizer:
         self.chunk = chunk
         self.collate_fn = collate_fn
         self.vectorized_key = vectorized_key
+        self.include_vectorized_in_table = include_vectorized_in_table
         self.cluster_key = cluster_key
         self.class_key = class_key
         self.to_keep_schema = to_keep_schema
@@ -362,6 +369,26 @@ class GoldClusterizer:
         if self.cluster_key not in cluster_table.columns():
             cluster_table.add_column(if_exists="error", **{self.cluster_key: pxt.Int})
 
+        if (
+            self.include_vectorized_in_table
+            and self.vectorized_key not in cluster_table.columns()
+        ):
+            sample = get_sample_row_from_idx(
+                cluster_from,
+                idx_key="idx_vector",
+                collate_fn=self.collate_fn,
+                expected_keys=[self.vectorized_key],
+            )
+
+            vectorized_value = sample[self.vectorized_key]
+            cluster_table.add_column(
+                **{
+                    self.vectorized_key: pxt.Array[  # type: ignore[misc]
+                        vectorized_value.shape, pxt.Float
+                    ]
+                }
+            )
+
         if cluster_table.count() > 0:
             to_cluster_indices = set(
                 [
@@ -407,7 +434,7 @@ class GoldClusterizer:
                 keep_cache=False,
             ),
             cluster_table=cluster_table,
-            include_vectorized=False,
+            include_vectorized=self.include_vectorized_in_table,
         )
 
         return cluster_table

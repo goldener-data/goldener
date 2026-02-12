@@ -293,6 +293,7 @@ def get_column_distinct_ratios(table: Table, class_expr: Expr) -> dict[str, floa
 def get_sample_row_from_idx(
     table: Table,
     idx: int = 0,
+    idx_key: str = "idx",
     collate_fn: Callable | None = None,
     expected_keys: list[str] | None = None,
 ) -> dict[str, Any]:
@@ -307,7 +308,8 @@ def get_sample_row_from_idx(
     Returns:
         A dictionary representing a sample row from the table.
     """
-    sample_list = list(table.where(table.idx == idx).collect())
+    idx_col = get_expr_from_column_name(table, idx_key)
+    sample_list = list(table.where(idx_col == idx).collect())
 
     if not sample_list:
         raise ValueError(f"No sample found at the index {idx}.")

@@ -8,17 +8,20 @@ import torch
 from pixeltable.catalog import Table
 from torch.utils.data import Dataset, DataLoader
 
+from goldener.clusterize import GoldClusterizer
 from goldener.describe import GoldDescriptor
 from goldener.pxt_utils import (
     get_expr_from_column_name,
     set_value_to_idx_rows,
     GoldPxtTorchDataset,
+    pxt_torch_dataset_collate_fn,
 )
 from goldener.select import GoldSelector
 from goldener.utils import (
     check_sampling_size,
     check_all_same_type,
     get_sampling_count_from_size,
+    split_sampling_among_chunks,
 )
 from goldener.vectorize import GoldVectorizer
 
@@ -80,7 +83,7 @@ class GoldSplitter:
     """Split a dataset into multiple sets based on features.
 
     The GoldSplitter leverages a GoldDescriptor to extract features from the dataset,
-    a GoldVectorizer to vectorize these features, and a GoldSelector to select samples
+    a GoldVectorizer to vectorize these features, a GoldClusterizer to cluster them and a GoldSelector to select samples
     for each set based on specified ratios.
 
     The splitting can operate in a sequential (single-process) mode or a
@@ -99,6 +102,7 @@ class GoldSplitter:
         to match the descriptor's output column.
         descriptor: Optional GoldDescriptor used to describe the dataset.
         vectorizer: Optional GoldVectorizer used to vectorize the described dataset.
+        clusterizer: Optional GoldClusterizer used to clusterize the described dataset.
         in_described_table: Whether to return the splitting in the described table or the selected table.
         allow_existing: Whether to allow existing tables in all components.
         drop_table: Whether to drop intermediate tables. Defaults to False.
@@ -111,6 +115,8 @@ class GoldSplitter:
         selector: GoldSelector,
         descriptor: GoldDescriptor | None = None,
         vectorizer: GoldVectorizer | None = None,
+        clusterizer: GoldClusterizer | None = None,
+        n_clusters: int = 0,
         in_described_table: bool = False,
         allow_existing: bool = True,
         drop_table: bool = False,
@@ -120,13 +126,16 @@ class GoldSplitter:
 
         Args:
             sets: List of GoldSet configurations defining the splits.
-            selector: GoldSelector for selecting samples for each set.
-            descriptor: Optional GoldDescriptor for extracting features from the dataset.
-            vectorizer: Optional GoldVectorizer for vectorizing described features.
-            in_described_table: Whether to return splits in the described table. Defaults to False.
-            allow_existing: Whether to allow existing tables. Defaults to True.
+            selector: GoldSelector used to select samples for each set. The collate_fn of the selector
+            will be set to `pxt_torch_dataset_collate_fn`, and the select_key will be forced to "features"
+            to match the descriptor's output column.
+            descriptor: Optional GoldDescriptor used to describe the dataset.
+            vectorizer: Optional GoldVectorizer used to vectorize the described dataset.
+            clusterizer: Optional GoldClusterizer used to clusterize the described dataset.
+            in_described_table: Whether to return the splitting in the described table or the selected table.
+            allow_existing: Whether to allow existing tables in all components.
             drop_table: Whether to drop intermediate tables. Defaults to False.
-            max_batches: Optional maximum number of batches to process.
+            max_batches: Optional maximum number of batches to process in both descriptor and selector. Useful for testing on a small subset of the dataset.
         """
         if descriptor is None and in_described_table:
             raise ValueError(
@@ -158,9 +167,31 @@ class GoldSplitter:
                 f"selector's vectorized_key '{selector.vectorized_key}'. They must be the same."
             )
 
+        if clusterizer is not None:
+            if n_clusters <= 1:
+                logger.info(
+                    f"Clusterizer is provided but n_clusters is set to {n_clusters}. "
+                    f"Clusterizer will not be effective. Please set n_clusters to a value greater than 1 to enable clustering."
+                )
+
+            if clusterizer.vectorized_key != selector.vectorized_key:
+                raise ValueError(
+                    f"Clusterizer vectorized_key '{clusterizer.vectorized_key}' does not match "
+                    f"selector's vectorized_key '{selector.vectorized_key}'. They must be the same."
+                )
+
+            clusterizer.include_vectorized_in_table = True
+            logger.info(
+                "Clusterizer's include_vectorized_in_table is set to True to keep the "
+                "vectorized features in the table for the selection step. "
+                "This is necessary to perform cluster-wise selection. "
+            )
+
         self.sets = sets
         self.descriptor = descriptor
         self.vectorizer = vectorizer
+        self.clusterizer = clusterizer
+        self.n_clusters = n_clusters
         self.selector = selector
         self.in_described_table = in_described_table
         self.drop_table = drop_table
@@ -367,6 +398,12 @@ class GoldSplitter:
             else description
         )
 
+        clusterized = (
+            self.clusterizer.cluster_in_table(vectorized, self.n_clusters)
+            if self.clusterizer is not None and self.n_clusters > 1
+            else None
+        )
+
         if isinstance(vectorized, Table):
             sample_count = vectorized.select(vectorized.idx).distinct().count()
         elif hasattr(vectorized, "__len__"):
@@ -386,9 +423,15 @@ class GoldSplitter:
                 sampling_size=gold_set.size, total_size=sample_count
             )
             if idx_set < len(self._sets) - 1:
-                selected_table = self.selector.select_in_table(
-                    vectorized, set_count, value=gold_set.name
-                )
+                if clusterized is not None:
+                    selected_table = self._clusterized_selection(
+                        clusterized, set_count, gold_set
+                    )
+                else:
+                    selected_table = self.selector.select_in_table(
+                        vectorized, set_count, value=gold_set.name
+                    )
+
                 if sample_count is None:
                     sample_count = (
                         selected_table.select(selected_table.idx).distinct().count()
@@ -453,6 +496,88 @@ class GoldSplitter:
 
         return split_table
 
+    def _clusterized_selection(
+        self,
+        clusterized: Table,
+        set_count: int,
+        gold_set: GoldSet,
+    ) -> Table:
+        assert self.clusterizer is not None
+        selection_collate_fn = self.selector.collate_fn
+        logger.info(
+            "Clusterized selection is enabled. Temporarily setting selector's collate_fn "
+            "to pxt_torch_dataset_collate_fn to process cluster-wise selection. "
+            "It will be reset to the original collate_fn after the cluster-wise selection is done."
+        )
+        self.selector.collate_fn = pxt_torch_dataset_collate_fn
+
+        cluster_col = get_expr_from_column_name(
+            clusterized, self.clusterizer.cluster_key
+        )
+        cluster_pxt_queries = [
+            clusterized.where(cluster_col == cluster_idx)
+            for cluster_idx in range(self.n_clusters)
+        ]
+        cluster_sizes = [
+            cluster_query.select(clusterized.idx).distinct().count()
+            for cluster_query in cluster_pxt_queries
+        ]
+        cluster_idx_lists = [
+            [
+                row["idx_vector"]
+                for row in cluster_query.select(clusterized.idx_vector)
+                .distinct()
+                .collect()
+            ]
+            for cluster_query in cluster_pxt_queries
+        ]
+        cluster_counts = split_sampling_among_chunks(set_count, cluster_sizes)
+
+        cluster_select_infos = [
+            (
+                GoldPxtTorchDataset(
+                    clusterized.where(clusterized.idx_vector.isin(cluster_indices))
+                ),
+                cluster_count,
+                cluster_indices,
+            )
+            for cluster_query, cluster_count, cluster_indices in zip(
+                cluster_pxt_queries, cluster_counts, cluster_idx_lists
+            )
+        ]
+
+        selected_indices = set()
+        for cluster_idx, (
+            select_from,
+            cluster_select_count,
+            cluster_indices,
+        ) in enumerate(cluster_select_infos):
+            cluster_set_name = f"{gold_set.name}_{cluster_idx}"
+            selected_table = self.selector.select_in_table(
+                select_from, cluster_select_count, value=cluster_set_name
+            )
+            selected_indices.update(
+                self.selector.get_selected_sample_indices(
+                    selected_table,
+                    selection_key=self.selector.selection_key,
+                    value=cluster_set_name,
+                )
+            )
+
+        set_value_to_idx_rows(
+            table=selected_table,
+            col_expr=get_expr_from_column_name(
+                selected_table, self.selector.selection_key
+            ),
+            idx_expr=selected_table.idx,
+            indices=selected_indices,
+            value=gold_set.name,
+        )
+
+        self.selector.collate_fn = selection_collate_fn
+
+        return selected_table
+
     def _drop_tables(self, drop_all: bool = True) -> None:
         """Drop all intermediate tables created during the splitting process.
 
@@ -466,6 +591,11 @@ class GoldSplitter:
                 self.selector.table_path,
                 *([self.descriptor.table_path] if self.descriptor is not None else []),
                 *([self.vectorizer.table_path] if self.vectorizer is not None else []),
+                *(
+                    [self.clusterizer.table_path]
+                    if self.clusterizer is not None
+                    else []
+                ),
             ]
 
             to_not_drop = (

@@ -5,6 +5,7 @@ import torch
 import pixeltable as pxt
 from torch.utils.data import Dataset
 
+from goldener.clusterize import GoldClusterizer, GoldRandomClusteringTool
 from goldener.describe import GoldDescriptor
 from goldener.extract import TorchGoldFeatureExtractorConfig, TorchGoldFeatureExtractor
 from goldener.pxt_utils import pxt_torch_dataset_collate_fn
@@ -802,6 +803,60 @@ class TestGoldSplitter:
                 vectorizer=vectorizer,
                 in_described_table=False,
             )
+
+        pxt.drop_dir("unit_test", if_not_exists="ignore", force=True)
+
+    def test_split_with_clusterizer(self, descriptor, vectorizer, selector):
+        pxt.drop_dir("unit_test", force=True)
+
+        # Build a simple vectorized table first, then let the splitter handle clustering
+        sets = [GoldSet(name="train", size=0.5), GoldSet(name="val", size=0.5)]
+
+        clusterizer = GoldClusterizer(
+            table_path="unit_test.clusterizer_split",
+            clustering_tool=GoldRandomClusteringTool(random_state=0),
+            class_key="label",
+            allow_existing=False,
+        )
+
+        splitter = GoldSplitter(
+            sets=sets,
+            descriptor=descriptor,
+            selector=selector,
+            vectorizer=vectorizer,
+            clusterizer=clusterizer,
+            n_clusters=2,
+        )
+
+        split_table = splitter.split_in_table(
+            to_split=DummyDataset(
+                [
+                    {"data": torch.rand(3, 8, 8), "idx": idx, "label": "dummy"}
+                    for idx in range(10)
+                ]
+            )
+        )
+
+        splitted = splitter.get_split_indices(
+            split_table,
+            selection_key=splitter.selector.selection_key,
+            idx_key="idx",
+        )
+
+        assert set(splitted.keys()) == {"train", "val"}
+        assert len(splitted["train"]) + len(splitted["val"]) == 10
+
+        # Check that the clusterizer table was created and has clusters assigned
+        cluster_table = pxt.get_table(clusterizer.table_path)
+        assert cluster_table.count() > 0
+        distinct_clusters = [
+            row[clusterizer.cluster_key]
+            for row in cluster_table.select(cluster_table[clusterizer.cluster_key])
+            .distinct()
+            .collect()
+        ]
+        # Since we requested 2 clusters, resulting cluster ids should be a subset of {0,1}
+        assert set(distinct_clusters).issubset({0, 1})
 
         pxt.drop_dir("unit_test", if_not_exists="ignore", force=True)
 

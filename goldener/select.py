@@ -190,6 +190,7 @@ class GoldSelector:
             dictionaries with at least the key specified by `vectorized_key` returning a PyTorch Tensor.
             If None, the dataset is expected to directly provide such batches.
         vectorized_key: Key in the batch dictionary that contains the vectorized data for selection. Default is "vectorized".
+        include_vectorized_in_table: Whether to include the vectorized data in the selection table. Defaults to False.
         selection_key: Column name to store the selection value in the PixelTable table. Default is "selected".
         class_key: Optional key for class-based stratified selection.
         to_keep_schema: Optional dictionary defining additional columns to keep from the original dataset/table
@@ -220,6 +221,7 @@ class GoldSelector:
         chunk: int | None = None,
         collate_fn: Callable | None = None,
         vectorized_key: str = "vectorized",
+        include_vectorized_in_table: bool = False,
         selection_key: str = "selected",
         class_key: str | None = None,
         to_keep_schema: dict[str, type] | None = None,
@@ -241,6 +243,7 @@ class GoldSelector:
             chunk: Optional chunk size for processing data in chunks.
             collate_fn: Optional collate function for the DataLoader.
             vectorized_key: Key pointing to the vector for selection. Defaults to "vectorized".
+            include_vectorized_in_table: Whether to include the vectorized data in the selection table. Defaults to False.
             selection_key: Key for storing selection values. Defaults to "selected".
             class_key: Optional key for class stratification.
             to_keep_schema: Optional schema for additional columns to preserve.
@@ -259,6 +262,7 @@ class GoldSelector:
         self.chunk = chunk
         self.collate_fn = collate_fn
         self.vectorized_key = vectorized_key
+        self.include_vectorized_in_table = include_vectorized_in_table
         self.selection_key = selection_key
         self.class_key = class_key
         self.to_keep_schema = to_keep_schema
@@ -505,7 +509,7 @@ class GoldSelector:
                 keep_cache=False,
             ),
             selection_table=selection_table,
-            include_vectorized=False,
+            include_vectorized=self.include_vectorized_in_table,
         )
 
         return selection_table
@@ -547,7 +551,9 @@ class GoldSelector:
                 expected=[self.vectorized_key],
             )
 
-            vectorized_value = sample[self.vectorized_key].detach().cpu().numpy()
+            vectorized_value = (
+                sample[self.vectorized_key].squeeze(0).detach().cpu().numpy()
+            )
             selection_table.add_column(
                 **{
                     self.vectorized_key: pxt.Array[  # type: ignore[misc]
