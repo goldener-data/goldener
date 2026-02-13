@@ -118,15 +118,9 @@ class GoldSKLearnClusteringTool(GoldClusteringTool):
 
         Returns: The cluster assignments for each input vector as a 1D tensor of cluster indices.
         """
-        init_n_clusters = self.tool.n_clusters
-
-        try:
-            self.tool.n_clusters = n_clusters
-            x_np = x.detach().cpu().numpy()
-            labels = self.tool.fit(x_np).labels_
-        finally:
-            self.tool.n_clusters = init_n_clusters
-
+        self.tool.n_clusters = n_clusters
+        x_np = x.detach().cpu().numpy()
+        labels = self.tool.fit(x_np).labels_
         return torch.from_numpy(labels)
 
     def predict(self, x: torch.Tensor) -> torch.Tensor:
