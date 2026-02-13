@@ -472,13 +472,7 @@ class GoldSelector:
                 select_from,
                 idx_key="idx_vector",
                 # make sure to take an existing vector
-                idx=[
-                    row["idx_vector"]
-                    for row in select_from.select(select_from.idx_vector)
-                    .distinct()
-                    .sample()
-                    .collect()
-                ][0],
+                idx=[row["idx_vector"] for row in select_from.sample(1).collect()][0],
                 collate_fn=self.collate_fn,
                 expected_keys=[self.vectorized_key],
             )
