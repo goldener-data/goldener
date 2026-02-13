@@ -371,11 +371,18 @@ class GoldClusterizer:
             self.include_vectorized_in_table
             and self.vectorized_key not in cluster_table_cols
         ):
+            idx_vectors = [
+                row["idx_vector"] for row in cluster_from.sample(1).collect()
+            ]
+            if not idx_vectors:
+                raise ValueError(
+                    f"Source table at {self.table_path} is empty, cannot sample vectorized data for schema inference."
+                )
             sample = get_sample_row_from_idx(
                 cluster_from,
                 idx_key="idx_vector",
                 # make sure to take an existing vector
-                idx=[row["idx_vector"] for row in cluster_from.sample(1).collect()][0],
+                idx=idx_vectors[0],
                 collate_fn=self.collate_fn,
                 expected_keys=[self.vectorized_key],
             )

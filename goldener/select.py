@@ -246,7 +246,7 @@ class GoldSelector:
             collate_fn: Optional collate function for the DataLoader.
             vectorized_key: Key pointing to the vector for selection. Defaults to "vectorized".
             include_vectorized_in_table: Whether to include the vectorized data in the selection table. Defaults to False.
-             It is only applied if the cluster table is created from a Table (it is forced anyway for Dataset).
+                It is only applied if the selection table is created from a Table (it is forced anyway for Dataset).
             selection_key: Key for storing selection values. Defaults to "selected".
             class_key: Optional key for class stratification.
             to_keep_schema: Optional schema for additional columns to preserve.
@@ -468,11 +468,16 @@ class GoldSelector:
             self.include_vectorized_in_table
             and self.vectorized_key not in selection_table_cols
         ):
+            idx_vectors = [row["idx_vector"] for row in select_from.sample(1).collect()]
+            if not idx_vectors:
+                raise ValueError(
+                    f"Source table at {self.table_path} is empty, cannot sample vectorized data for schema inference."
+                )
             sample = get_sample_row_from_idx(
                 select_from,
                 idx_key="idx_vector",
                 # make sure to take an existing vector
-                idx=[row["idx_vector"] for row in select_from.sample(1).collect()][0],
+                idx=idx_vectors[0],
                 collate_fn=self.collate_fn,
                 expected_keys=[self.vectorized_key],
             )

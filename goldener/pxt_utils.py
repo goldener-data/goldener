@@ -302,6 +302,7 @@ def get_sample_row_from_idx(
     Args:
         table: The PixelTable table.
         idx: The index of the row to retrieve.
+        idx_key: The name of the column representing the index in the table.
         collate_fn: An optional collate function to apply to the sample.
         expected_keys: An optional list of expected keys in the sample.
 

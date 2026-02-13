@@ -101,6 +101,7 @@ class GoldSplitter:
         descriptor: Optional GoldDescriptor used to describe the dataset.
         vectorizer: Optional GoldVectorizer used to vectorize the described dataset.
         clusterizer: Optional GoldClusterizer used to clusterize the described dataset.
+        n_clusters: Number of clusters to use for clusterized selection (if clusterizer is provided).
         in_described_table: Whether to return the splitting in the described table or the selected table.
         allow_existing: Whether to allow existing tables in all components.
         drop_table: Whether to drop intermediate tables. Defaults to False.
@@ -124,12 +125,11 @@ class GoldSplitter:
 
         Args:
             sets: List of GoldSet configurations defining the splits.
-            selector: GoldSelector used to select samples for each set. The collate_fn of the selector
-            will be set to `pxt_torch_dataset_collate_fn`, and the select_key will be forced to "features"
-            to match the descriptor's output column.
+            selector: GoldSelector used to select samples for each set.
             descriptor: Optional GoldDescriptor used to describe the dataset.
             vectorizer: Optional GoldVectorizer used to vectorize the described dataset.
             clusterizer: Optional GoldClusterizer used to clusterize the described dataset.
+            n_clusters: Number of clusters to use for clusterized selection (if clusterizer is provided).
             in_described_table: Whether to return the splitting in the described table or the selected table.
             allow_existing: Whether to allow existing tables in all components.
             drop_table: Whether to drop intermediate tables. Defaults to False.
@@ -535,7 +535,7 @@ class GoldSplitter:
             still_to_select_count = set_count
 
             # run selection for each cluster and gather the selected indices
-            # the selected table will be filled incrementally as  process each cluster
+            # the selected table will be filled incrementally
             already_selected: set[int] = set()
             selected_table = None  # ensure it exists in the scope after the loop, even if no cluster is selected
             for cluster_idx in range(self.n_clusters):
