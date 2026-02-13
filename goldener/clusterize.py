@@ -366,12 +366,13 @@ class GoldClusterizer:
                 f"the required column {self.vectorized_key}."
             )
 
-        if self.cluster_key not in cluster_table.columns():
+        cluster_table_cols = cluster_table.columns()
+        if self.cluster_key not in cluster_table_cols:
             cluster_table.add_column(if_exists="error", **{self.cluster_key: pxt.Int})
 
         if (
             self.include_vectorized_in_table
-            and self.vectorized_key not in cluster_table.columns()
+            and self.vectorized_key not in cluster_table_cols
         ):
             sample = get_sample_row_from_idx(
                 cluster_from,
@@ -468,8 +469,8 @@ class GoldClusterizer:
             minimal_schema=minimal_schema,
             primary_key="idx_vector",
         )
-
-        if self.vectorized_key not in cluster_table.columns():
+        cluster_table_cols = cluster_table.columns()
+        if self.vectorized_key not in cluster_table_cols:
             sample = get_dataset_sample_dict(
                 cluster_from,
                 collate_fn=self.collate_fn,
@@ -485,7 +486,7 @@ class GoldClusterizer:
                 }
             )
 
-        if self.cluster_key not in cluster_table.columns():
+        if self.cluster_key not in cluster_table_cols:
             cluster_table.add_column(if_exists="error", **{self.cluster_key: pxt.Int})
 
         self._add_rows_to_cluster_table_from_dataset(

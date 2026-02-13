@@ -565,8 +565,8 @@ class GoldSelector:
             minimal_schema=minimal_schema,
             primary_key="idx_vector",
         )
-
-        if self.vectorized_key not in selection_table.columns():
+        selection_table_cols = selection_table.columns()
+        if self.vectorized_key not in selection_table_cols:
             sample = get_dataset_sample_dict(
                 select_from,
                 collate_fn=self.collate_fn,
@@ -584,7 +584,7 @@ class GoldSelector:
                 }
             )
 
-        if self.selection_key not in selection_table.columns():
+        if self.selection_key not in selection_table_cols:
             selection_table.add_column(
                 if_exists="error", **{self.selection_key: pxt.String}
             )
