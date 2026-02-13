@@ -526,7 +526,7 @@ class GoldSplitter:
             cluster_col = get_expr_from_column_name(
                 clusterized, self.clusterizer.cluster_key
             )
-            if clusterized.where(cluster_col != None).count():  # noqa: E711
+            if clusterized.where(cluster_col == None).count():  # noqa: E711
                 raise ValueError(
                     f"Clusterizer output column '{self.clusterizer.cluster_key}' contains null values."
                 )
