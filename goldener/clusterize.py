@@ -97,10 +97,20 @@ class GoldSKLearnClusteringTool(GoldClusteringTool):
     """Chunk data randomly into clusters of almost equal size."""
 
     def __init__(self, tool: ClusterMixin) -> None:
+        if not hasattr(tool, "predict"):
+            raise ValueError(
+                f"The clustering tool {tool} must provide a predict method."
+            )
+
+        if not hasattr(tool, "n_clusters"):
+            raise NotImplementedError(
+                f"The clustering tool {tool} must allow specifying `n_clusters`."
+            )
+
         self.tool = tool
 
     def fit(self, x: torch.Tensor, n_clusters: int) -> torch.Tensor:
-        """Randomly assign each input vector to clusters of roughly the same size.
+        """Fit the scikit-learn clustering tool on the input vectors and return cluster assignments.
 
         Args:
             x: Input vectors to select from.
@@ -108,12 +118,26 @@ class GoldSKLearnClusteringTool(GoldClusteringTool):
 
         Returns: The cluster assignments for each input vector as a 1D tensor of cluster indices.
         """
-        self.tool.n_clusters = n_clusters
-        x_np = x.detach().cpu().numpy()
+        init_n_clusters = self.tool.n_clusters
 
-        return torch.from_numpy(self.tool.fit(x_np).labels_)
+        try:
+            self.tool.n_clusters = n_clusters
+            x_np = x.detach().cpu().numpy()
+            labels = self.tool.fit(x_np).labels_
+        finally:
+            self.tool.n_clusters = init_n_clusters
+
+        return torch.from_numpy(labels)
 
     def predict(self, x: torch.Tensor) -> torch.Tensor:
+        """Assign the input vectors to clusters using the fitted scikit-learn clustering tool.
+
+        Args:
+            x: Input vectors to assign to clusters.
+
+        Returns:
+            A 1D tensor of cluster indices predicted for each input vector.
+        """
         x_np = x.detach().cpu().numpy()
         return torch.from_numpy(self.tool.predict(x_np))
 

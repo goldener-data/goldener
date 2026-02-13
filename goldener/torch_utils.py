@@ -49,7 +49,7 @@ def torch_tensor_to_numpy_vectors(x: torch.Tensor) -> np.ndarray:
         A 2D numpy array of shape (N, M)
     """
     x = make_2d_tensor(x)
-    return x.cpu().numpy()
+    return x.detach().cpu().numpy()
 
 
 def numpy_vectors_to_torch_tensor(

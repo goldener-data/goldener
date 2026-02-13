@@ -56,6 +56,24 @@ class TestGoldRandomClusteringTool:
 
 
 class TestGoldSKLearnClusteringTool:
+    def test_init_raises_when_tool_has_no_predict(self):
+        class NoPredict:
+            def __init__(self) -> None:
+                self.n_clusters = 2
+
+        with pytest.raises(ValueError, match="must provide a predict method"):
+            GoldSKLearnClusteringTool(NoPredict())
+
+    def test_init_raises_when_tool_has_no_n_clusters(self):
+        class NoNClusters:
+            def predict(self, x):
+                return x
+
+        with pytest.raises(
+            NotImplementedError, match="must allow specifying `n_clusters`"
+        ):
+            GoldSKLearnClusteringTool(NoNClusters())
+
     def test_fit_returns_tensor_with_expected_shape_and_labels(self):
         from sklearn.cluster import KMeans
 
