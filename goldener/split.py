@@ -526,6 +526,10 @@ class GoldSplitter:
             cluster_col = get_expr_from_column_name(
                 clusterized, self.clusterizer.cluster_key
             )
+            if clusterized.where(cluster_col != None).count():  # noqa: E711
+                raise ValueError(
+                    f"Clusterizer output column '{self.clusterizer.cluster_key}' contains null values."
+                )
 
             available_count = clusterized.select(clusterized.idx).distinct().count()
             still_to_select_count = set_count
@@ -533,6 +537,7 @@ class GoldSplitter:
             # run selection for each cluster and gather the selected indices
             # the selected table will be filled incrementally as  process each cluster
             already_selected: set[int] = set()
+            selected_table = None  # ensure it exists in the scope after the loop, even if no cluster is selected
             for cluster_idx in range(self.n_clusters):
                 # define the number of sample to select for the cluster
                 # previous clusters will have reduced the available count for the next clusters,
@@ -578,9 +583,15 @@ class GoldSplitter:
                 selected_count = len(already_selected)
                 still_to_select_count -= selected_count
                 available_count -= selected_count
+
         finally:
             # restore the original collate_fn of the selector after cluster-wise selection is done
             self.selector.collate_fn = selection_collate_fn
+
+        if selected_table is None:
+            raise RuntimeError(
+                f"no selection table was created during clusterized selection for set '{gold_set.name}'."
+            )
 
         return selected_table
 

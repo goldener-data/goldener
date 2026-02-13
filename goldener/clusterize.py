@@ -119,8 +119,8 @@ class GoldClusterizer:
             dictionaries with at least the key specified by `vectorized_key` returning a PyTorch Tensor.
             If None, the dataset is expected to directly provide such batches.
         vectorized_key: Key in the batch dictionary that contains the vectorized data for the clustering. Default is "vectorized".
-        keep_vectorized_in_table: Whether to keep the vectorized data in the cluster table.
-        If False, the vectorized data will not be stored in the cluster table.
+        include_vectorized_in_table: Whether to keep the vectorized data in the cluster table.
+            It is only applied if the cluster table is created from a Table (it is forced anyway for Dataset). Default is False.
         cluster_key: Column name to store the clustering value in the PixelTable table. Default is "cluster".
         class_key: Optional key for class-based stratified clustering.
         to_keep_schema: Optional dictionary defining additional columns to keep from the original dataset/table
@@ -173,8 +173,8 @@ class GoldClusterizer:
                 dictionaries with at least the key specified by `vectorized_key` returning a PyTorch Tensor.
                 If None, the dataset is expected to directly provide such batches.
             vectorized_key: Key in the batch dictionary that contains the vectorized data for the clustering. Default is "vectorized".
-            include_vectorized_in_table: Whether to keep the vectorized data in the cluster table.
-            If False, the vectorized data will not be stored in the cluster table.
+            include_vectorized_in_table: Whether to keep the vectorized data in the cluster table. Defaults to False.
+                    It is only applied if the cluster table is created from a Table (it is forced anyway for Dataset).
             cluster_key: Column name to store the clustering value in the PixelTable table. Default is "cluster".
             class_key: Optional key for class-based stratified clustering.
             to_keep_schema: Optional dictionary defining additional columns to keep from the original dataset/table
@@ -374,6 +374,14 @@ class GoldClusterizer:
             sample = get_sample_row_from_idx(
                 cluster_from,
                 idx_key="idx_vector",
+                # make sure to take an existing vector
+                idx=[
+                    row["idx_vector"]
+                    for row in cluster_from.select(cluster_from.idx_vector)
+                    .distinct()
+                    .sample()
+                    .collect()
+                ][0],
                 collate_fn=self.collate_fn,
                 expected_keys=[self.vectorized_key],
             )

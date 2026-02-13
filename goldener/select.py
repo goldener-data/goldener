@@ -192,6 +192,7 @@ class GoldSelector:
             If None, the dataset is expected to directly provide such batches.
         vectorized_key: Key in the batch dictionary that contains the vectorized data for selection. Default is "vectorized".
         include_vectorized_in_table: Whether to include the vectorized data in the selection table. Defaults to False.
+        It is only applied if the cluster table is created from a Table (it is forced anyway for Dataset).
         selection_key: Column name to store the selection value in the PixelTable table. Default is "selected".
         class_key: Optional key for class-based stratified selection.
         to_keep_schema: Optional dictionary defining additional columns to keep from the original dataset/table
@@ -245,6 +246,7 @@ class GoldSelector:
             collate_fn: Optional collate function for the DataLoader.
             vectorized_key: Key pointing to the vector for selection. Defaults to "vectorized".
             include_vectorized_in_table: Whether to include the vectorized data in the selection table. Defaults to False.
+             It is only applied if the cluster table is created from a Table (it is forced anyway for Dataset).
             selection_key: Key for storing selection values. Defaults to "selected".
             class_key: Optional key for class stratification.
             to_keep_schema: Optional schema for additional columns to preserve.
@@ -469,6 +471,14 @@ class GoldSelector:
             sample = get_sample_row_from_idx(
                 select_from,
                 idx_key="idx_vector",
+                # make sure to take an existing vector
+                idx=[
+                    row["idx_vector"]
+                    for row in select_from.select(select_from.idx_vector)
+                    .distinct()
+                    .sample()
+                    .collect()
+                ][0],
                 collate_fn=self.collate_fn,
                 expected_keys=[self.vectorized_key],
             )
