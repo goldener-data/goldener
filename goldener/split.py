@@ -97,9 +97,7 @@ class GoldSplitter:
 
     Attributes:
         sets: List of GoldSet configurations defining the splits.
-        selector: GoldSelector used to select samples for each set. The collate_fn of the selector
-        will be set to `pxt_torch_dataset_collate_fn`, and the select_key will be forced to "features"
-        to match the descriptor's output column.
+        selector: GoldSelector used to select samples for each set.
         descriptor: Optional GoldDescriptor used to describe the dataset.
         vectorizer: Optional GoldVectorizer used to vectorize the described dataset.
         clusterizer: Optional GoldClusterizer used to clusterize the described dataset.
@@ -523,65 +521,66 @@ class GoldSplitter:
         )
         self.selector.collate_fn = pxt_torch_dataset_collate_fn
 
-        # define all the queries, select count and indices for each cluster
-        cluster_col = get_expr_from_column_name(
-            clusterized, self.clusterizer.cluster_key
-        )
-
-        available_count = clusterized.select(clusterized.idx).distinct().count()
-        still_to_select_count = set_count
-
-        # run selection for each cluster and gather the selected indices
-        # the selected table will be filled incrementally as  process each cluster
-        already_selected: set[int] = set()
-        for cluster_idx in range(self.n_clusters):
-            # define the number of sample to select for the cluster
-            # previous clusters will have reduced the available count for the next clusters,
-            cluster_indices = self.clusterizer.get_cluster_indices(
-                table=clusterized,
-                cluster_key=self.clusterizer.cluster_key,
-                cluster_idx=cluster_idx,
-                idx_key="idx",
+        try:
+            # define all the queries, select count and indices for each cluster
+            cluster_col = get_expr_from_column_name(
+                clusterized, self.clusterizer.cluster_key
             )
-            cluster_indices = cluster_indices - already_selected
-            if len(cluster_indices) == 0:
-                logger.warning(
-                    f"Cluster {cluster_idx} has no available samples for selection. Skipping this cluster."
-                )
-                continue
-            cluster_select_count = split_sampling_among_chunks(
-                still_to_select_count,
-                [len(cluster_indices), available_count - len(cluster_indices)],
-            )[0]
-            if cluster_select_count == 0:
-                logger.warning(
-                    f"Cluster {cluster_idx} has no samples assigned for selection. Skipping this cluster."
-                )
-                continue
 
-            selected_table = self.selector.select_in_table(
-                GoldPxtTorchDataset(
-                    clusterized.where(
-                        (cluster_col == cluster_idx)
-                        & (clusterized.idx.isin(cluster_indices))
+            available_count = clusterized.select(clusterized.idx).distinct().count()
+            still_to_select_count = set_count
+
+            # run selection for each cluster and gather the selected indices
+            # the selected table will be filled incrementally as  process each cluster
+            already_selected: set[int] = set()
+            for cluster_idx in range(self.n_clusters):
+                # define the number of sample to select for the cluster
+                # previous clusters will have reduced the available count for the next clusters,
+                cluster_indices = self.clusterizer.get_cluster_indices(
+                    table=clusterized,
+                    cluster_key=self.clusterizer.cluster_key,
+                    cluster_idx=cluster_idx,
+                    idx_key="idx",
+                )
+                cluster_indices = cluster_indices - already_selected
+                if len(cluster_indices) == 0:
+                    logger.warning(
+                        f"Cluster {cluster_idx} has no available samples for selection. Skipping this cluster."
                     )
-                ),
-                cluster_select_count,
-                value=gold_set.name,
-            )
+                    continue
+                cluster_select_count = split_sampling_among_chunks(
+                    still_to_select_count,
+                    [len(cluster_indices), available_count - len(cluster_indices)],
+                )[0]
+                if cluster_select_count == 0:
+                    logger.warning(
+                        f"Cluster {cluster_idx} has no samples assigned for selection. Skipping this cluster."
+                    )
+                    continue
 
-            # update the elements allowing to compute the selection specs for the next clusters
-            already_selected = self.selector.get_selection_indices(
-                selected_table,
-                selection_key=self.selector.selection_key,
-                value=gold_set.name,
-            )
-            selected_count = len(already_selected)
-            still_to_select_count -= selected_count
-            available_count -= selected_count
+                selected_table = self.selector.select_in_table(
+                    GoldPxtTorchDataset(
+                        clusterized.where(
+                            (cluster_col == cluster_idx)
+                            & (clusterized.idx.isin(cluster_indices))
+                        )
+                    ),
+                    cluster_select_count,
+                    value=gold_set.name,
+                )
 
-        # restore the original collate_fn of the selector after cluster-wise selection is done
-        self.selector.collate_fn = selection_collate_fn
+                # update the elements allowing to compute the selection specs for the next clusters
+                already_selected = self.selector.get_selection_indices(
+                    selected_table,
+                    selection_key=self.selector.selection_key,
+                    value=gold_set.name,
+                )
+                selected_count = len(already_selected)
+                still_to_select_count -= selected_count
+                available_count -= selected_count
+        finally:
+            # restore the original collate_fn of the selector after cluster-wise selection is done
+            self.selector.collate_fn = selection_collate_fn
 
         return selected_table
 
