@@ -214,6 +214,39 @@ class TestGoldClusterizer:
         ]
         assert set(distinct_clusters).issubset(set(range(4)))
 
+    def test_cluster_in_table_from_table_with_vectorized_included(self):
+        src_path = "unit_test.src_cluster_table"
+        cluster_path = "unit_test.test_cluster_from_table_full"
+
+        src_table = self._make_src_table(src_path, n=20)
+
+        clusterizer = GoldClusterizer(
+            table_path=cluster_path,
+            clustering_tool=GoldRandomClusteringTool(random_state=0),
+            allow_existing=True,
+            include_vectorized_in_table=True,
+        )
+
+        cluster_table = clusterizer.cluster_in_table(src_table, n_clusters=4)
+
+        assert cluster_table.count() == 20
+        assert (
+            cluster_table.where(
+                cluster_table[clusterizer.cluster_key] != None  # noqa: E711
+            )
+            .select(cluster_table.idx)
+            .distinct()
+            .count()
+            == 20
+        )
+        distinct_clusters = [
+            row[clusterizer.cluster_key]
+            for row in cluster_table.select(cluster_table[clusterizer.cluster_key])
+            .distinct()
+            .collect()
+        ]
+        assert set(distinct_clusters).issubset(set(range(4)))
+
     def test_cluster_in_table_with_invalid_n_clusters(self):
         table_path = "unit_test.test_cluster_invalid_n"
         dataset = DummyDataset(

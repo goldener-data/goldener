@@ -574,6 +574,7 @@ class GoldSplitter:
             value=gold_set.name,
         )
 
+        # restore the original collate_fn of the selector after cluster-wise selection is done
         self.selector.collate_fn = selection_collate_fn
 
         return selected_table

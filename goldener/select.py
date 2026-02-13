@@ -27,6 +27,7 @@ from goldener.pxt_utils import (
     make_batch_ready_for_table,
     get_column_distinct_ratios,
     check_pxt_table_has_primary_key,
+    get_sample_row_from_idx,
 )
 from goldener.reduce import GoldReducer
 from goldener.torch_utils import get_dataset_sample_dict
@@ -459,9 +460,30 @@ class GoldSelector:
                 f"the required column {self.vectorized_key}."
             )
 
-        if self.selection_key not in selection_table.columns():
+        selection_table_cols = selection_table.columns()
+        if self.selection_key not in selection_table_cols:
             selection_table.add_column(
                 if_exists="error", **{self.selection_key: pxt.String}
+            )
+
+        if (
+            self.include_vectorized_in_table
+            and self.vectorized_key not in selection_table_cols
+        ):
+            sample = get_sample_row_from_idx(
+                select_from,
+                idx_key="idx_vector",
+                collate_fn=self.collate_fn,
+                expected_keys=[self.vectorized_key],
+            )
+
+            vectorized_value = sample[self.vectorized_key]
+            selection_table.add_column(
+                **{
+                    self.vectorized_key: pxt.Array[  # type: ignore[misc]
+                        vectorized_value.shape, pxt.Float
+                    ]
+                }
             )
 
         if selection_table.count() > 0:

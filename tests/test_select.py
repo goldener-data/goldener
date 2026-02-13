@@ -133,7 +133,7 @@ class TestGoldSelector:
         table_path = "unit_test.test_select_initialize"
 
         sample = {
-            "vectorized": torch.rand(1, 5),
+            "vectorized": torch.rand(5),
             "idx": 0,
         }
         dataset = DummyDataset([sample, sample])
@@ -516,6 +516,50 @@ class TestGoldSelector:
         selector.select_in_table(src_table, select_size=3, value="train")
 
         selector.max_batches = None
+        selection_table = selector.select_in_table(
+            src_table, select_size=6, value="train"
+        )
+
+        assert selection_table.count() == 100
+        assert (
+            len(
+                selector.get_selected_sample_indices(
+                    selection_table, "train", selector.selection_key
+                )
+            )
+            == 6
+        )
+
+        pxt.drop_dir("unit_test", force=True)
+
+    def test_select_in_table_from_table_with_vectorized_included(self):
+        pxt.drop_dir("unit_test", force=True)
+
+        src_path = "unit_test.test_select_in_table"
+
+        pxt.create_dir("unit_test", if_exists="ignore")
+        src_table = pxt.create_table(
+            src_path,
+            source=[
+                {
+                    "vectorized": torch.rand(5).numpy().astype(np.float32),
+                    "idx": idx % 10,
+                    "idx_vector": idx,
+                }
+                for idx in range(100)
+            ],
+            if_exists="replace_force",
+            primary_key="idx_vector",
+        )
+
+        selector = GoldSelector(
+            table_path="unit_test.test_select",
+            allow_existing=True,
+            batch_size=10,
+            max_batches=None,
+            include_vectorized_in_table=True,
+        )
+
         selection_table = selector.select_in_table(
             src_table, select_size=6, value="train"
         )
