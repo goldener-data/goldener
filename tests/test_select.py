@@ -294,7 +294,7 @@ class TestGoldSelector:
         assert selection_table.count() == 100
         assert (
             len(
-                selector.get_selected_sample_indices(
+                selector.get_selection_indices(
                     selection_table,
                     "train",
                     selector.selection_key,
@@ -306,7 +306,7 @@ class TestGoldSelector:
         )
         assert (
             len(
-                selector.get_selected_sample_indices(
+                selector.get_selection_indices(
                     selection_table,
                     "train",
                     selector.selection_key,
@@ -523,7 +523,7 @@ class TestGoldSelector:
         assert selection_table.count() == 100
         assert (
             len(
-                selector.get_selected_sample_indices(
+                selector.get_selection_indices(
                     selection_table, "train", selector.selection_key
                 )
             )
@@ -567,7 +567,7 @@ class TestGoldSelector:
         assert selection_table.count() == 100
         assert (
             len(
-                selector.get_selected_sample_indices(
+                selector.get_selection_indices(
                     selection_table, "train", selector.selection_key
                 )
             )
@@ -638,7 +638,7 @@ class TestGoldSelector:
 
         pxt.drop_dir("unit_test", force=True)
 
-    def test_get_selected_sample_indices(self):
+    def test_get_selected_indices(self):
         pxt.drop_dir("unit_test", force=True)
 
         src_path = "unit_test.test_select"
@@ -658,7 +658,7 @@ class TestGoldSelector:
             if_exists="replace_force",
         )
 
-        sample_indices = GoldSelector.get_selected_sample_indices(
+        sample_indices = GoldSelector.get_selection_indices(
             table=src_table,
             value="train",
             selection_key="selected",
@@ -666,14 +666,14 @@ class TestGoldSelector:
 
         assert sample_indices == set(range(50))
 
-        sample_indices = GoldSelector.get_selected_sample_indices(
+        sample_indices = GoldSelector.get_selection_indices(
             table=src_table,
             value=None,
             selection_key="selected",
         )
         assert sample_indices == set(range(50, 100, 1))
 
-        sample_indices = GoldSelector.get_selected_sample_indices(
+        sample_indices = GoldSelector.get_selection_indices(
             table=src_table,
             value="train",
             selection_key="selected",
@@ -682,7 +682,7 @@ class TestGoldSelector:
         )
         assert sample_indices == set(range(25))
 
-        sample_indices = GoldSelector.get_selected_sample_indices(
+        sample_indices = GoldSelector.get_selection_indices(
             table=src_table,
             value="train",
             selection_key="selected",
@@ -694,7 +694,7 @@ class TestGoldSelector:
         with pytest.raises(
             ValueError, match="class_key and class_value must be set together"
         ):
-            GoldSelector.get_selected_sample_indices(
+            GoldSelector.get_selection_indices(
                 table=src_table,
                 value="train",
                 selection_key="selected",
@@ -705,7 +705,7 @@ class TestGoldSelector:
         with pytest.raises(
             ValueError, match="class_key and class_value must be set together"
         ):
-            GoldSelector.get_selected_sample_indices(
+            GoldSelector.get_selection_indices(
                 table=src_table,
                 value="train",
                 selection_key="selected",

@@ -395,11 +395,7 @@ class GoldSelector:
             select_count = 1  # at least one sample
 
         if (
-            len(
-                self.get_selected_sample_indices(
-                    selection_table, value, self.selection_key
-                )
-            )
+            len(self.get_selection_indices(selection_table, value, self.selection_key))
             == select_count
         ):
             logger.info(
@@ -414,7 +410,7 @@ class GoldSelector:
         logger.info(
             f"Selection table populated {
                 len(
-                    self.get_selected_sample_indices(
+                    self.get_selection_indices(
                         selection_table, value, self.selection_key
                     )
                 )
@@ -695,7 +691,7 @@ class GoldSelector:
             selection_table.insert(ready_to_insert)
 
     @staticmethod
-    def get_selected_sample_indices(
+    def get_selection_indices(
         table: Table,
         value: str | None,
         selection_key: str,
@@ -760,7 +756,7 @@ class GoldSelector:
                 class_ratios.items()
             ):
                 already_selected = len(
-                    self.get_selected_sample_indices(
+                    self.get_selection_indices(
                         table=selection_table,
                         value=value,
                         selection_key=self.selection_key,
@@ -773,7 +769,7 @@ class GoldSelector:
                 else:
                     # The last class takes the missing samples count to avoid rounding issues
                     other_classes = len(
-                        self.get_selected_sample_indices(
+                        self.get_selection_indices(
                             table=selection_table,
                             value=value,
                             selection_key=self.selection_key,
@@ -841,7 +837,7 @@ class GoldSelector:
         vectorized_col = get_expr_from_column_name(select_from, self.vectorized_key)
 
         already_selected_count = len(
-            self.get_selected_sample_indices(
+            self.get_selection_indices(
                 table=selection_table,
                 value=value,
                 selection_key=self.selection_key,
@@ -993,7 +989,7 @@ class GoldSelector:
                 )
 
                 # the sample might have been selected multiple times
-                selected_indices = self.get_selected_sample_indices(
+                selected_indices = self.get_selection_indices(
                     table=selection_table,
                     value=value,
                     selection_key=self.selection_key,

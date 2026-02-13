@@ -312,10 +312,7 @@ class GoldClusterizer:
         # define the number of element to sample
         total_size = cluster_from.select(cluster_from.idx_vector).distinct().count()
 
-        if (
-            len(self.get_cluster_vector_indices(cluster_table, self.cluster_key))
-            == total_size
-        ):
+        if len(self.get_cluster_indices(cluster_table, self.cluster_key)) == total_size:
             logger.info(f"Cluster table {self.table_path} already fully clustered")
             return cluster_table
         elif self.distribute:
@@ -595,7 +592,7 @@ class GoldClusterizer:
             cluster_table.insert(ready_to_insert)
 
     @staticmethod
-    def get_cluster_vector_indices(
+    def get_cluster_indices(
         table: Table,
         cluster_key: str,
         cluster_idx: int | None = None,
@@ -666,7 +663,7 @@ class GoldClusterizer:
 
             for class_idx, class_value in enumerate(class_values):
                 already_clustered = len(
-                    self.get_cluster_vector_indices(
+                    self.get_cluster_indices(
                         table=cluster_table,
                         cluster_key=self.cluster_key,
                         class_key=self.class_key,
@@ -704,7 +701,7 @@ class GoldClusterizer:
 
         else:
             already_clustered = len(
-                self.get_cluster_vector_indices(
+                self.get_cluster_indices(
                     table=cluster_table,
                     cluster_key=self.cluster_key,
                 )
