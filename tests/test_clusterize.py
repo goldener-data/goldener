@@ -4,7 +4,11 @@ import pixeltable as pxt
 
 from torch.utils.data import Dataset
 
-from goldener.clusterize import GoldRandomClusteringTool, GoldClusterizer
+from goldener.clusterize import (
+    GoldRandomClusteringTool,
+    GoldClusterizer,
+    GoldSKLearnClusteringTool,
+)
 from goldener.reduce import GoldReducer
 from goldener.pxt_utils import GoldPxtTorchDataset
 
@@ -49,6 +53,42 @@ class TestGoldRandomClusteringTool:
             ValueError, match="cannot be greater than the number of samples"
         ):
             tool.fit(torch.randn(total, 3), n_clusters)
+
+
+class TestGoldSKLearnClusteringTool:
+    def test_fit_returns_tensor_with_expected_shape_and_labels(self):
+        from sklearn.cluster import KMeans
+
+        n_samples = 20
+        n_clusters = 3
+        x = torch.randn(n_samples, 4)
+
+        tool = GoldSKLearnClusteringTool(KMeans(n_clusters=n_clusters, random_state=0))
+        labels = tool.fit(x, n_clusters)
+
+        assert isinstance(labels, torch.Tensor)
+        assert labels.shape == (n_samples,)
+        # all labels in expected range
+        assert set(labels.tolist()).issubset(set(range(n_clusters)))
+
+    def test_predict_matches_sklearn_predict_shape(self):
+        from sklearn.cluster import KMeans
+
+        n_samples = 10
+        n_clusters = 2
+        x = torch.randn(n_samples, 5)
+
+        base = KMeans(n_clusters=n_clusters, random_state=0)
+        tool = GoldSKLearnClusteringTool(base)
+
+        # fit on half of the samples, then predict on all
+        tool.fit(x[:5], n_clusters)
+        preds = tool.predict(x)
+
+        assert isinstance(preds, torch.Tensor)
+        assert preds.shape == (n_samples,)
+        # ensure we actually used sklearn under the hood by checking range
+        assert set(preds.tolist()).issubset(set(range(n_clusters)))
 
 
 class TestGoldClusterizer:

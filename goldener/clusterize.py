@@ -9,6 +9,7 @@ from pixeltable import Error
 from pixeltable.catalog import Table
 
 import torch
+from sklearn.base import ClusterMixin
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 
@@ -90,6 +91,31 @@ class GoldRandomClusteringTool(GoldClusteringTool):
 
     def predict(self, x: torch.Tensor) -> torch.Tensor:
         raise NotImplementedError("Random clustering tool does not support predict.")
+
+
+class GoldSKLearnClusteringTool(GoldClusteringTool):
+    """Chunk data randomly into clusters of almost equal size."""
+
+    def __init__(self, tool: ClusterMixin) -> None:
+        self.tool = tool
+
+    def fit(self, x: torch.Tensor, n_clusters: int) -> torch.Tensor:
+        """Randomly assign each input vector to clusters of roughly the same size.
+
+        Args:
+            x: Input vectors to select from.
+            n_clusters: Number of clusters to form.
+
+        Returns: The cluster assignments for each input vector as a 1D tensor of cluster indices.
+        """
+        self.tool.n_clusters = n_clusters
+        x_np = x.detach().cpu().numpy()
+
+        return torch.from_numpy(self.tool.fit(x_np).labels_)
+
+    def predict(self, x: torch.Tensor) -> torch.Tensor:
+        x_np = x.detach().cpu().numpy()
+        return torch.from_numpy(self.tool.predict(x_np))
 
 
 class GoldClusterizer:
