@@ -27,6 +27,7 @@ from goldener.pxt_utils import (
     make_batch_ready_for_table,
     get_column_distinct_ratios,
     check_pxt_table_has_primary_key,
+    get_sample_row_from_idx,
 )
 from goldener.reduce import GoldReducer
 from goldener.torch_utils import get_dataset_sample_dict
@@ -190,6 +191,8 @@ class GoldSelector:
             dictionaries with at least the key specified by `vectorized_key` returning a PyTorch Tensor.
             If None, the dataset is expected to directly provide such batches.
         vectorized_key: Key in the batch dictionary that contains the vectorized data for selection. Default is "vectorized".
+        include_vectorized_in_table: Whether to include the vectorized data in the selection table. Defaults to False.
+        It is only applied if the cluster table is created from a Table (it is forced anyway for Dataset).
         selection_key: Column name to store the selection value in the PixelTable table. Default is "selected".
         class_key: Optional key for class-based stratified selection.
         to_keep_schema: Optional dictionary defining additional columns to keep from the original dataset/table
@@ -220,6 +223,7 @@ class GoldSelector:
         chunk: int | None = None,
         collate_fn: Callable | None = None,
         vectorized_key: str = "vectorized",
+        include_vectorized_in_table: bool = False,
         selection_key: str = "selected",
         class_key: str | None = None,
         to_keep_schema: dict[str, type] | None = None,
@@ -241,6 +245,8 @@ class GoldSelector:
             chunk: Optional chunk size for processing data in chunks.
             collate_fn: Optional collate function for the DataLoader.
             vectorized_key: Key pointing to the vector for selection. Defaults to "vectorized".
+            include_vectorized_in_table: Whether to include the vectorized data in the selection table. Defaults to False.
+                It is only applied if the selection table is created from a Table (it is forced anyway for Dataset).
             selection_key: Key for storing selection values. Defaults to "selected".
             class_key: Optional key for class stratification.
             to_keep_schema: Optional schema for additional columns to preserve.
@@ -259,6 +265,7 @@ class GoldSelector:
         self.chunk = chunk
         self.collate_fn = collate_fn
         self.vectorized_key = vectorized_key
+        self.include_vectorized_in_table = include_vectorized_in_table
         self.selection_key = selection_key
         self.class_key = class_key
         self.to_keep_schema = to_keep_schema
@@ -390,11 +397,7 @@ class GoldSelector:
             select_count = 1  # at least one sample
 
         if (
-            len(
-                self.get_selected_sample_indices(
-                    selection_table, value, self.selection_key
-                )
-            )
+            len(self.get_selection_indices(selection_table, value, self.selection_key))
             == select_count
         ):
             logger.info(
@@ -409,7 +412,7 @@ class GoldSelector:
         logger.info(
             f"Selection table populated {
                 len(
-                    self.get_selected_sample_indices(
+                    self.get_selection_indices(
                         selection_table, value, self.selection_key
                     )
                 )
@@ -455,9 +458,37 @@ class GoldSelector:
                 f"the required column {self.vectorized_key}."
             )
 
-        if self.selection_key not in selection_table.columns():
+        selection_table_cols = selection_table.columns()
+        if self.selection_key not in selection_table_cols:
             selection_table.add_column(
                 if_exists="error", **{self.selection_key: pxt.String}
+            )
+
+        if (
+            self.include_vectorized_in_table
+            and self.vectorized_key not in selection_table_cols
+        ):
+            idx_vectors = [row["idx_vector"] for row in select_from.sample(1).collect()]
+            if not idx_vectors:
+                raise ValueError(
+                    f"Source table at {self.table_path} is empty, cannot sample vectorized data for schema inference."
+                )
+            sample = get_sample_row_from_idx(
+                select_from,
+                idx_key="idx_vector",
+                # make sure to take an existing vector
+                idx=idx_vectors[0],
+                collate_fn=self.collate_fn,
+                expected_keys=[self.vectorized_key],
+            )
+
+            vectorized_value = sample[self.vectorized_key]
+            selection_table.add_column(
+                **{
+                    self.vectorized_key: pxt.Array[  # type: ignore[misc]
+                        vectorized_value.shape, pxt.Float
+                    ]
+                }
             )
 
         if selection_table.count() > 0:
@@ -505,7 +536,7 @@ class GoldSelector:
                 keep_cache=False,
             ),
             selection_table=selection_table,
-            include_vectorized=False,
+            include_vectorized=self.include_vectorized_in_table,
         )
 
         return selection_table
@@ -539,15 +570,17 @@ class GoldSelector:
             minimal_schema=minimal_schema,
             primary_key="idx_vector",
         )
-
-        if self.vectorized_key not in selection_table.columns():
+        selection_table_cols = selection_table.columns()
+        if self.vectorized_key not in selection_table_cols:
             sample = get_dataset_sample_dict(
                 select_from,
                 collate_fn=self.collate_fn,
                 expected=[self.vectorized_key],
             )
 
-            vectorized_value = sample[self.vectorized_key].detach().cpu().numpy()
+            vectorized_value = (
+                sample[self.vectorized_key].squeeze(0).detach().cpu().numpy()
+            )
             selection_table.add_column(
                 **{
                     self.vectorized_key: pxt.Array[  # type: ignore[misc]
@@ -556,7 +589,7 @@ class GoldSelector:
                 }
             )
 
-        if self.selection_key not in selection_table.columns():
+        if self.selection_key not in selection_table_cols:
             selection_table.add_column(
                 if_exists="error", **{self.selection_key: pxt.String}
             )
@@ -667,7 +700,7 @@ class GoldSelector:
             selection_table.insert(ready_to_insert)
 
     @staticmethod
-    def get_selected_sample_indices(
+    def get_selection_indices(
         table: Table,
         value: str | None,
         selection_key: str,
@@ -732,7 +765,7 @@ class GoldSelector:
                 class_ratios.items()
             ):
                 already_selected = len(
-                    self.get_selected_sample_indices(
+                    self.get_selection_indices(
                         table=selection_table,
                         value=value,
                         selection_key=self.selection_key,
@@ -745,7 +778,7 @@ class GoldSelector:
                 else:
                     # The last class takes the missing samples count to avoid rounding issues
                     other_classes = len(
-                        self.get_selected_sample_indices(
+                        self.get_selection_indices(
                             table=selection_table,
                             value=value,
                             selection_key=self.selection_key,
@@ -813,7 +846,7 @@ class GoldSelector:
         vectorized_col = get_expr_from_column_name(select_from, self.vectorized_key)
 
         already_selected_count = len(
-            self.get_selected_sample_indices(
+            self.get_selection_indices(
                 table=selection_table,
                 value=value,
                 selection_key=self.selection_key,
@@ -965,7 +998,7 @@ class GoldSelector:
                 )
 
                 # the sample might have been selected multiple times
-                selected_indices = self.get_selected_sample_indices(
+                selected_indices = self.get_selection_indices(
                     table=selection_table,
                     value=value,
                     selection_key=self.selection_key,

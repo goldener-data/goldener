@@ -214,6 +214,39 @@ class TestGoldClusterizer:
         ]
         assert set(distinct_clusters).issubset(set(range(4)))
 
+    def test_cluster_in_table_from_table_with_vectorized_included(self):
+        src_path = "unit_test.src_cluster_table"
+        cluster_path = "unit_test.test_cluster_from_table_full"
+
+        src_table = self._make_src_table(src_path, n=20)
+
+        clusterizer = GoldClusterizer(
+            table_path=cluster_path,
+            clustering_tool=GoldRandomClusteringTool(random_state=0),
+            allow_existing=True,
+            include_vectorized_in_table=True,
+        )
+
+        cluster_table = clusterizer.cluster_in_table(src_table, n_clusters=4)
+
+        assert cluster_table.count() == 20
+        assert (
+            cluster_table.where(
+                cluster_table[clusterizer.cluster_key] != None  # noqa: E711
+            )
+            .select(cluster_table.idx)
+            .distinct()
+            .count()
+            == 20
+        )
+        distinct_clusters = [
+            row[clusterizer.cluster_key]
+            for row in cluster_table.select(cluster_table[clusterizer.cluster_key])
+            .distinct()
+            .collect()
+        ]
+        assert set(distinct_clusters).issubset(set(range(4)))
+
     def test_cluster_in_table_with_invalid_n_clusters(self):
         table_path = "unit_test.test_cluster_invalid_n"
         dataset = DummyDataset(
@@ -486,19 +519,19 @@ class TestGoldClusterizer:
         assert total_class0 == 20
         assert total_class1 == 20
 
-        all_indices = clusterizer.get_cluster_vector_indices(
+        all_indices = clusterizer.get_cluster_indices(
             table=cluster_table,
             cluster_key=clusterizer.cluster_key,
         )
         assert all_indices == set(range(40))
 
-        class0_indices = clusterizer.get_cluster_vector_indices(
+        class0_indices = clusterizer.get_cluster_indices(
             table=cluster_table,
             cluster_key=clusterizer.cluster_key,
             class_key=clusterizer.class_key,
             class_value="0",
         )
-        class1_indices = clusterizer.get_cluster_vector_indices(
+        class1_indices = clusterizer.get_cluster_indices(
             table=cluster_table,
             cluster_key=clusterizer.cluster_key,
             class_key=clusterizer.class_key,
@@ -535,7 +568,7 @@ class TestGoldClusterizer:
         )
         assert clustered == 20
 
-    def test_get_cluster_vector_indices(self):
+    def test_get_cluster_indices(self):
         src_path = "unit_test.test_cluster_indices_explicit_src"
         cluster_path = "unit_test.test_cluster_indices_explicit"
 
@@ -560,19 +593,19 @@ class TestGoldClusterizer:
             {clusterizer.cluster_key: 1}
         )
 
-        all_indices = clusterizer.get_cluster_vector_indices(
+        all_indices = clusterizer.get_cluster_indices(
             table=cluster_table,
             cluster_key=clusterizer.cluster_key,
         )
         assert all_indices == {0, 1, 2, 3, 4, 5}
 
-        class0_indices = clusterizer.get_cluster_vector_indices(
+        class0_indices = clusterizer.get_cluster_indices(
             table=cluster_table,
             cluster_key=clusterizer.cluster_key,
             class_key=clusterizer.class_key,
             class_value="0",
         )
-        class1_indices = clusterizer.get_cluster_vector_indices(
+        class1_indices = clusterizer.get_cluster_indices(
             table=cluster_table,
             cluster_key=clusterizer.cluster_key,
             class_key=clusterizer.class_key,
@@ -583,7 +616,7 @@ class TestGoldClusterizer:
         assert class0_indices.isdisjoint(class1_indices)
 
         with pytest.raises(ValueError, match="must be set together"):
-            clusterizer.get_cluster_vector_indices(
+            clusterizer.get_cluster_indices(
                 table=cluster_table,
                 cluster_key=clusterizer.cluster_key,
                 class_key=clusterizer.class_key,

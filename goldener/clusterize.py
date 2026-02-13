@@ -19,6 +19,7 @@ from goldener.pxt_utils import (
     get_valid_table,
     make_batch_ready_for_table,
     check_pxt_table_has_primary_key,
+    get_sample_row_from_idx,
 )
 from goldener.reduce import GoldReducer
 from goldener.torch_utils import get_dataset_sample_dict
@@ -118,6 +119,8 @@ class GoldClusterizer:
             dictionaries with at least the key specified by `vectorized_key` returning a PyTorch Tensor.
             If None, the dataset is expected to directly provide such batches.
         vectorized_key: Key in the batch dictionary that contains the vectorized data for the clustering. Default is "vectorized".
+        include_vectorized_in_table: Whether to keep the vectorized data in the cluster table.
+            It is only applied if the cluster table is created from a Table (it is forced anyway for Dataset). Default is False.
         cluster_key: Column name to store the clustering value in the PixelTable table. Default is "cluster".
         class_key: Optional key for class-based stratified clustering.
         to_keep_schema: Optional dictionary defining additional columns to keep from the original dataset/table
@@ -146,6 +149,7 @@ class GoldClusterizer:
         chunk: int | None = None,
         collate_fn: Callable | None = None,
         vectorized_key: str = "vectorized",
+        include_vectorized_in_table: bool = False,
         cluster_key: str = "cluster",
         class_key: str | None = None,
         to_keep_schema: dict[str, type] | None = None,
@@ -169,6 +173,8 @@ class GoldClusterizer:
                 dictionaries with at least the key specified by `vectorized_key` returning a PyTorch Tensor.
                 If None, the dataset is expected to directly provide such batches.
             vectorized_key: Key in the batch dictionary that contains the vectorized data for the clustering. Default is "vectorized".
+            include_vectorized_in_table: Whether to keep the vectorized data in the cluster table. Defaults to False.
+                    It is only applied if the cluster table is created from a Table (it is forced anyway for Dataset).
             cluster_key: Column name to store the clustering value in the PixelTable table. Default is "cluster".
             class_key: Optional key for class-based stratified clustering.
             to_keep_schema: Optional dictionary defining additional columns to keep from the original dataset/table
@@ -191,6 +197,7 @@ class GoldClusterizer:
         self.chunk = chunk
         self.collate_fn = collate_fn
         self.vectorized_key = vectorized_key
+        self.include_vectorized_in_table = include_vectorized_in_table
         self.cluster_key = cluster_key
         self.class_key = class_key
         self.to_keep_schema = to_keep_schema
@@ -305,10 +312,7 @@ class GoldClusterizer:
         # define the number of element to sample
         total_size = cluster_from.select(cluster_from.idx_vector).distinct().count()
 
-        if (
-            len(self.get_cluster_vector_indices(cluster_table, self.cluster_key))
-            == total_size
-        ):
+        if len(self.get_cluster_indices(cluster_table, self.cluster_key)) == total_size:
             logger.info(f"Cluster table {self.table_path} already fully clustered")
             return cluster_table
         elif self.distribute:
@@ -359,8 +363,38 @@ class GoldClusterizer:
                 f"the required column {self.vectorized_key}."
             )
 
-        if self.cluster_key not in cluster_table.columns():
+        cluster_table_cols = cluster_table.columns()
+        if self.cluster_key not in cluster_table_cols:
             cluster_table.add_column(if_exists="error", **{self.cluster_key: pxt.Int})
+
+        if (
+            self.include_vectorized_in_table
+            and self.vectorized_key not in cluster_table_cols
+        ):
+            idx_vectors = [
+                row["idx_vector"] for row in cluster_from.sample(1).collect()
+            ]
+            if not idx_vectors:
+                raise ValueError(
+                    f"Source table at {self.table_path} is empty, cannot sample vectorized data for schema inference."
+                )
+            sample = get_sample_row_from_idx(
+                cluster_from,
+                idx_key="idx_vector",
+                # make sure to take an existing vector
+                idx=idx_vectors[0],
+                collate_fn=self.collate_fn,
+                expected_keys=[self.vectorized_key],
+            )
+
+            vectorized_value = sample[self.vectorized_key]
+            cluster_table.add_column(
+                **{
+                    self.vectorized_key: pxt.Array[  # type: ignore[misc]
+                        vectorized_value.shape, pxt.Float
+                    ]
+                }
+            )
 
         if cluster_table.count() > 0:
             to_cluster_indices = set(
@@ -407,7 +441,7 @@ class GoldClusterizer:
                 keep_cache=False,
             ),
             cluster_table=cluster_table,
-            include_vectorized=False,
+            include_vectorized=self.include_vectorized_in_table,
         )
 
         return cluster_table
@@ -441,8 +475,8 @@ class GoldClusterizer:
             minimal_schema=minimal_schema,
             primary_key="idx_vector",
         )
-
-        if self.vectorized_key not in cluster_table.columns():
+        cluster_table_cols = cluster_table.columns()
+        if self.vectorized_key not in cluster_table_cols:
             sample = get_dataset_sample_dict(
                 cluster_from,
                 collate_fn=self.collate_fn,
@@ -458,7 +492,7 @@ class GoldClusterizer:
                 }
             )
 
-        if self.cluster_key not in cluster_table.columns():
+        if self.cluster_key not in cluster_table_cols:
             cluster_table.add_column(if_exists="error", **{self.cluster_key: pxt.Int})
 
         self._add_rows_to_cluster_table_from_dataset(
@@ -567,7 +601,7 @@ class GoldClusterizer:
             cluster_table.insert(ready_to_insert)
 
     @staticmethod
-    def get_cluster_vector_indices(
+    def get_cluster_indices(
         table: Table,
         cluster_key: str,
         cluster_idx: int | None = None,
@@ -638,7 +672,7 @@ class GoldClusterizer:
 
             for class_idx, class_value in enumerate(class_values):
                 already_clustered = len(
-                    self.get_cluster_vector_indices(
+                    self.get_cluster_indices(
                         table=cluster_table,
                         cluster_key=self.cluster_key,
                         class_key=self.class_key,
@@ -676,7 +710,7 @@ class GoldClusterizer:
 
         else:
             already_clustered = len(
-                self.get_cluster_vector_indices(
+                self.get_cluster_indices(
                     table=cluster_table,
                     cluster_key=self.cluster_key,
                 )
