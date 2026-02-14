@@ -844,7 +844,8 @@ class TestGoldSplitter:
         )
 
         assert set(splitted.keys()) == {"train", "val"}
-        assert len(splitted["train"]) + len(splitted["val"]) == 10
+        assert len(splitted["train"]) == 5
+        assert len(splitted["val"]) == 5
 
         # Check that the clusterizer table was created and has clusters assigned
         cluster_table = pxt.get_table(clusterizer.table_path)
