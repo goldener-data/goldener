@@ -11,6 +11,13 @@ from goldener.torch_utils import torch_tensor_to_numpy_vectors, np_transform_fro
 class GoldReducer:
     """Dimensionality reduction using UMAP, PCA, TSNE, or GaussianRandomProjection.
 
+    This reducer only accepts already vectorized input as 2D torch.Tensor where each row
+    represents a data point and each column represents a feature. The input must have
+    shape (batch_size, feature_dim).
+
+    Raw data (images, text, etc.) must be vectorized using appropriate tools (e.g., GoldVectorizer)
+    before being passed to this reducer.
+
     Attributes:
         reducer: An instance of UMAP, PCA, TSNE, or GaussianRandomProjection.
     """
@@ -23,12 +30,38 @@ class GoldReducer:
         """
         self.reducer = reducer
 
+    def _validate_input(self, x: torch.Tensor) -> None:
+        """Validate that input is already vectorized (2D torch.Tensor).
+
+        Args:
+            x: Input tensor to validate.
+
+        Raises:
+            TypeError: If input is not a torch.Tensor.
+            ValueError: If input is not a 2D tensor.
+        """
+        if not isinstance(x, torch.Tensor):
+            raise TypeError(
+                f"GoldReducer only accepts already vectorized input as torch.Tensor. "
+                f"Got {type(x).__name__}. Please vectorize your data first."
+            )
+        if x.ndim != 2:
+            raise ValueError(
+                f"GoldReducer only accepts 2D tensors (batch_size, feature_dim). "
+                f"Got shape {x.shape}. Please ensure your input is already vectorized."
+            )
+
     def fit(self, x: torch.Tensor) -> None:
         """Fit the dimensionality reduction model to the data.
 
         Args:
-            x: Input tensor to fit the model on.
+            x: Already vectorized 2D input tensor of shape (batch_size, feature_dim) to fit the model on.
+
+        Raises:
+            TypeError: If input is not a torch.Tensor.
+            ValueError: If input is not a 2D tensor.
         """
+        self._validate_input(x)
         x_np = torch_tensor_to_numpy_vectors(x)
         self.reducer.fit(x_np)
 
@@ -36,20 +69,30 @@ class GoldReducer:
         """Fit the dimensionality reduction model to the data and transform it.
 
         Args:
-            x: Input tensor to fit and transform.
+            x: Already vectorized 2D input tensor of shape (batch_size, feature_dim) to fit and transform.
 
         Returns:
             Transformed tensor with reduced dimensionality.
+
+        Raises:
+            TypeError: If input is not a torch.Tensor.
+            ValueError: If input is not a 2D tensor.
         """
+        self._validate_input(x)
         return np_transform_from_torch(x, self.reducer.fit_transform)
 
     def transform(self, x: torch.Tensor) -> torch.Tensor:
         """Transform the data using the fitted dimensionality reduction model.
 
         Args:
-            x: Input tensor to transform.
+            x: Already vectorized 2D input tensor of shape (batch_size, feature_dim) to transform.
 
         Returns:
             Transformed tensor with reduced dimensionality.
+
+        Raises:
+            TypeError: If input is not a torch.Tensor.
+            ValueError: If input is not a 2D tensor.
         """
+        self._validate_input(x)
         return np_transform_from_torch(x, self.reducer.transform)
