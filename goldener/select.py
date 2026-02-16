@@ -53,7 +53,7 @@ class GoldSelectionTool(ABC):
         """
         if x.ndim != 2:
             raise ValueError(
-                f"GoldSelectionTool only accepts 2D tensors (vectors_num, feature_dim). "
+                f"GoldSelectionTool only accepts 2D tensors (num_vectors, feature_dim). "
                 f"Got shape {x.shape}. Please ensure your input is already vectorized."
             )
 

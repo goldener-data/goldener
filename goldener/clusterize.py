@@ -46,7 +46,7 @@ class GoldClusteringTool(ABC):
         """
         if x.ndim != 2:
             raise ValueError(
-                f"GoldClusteringTool only accepts 2D tensors (vectors_num, feature_dim). "
+                f"GoldClusteringTool only accepts 2D tensors (num_vectors, feature_dim). "
                 f"Got shape {x.shape}. Please ensure your input is already vectorized."
             )
 
@@ -55,7 +55,7 @@ class GoldClusteringTool(ABC):
         """Fit the clustering tool from a given set of vectors into n clusters.
 
         Args:
-            x: Input vectors to select from. Must be a 2D tensor of shape (vectors_num, feature_dim).
+            x: Input vectors to select from. Must be a 2D tensor of shape (num_vectors, feature_dim).
             n_clusters: Number of clusters to form.
 
         Returns: The cluster assignments for each input vector as a 1D tensor of cluster indices.
@@ -67,7 +67,7 @@ class GoldClusteringTool(ABC):
         """Assign the input vectors to the clusters.
 
         Args:
-            x: Input vectors to transform. Must be a 2D tensor of shape (vectors_num, feature_dim).
+            x: Input vectors to transform. Must be a 2D tensor of shape (num_vectors, feature_dim).
 
         Returns: The cluster assignments for each input vector as a 1D tensor of cluster indices.
         """
@@ -84,7 +84,7 @@ class GoldRandomClusteringTool(GoldClusteringTool):
         """Randomly assign each input vector to clusters of roughly the same size.
 
         Args:
-            x: Input vectors to select from. Must be a 2D tensor of shape (vectors_num, feature_dim).
+            x: Input vectors to select from. Must be a 2D tensor of shape (num_vectors, feature_dim).
             n_clusters: Number of clusters to form.
 
         Returns: The cluster assignments for each input vector as a 1D tensor of cluster indices.
@@ -129,7 +129,7 @@ class GoldSKLearnClusteringTool(GoldClusteringTool):
         """Fit the scikit-learn clustering tool on the input vectors and return cluster assignments.
 
         Args:
-            x: Input vectors to select from. Must be a 2D tensor of shape (vectors_num, feature_dim).
+            x: Input vectors to select from. Must be a 2D tensor of shape (num_vectors, feature_dim).
             n_clusters: Number of clusters to form.
 
         Returns: The cluster assignments for each input vector as a 1D tensor of cluster indices.
@@ -144,7 +144,7 @@ class GoldSKLearnClusteringTool(GoldClusteringTool):
         """Assign the input vectors to clusters using the fitted scikit-learn clustering tool.
 
         Args:
-            x: Input vectors to assign to clusters. Must be a 2D tensor of shape (vectors_num, feature_dim).
+            x: Input vectors to assign to clusters. Must be a 2D tensor of shape (num_vectors, feature_dim).
 
         Returns:
             A 1D tensor of cluster indices predicted for each input vector.

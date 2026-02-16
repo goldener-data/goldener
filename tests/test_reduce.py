@@ -63,9 +63,7 @@ def test_gaussian_random_projection():
     assert out2.shape == (data.shape[0], 4)
 
 
-class TestGoldReducerValidation:
-    """Test class for GoldReducer input validation."""
-
+class TestGoldReducer:
     def test_reducer_rejects_3d_tensor(self):
         """Test that reducer rejects 3D tensor input and requires 2D tensor."""
         data_3d = torch.randn(10, 5, 3, dtype=torch.float32)
