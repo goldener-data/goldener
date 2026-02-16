@@ -598,7 +598,7 @@ class GoldSplitter:
 
                     logger.info(
                         f"Selecting {cluster_select_count} samples for set '{gold_set.name}' in "
-                        f"cluster {cluster_idx} with {len(initial_cluster)} available samples."
+                        f"cluster {cluster_idx} with {len(available_in_cluster)} available samples."
                     )
                     selected_table = self.selector.select_in_table(
                         GoldPxtTorchDataset(

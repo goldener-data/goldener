@@ -806,7 +806,7 @@ class TestGoldSplitter:
 
         pxt.drop_dir("unit_test", if_not_exists="ignore", force=True)
 
-    def test_split_with_clusterizer(self, descriptor, vectorizer, selector):
+    def test_split_with_clusterizer(self, selector):
         pxt.drop_dir("unit_test", force=True)
 
         # Build a simple vectorized table first, then let the splitter handle clustering
