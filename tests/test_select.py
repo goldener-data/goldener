@@ -188,6 +188,48 @@ class TestGoldSelector:
 
         pxt.drop_dir("unit_test", force=True)
 
+    def test_select_in_table_with_new_idx_vector(self):
+        pxt.drop_dir("unit_test", force=True)
+
+        table_path = "unit_test.test_select_from_dataset"
+
+        dataset = DummyDataset(
+            [
+                {"vectorized": torch.rand(5), "idx": idx, "idx_vector": idx}
+                for idx in range(100)
+            ]
+        )
+
+        selector = GoldSelector(
+            table_path=table_path, allow_existing=True, batch_size=10, max_batches=None
+        )
+
+        selection_table = selector.select_in_table(
+            dataset, select_size=10, value="train"
+        )
+        selected_indices_1 = selector.get_selection_indices(
+            selection_table, "train", selector.selection_key
+        )
+        assert len(selected_indices_1) == 10
+
+        dataset = DummyDataset(
+            [
+                {"vectorized": torch.rand(5), "idx": idx, "idx_vector": 100 + idx}
+                for idx in range(100)
+            ]
+        )
+        selection_table = selector.select_in_table(
+            dataset, select_size=20, value="train"
+        )
+
+        selected_indices_2 = selector.get_selection_indices(
+            selection_table, "train", selector.selection_key
+        )
+        assert len(selected_indices_2) == 20
+        assert selected_indices_1.issubset(selected_indices_2)
+
+        pxt.drop_dir("unit_test", force=True)
+
     def test_select_in_table_with_wrong_size(self):
         pxt.drop_dir("unit_test", force=True)
 
