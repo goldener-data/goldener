@@ -821,9 +821,9 @@ class TestGoldSplitter:
 
         splitter = GoldSplitter(
             sets=sets,
-            descriptor=descriptor,
+            descriptor=None,
             selector=selector,
-            vectorizer=vectorizer,
+            vectorizer=None,
             clusterizer=clusterizer,
             n_clusters=2,
         )
@@ -831,8 +831,14 @@ class TestGoldSplitter:
         split_table = splitter.split_in_table(
             to_split=DummyDataset(
                 [
-                    {"data": torch.rand(3, 8, 8), "idx": idx, "label": "dummy"}
-                    for idx in range(10)
+                    {
+                        "vectorized": torch.rand(
+                            3,
+                        ),
+                        "idx": idx,
+                        "label": "dummy",
+                    }
+                    for idx in range(100)
                 ]
             )
         )
@@ -844,8 +850,8 @@ class TestGoldSplitter:
         )
 
         assert set(splitted.keys()) == {"train", "val"}
-        assert len(splitted["train"]) == 5
-        assert len(splitted["val"]) == 5
+        assert len(splitted["train"]) == 50
+        assert len(splitted["val"]) == 50
 
         # Check that the clusterizer table was created and has clusters assigned
         cluster_table = pxt.get_table(clusterizer.table_path)
