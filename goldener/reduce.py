@@ -5,8 +5,6 @@ from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 from sklearn.random_projection import GaussianRandomProjection
 
-from goldener.torch_utils import torch_tensor_to_numpy_vectors, np_transform_from_torch
-
 
 class GoldReducer:
     """Dimensionality reduction using UMAP, PCA, TSNE, or GaussianRandomProjection.
@@ -55,7 +53,7 @@ class GoldReducer:
             ValueError: If input is not a 2D tensor.
         """
         self._validate_input(x)
-        x_np = torch_tensor_to_numpy_vectors(x)
+        x_np = x.detach().cpu().numpy()
         self.reducer.fit(x_np)
 
     def fit_transform(self, x: torch.Tensor) -> torch.Tensor:
@@ -71,7 +69,9 @@ class GoldReducer:
             ValueError: If input is not a 2D tensor.
         """
         self._validate_input(x)
-        return np_transform_from_torch(x, self.reducer.fit_transform)
+        x_np = x.detach().cpu().numpy()
+        transformed = self.reducer.fit_transform(x_np)
+        return torch.from_numpy(transformed).to(device=x.device, dtype=x.dtype)
 
     def transform(self, x: torch.Tensor) -> torch.Tensor:
         """Transform the data using the fitted dimensionality reduction model.
@@ -86,4 +86,6 @@ class GoldReducer:
             ValueError: If input is not a 2D tensor.
         """
         self._validate_input(x)
-        return np_transform_from_torch(x, self.reducer.transform)
+        x_np = x.detach().cpu().numpy()
+        transformed = self.reducer.transform(x_np)
+        return torch.from_numpy(transformed).to(device=x.device, dtype=x.dtype)
