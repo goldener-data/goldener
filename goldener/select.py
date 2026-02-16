@@ -413,10 +413,21 @@ class GoldSelector:
         if select_count == 0 and isinstance(select_size, float):
             select_count = 1  # at least one sample
 
-        if (
-            len(self.get_selection_indices(selection_table, value, self.selection_key))
-            == select_count
-        ):
+        selection_indices = self.get_selection_indices(
+            selection_table, value, self.selection_key
+        )
+        if len(selection_indices) > 0:
+            # if new vectors have been added to the selection table
+            # make sure already selected samples are already flagged out
+            set_value_to_idx_rows(
+                table=selection_table,
+                col_expr=get_expr_from_column_name(selection_table, self.selection_key),
+                idx_expr=selection_table.idx,
+                indices=selection_indices,
+                value=value,
+            )
+
+        if len(selection_indices) == select_count:
             logger.info(
                 f"Selection table already fully filled out for {value} from {self.table_path}"
             )
