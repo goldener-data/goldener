@@ -835,10 +835,11 @@ class TestGoldSplitter:
                         "vectorized": torch.rand(
                             3,
                         ),
-                        "idx": idx,
+                        "idx": idx_vector // 4,
                         "label": "dummy",
+                        "idx_vector": idx_vector,
                     }
-                    for idx in range(100)
+                    for idx_vector in range(120)
                 ]
             )
         )
@@ -850,8 +851,8 @@ class TestGoldSplitter:
         )
 
         assert set(splitted.keys()) == {"train", "val"}
-        assert len(splitted["train"]) == 50
-        assert len(splitted["val"]) == 50
+        assert len(splitted["train"]) == 15
+        assert len(splitted["val"]) == 15
 
         # Check that the clusterizer table was created and has clusters assigned
         cluster_table = pxt.get_table(clusterizer.table_path)

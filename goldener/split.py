@@ -408,10 +408,11 @@ class GoldSplitter:
 
         if isinstance(vectorized, Table):
             sample_count = vectorized.select(vectorized.idx).distinct().count()
-        elif hasattr(vectorized, "__len__"):
-            sample_count = len(vectorized)
         else:
-            sample_count = None
+            selection_table = self.selector.setup_selection_table(vectorized)
+            sample_count = (
+                selection_table.select(selection_table.idx).distinct().count()
+            )
 
         if sample_count is not None:
             check_sets_validity(self._sets, total=sample_count, force_max=True)
@@ -428,20 +429,13 @@ class GoldSplitter:
             # while the last one gathers all the remaining samples,
             # so we don't need to select it explicitly
             if idx_set < len(self._sets) - 1:
-                if clusterized is not None:
-                    selected_table = self._clusterized_selection(
-                        clusterized, set_count, gold_set
-                    )
-                else:
-                    selected_table = self.selector.select_in_table(
+                selected_table = (
+                    self._clusterized_selection(clusterized, set_count, gold_set)
+                    if clusterized is not None
+                    else self.selector.select_in_table(
                         vectorized, set_count, value=gold_set.name
                     )
-
-                if sample_count is None:
-                    sample_count = (
-                        selected_table.select(selected_table.idx).distinct().count()
-                    )
-                    check_sets_validity(self._sets, total=sample_count, force_max=True)
+                )
             else:
                 # The last set is gathering all the remaining samples
                 selection_col = get_expr_from_column_name(
