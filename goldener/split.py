@@ -531,62 +531,97 @@ class GoldSplitter:
                     f"Clusterizer output column '{self.clusterizer.cluster_key}' contains null values."
                 )
 
-            available_count = clusterized.select(clusterized.idx).distinct().count()
-            still_to_select_count = set_count
-
-            # run selection for each cluster and gather the selected indices
-            # the selected table will be filled incrementally
-            already_selected: set[int] = set()
-            selected_table = None  # ensure it exists in the scope after the loop, even if no cluster is selected
-            for cluster_idx in range(self.n_clusters):
-                # define the number of sample to select for the cluster
-                # previous clusters will have reduced the available count for the next clusters,
-                cluster_indices = self.clusterizer.get_cluster_indices(
+            # initial list of samples per cluster
+            initial_clusters = [
+                self.clusterizer.get_cluster_indices(
                     table=clusterized,
                     cluster_key=self.clusterizer.cluster_key,
                     cluster_idx=cluster_idx,
                     idx_key="idx",
                 )
-                cluster_indices = cluster_indices - already_selected
-                if len(cluster_indices) == 0:
-                    logger.warning(
-                        f"Cluster {cluster_idx} has no available samples for selection. Skipping this cluster."
-                    )
-                    continue
-                cluster_select_count = split_sampling_among_chunks(
-                    still_to_select_count,
-                    [len(cluster_indices), available_count - len(cluster_indices)],
-                )[0]
-                if cluster_select_count == 0:
-                    logger.warning(
-                        f"Cluster {cluster_idx} has no samples assigned for selection. Skipping this cluster."
-                    )
-                    continue
+                for cluster_idx in range(self.n_clusters)
+            ]
 
-                logger.info(
-                    f"Selecting {cluster_select_count} samples for set '{gold_set.name}' in "
-                    f"cluster {cluster_idx} with {len(cluster_indices)} available samples."
+            # samples can be split across different clusters,
+            # so the selection might require multiple iterations to select the
+            # expected number of samples for the set, cluster after cluster, based
+            # on the number of available samples in each cluster at each iteration
+            already_selected: set[int] = set()
+            selected_table = None  # ensure it exists in the scope after the loop, even if no cluster is selected
+            selected_count = 0
+            while selected_count < set_count:
+                # the new cluster sizes and associated selection count are computed
+                # from the samples not yet selected
+                cluster_sizes = [
+                    clusterized.where(
+                        (~clusterized.idx.isin(already_selected))
+                        & (cluster_col == cluster_idx)
+                    )
+                    .select(clusterized.idx)
+                    .distinct()
+                    .count()
+                    for cluster_idx in range(self.n_clusters)
+                ]
+                cluster_select_counts = split_sampling_among_chunks(
+                    to_split=set_count - selected_count,
+                    chunk_sizes=cluster_sizes,
                 )
-                selected_table = self.selector.select_in_table(
-                    GoldPxtTorchDataset(
-                        clusterized.where(
-                            (cluster_col == cluster_idx)
-                            & (clusterized.idx.isin(cluster_indices))
-                        )
-                    ),
+                for cluster_idx, (
+                    cluster_size,
                     cluster_select_count,
-                    value=gold_set.name,
-                )
+                    initial_cluster,
+                ) in enumerate(
+                    zip(
+                        cluster_sizes,
+                        cluster_select_counts,
+                        initial_clusters,
+                        strict=True,
+                    )
+                ):
+                    if selected_count >= set_count:
+                        break
 
-                # update the elements allowing to compute the selection specs for the next clusters
-                already_selected = self.selector.get_selection_indices(
-                    selected_table,
-                    selection_key=self.selector.selection_key,
-                    value=gold_set.name,
-                )
-                selected_count = len(already_selected)
-                still_to_select_count -= selected_count
-                available_count -= selected_count
+                    # some samples from the cluster might have been already selected
+                    # in previous iterations or previous clusters ending up with nothing
+                    # to select in a given cluster
+                    available_in_cluster = initial_cluster - already_selected
+                    if len(available_in_cluster) == 0:
+                        logger.warning(
+                            f"Cluster {cluster_idx} has no available samples for selection. Skipping this cluster."
+                        )
+                        continue
+                    cluster_already_selected = cluster_size - len(available_in_cluster)
+                    cluster_select_count = (
+                        cluster_select_count - cluster_already_selected
+                    )
+                    if cluster_select_count <= 0:
+                        logger.warning(
+                            f"Cluster {cluster_idx} has already enough selected samples. Skipping this cluster."
+                        )
+                        continue
+
+                    logger.info(
+                        f"Selecting {cluster_select_count} samples for set '{gold_set.name}' in "
+                        f"cluster {cluster_idx} with {len(initial_cluster)} available samples."
+                    )
+                    selected_table = self.selector.select_in_table(
+                        GoldPxtTorchDataset(
+                            clusterized.where(
+                                (cluster_col == cluster_idx)
+                                & (clusterized.idx.isin(available_in_cluster))
+                            )
+                        ),
+                        len(already_selected) + cluster_select_count,
+                        value=gold_set.name,
+                    )
+
+                    # update the elements allowing to compute the selection specs for the next clusters
+                    already_selected = self.selector.get_selection_indices(
+                        selected_table,
+                        selection_key=self.selector.selection_key,
+                        value=gold_set.name,
+                    )
+                    selected_count = len(already_selected)
 
         finally:
             # restore the original collate_fn of the selector after cluster-wise selection is done
