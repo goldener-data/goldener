@@ -907,6 +907,7 @@ class GoldSelector:
         # Then, the same data point can be selected multiple times if it has multiple vectors selected.
         # To achieve select_count of unique data points, we loop until we have enough unique data points selected.
         while already_selected_count < select_count:
+            loop_start = already_selected_count
             to_select = selection_table.where(available_query)
 
             # check if selection can be achieved by taking all the remaining samples
@@ -1037,6 +1038,12 @@ class GoldSelector:
                     selection_table.idx.isin(selected_indices)
                 ).update({self.selection_key: value})
                 already_selected_count = len(selected_indices)
+
+            if already_selected_count == loop_start:
+                raise ValueError(
+                    "No new samples were selected in the iteration, but the selection is not complete. "
+                    "This might be due to an issue in the selection process or the data."
+                )
 
     def _distributed_select(
         self,
