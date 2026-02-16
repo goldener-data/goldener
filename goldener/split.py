@@ -550,6 +550,8 @@ class GoldSplitter:
             selected_table = None  # ensure it exists in the scope after the loop, even if no cluster is selected
             selected_count = 0
             while selected_count < set_count:
+                loop_start = selected_count
+
                 # the new cluster sizes and associated selection count are computed
                 # from the samples not yet selected
                 cluster_sizes = [
@@ -622,6 +624,13 @@ class GoldSplitter:
                         value=gold_set.name,
                     )
                     selected_count = len(already_selected)
+
+                if selected_count == loop_start:
+                    # if after going through all the clusters, no new sample has been selected, it means that there is not enough data to select from
+                    raise ValueError(
+                        f"Could not select any new sample for set '{gold_set.name}' during clusterized selection. "
+                        f"This might be due to not enough data to select from, or issues in the clusterizer output."
+                    )
 
         finally:
             # restore the original collate_fn of the selector after cluster-wise selection is done
