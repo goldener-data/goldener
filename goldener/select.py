@@ -278,6 +278,51 @@ class GoldSelector:
         self.max_batches = max_batches
         self.random_state = random_state
 
+    def setup_selection_table(self, select_from: Dataset | Table) -> Table:
+        """Set up the selection table based on the source dataset or table.
+
+        Args:
+            select_from: Dataset or Table to select from. If a Dataset is provided, each item should be a
+                dictionary with at least the `vectorized_key` and `idx` keys after applying the collate_fn.
+                If the collate_fn is None, the dataset is expected to directly provide such batches.
+                If a Table is provided, it should contain at least the `vectorized_key`,
+                `idx` and `idx_vector` columns.
+
+        Returns: A PixelTable Table with the appropriate schema for selection,
+            populated with rows corresponding to the source dataset or table.
+        """
+        logger.info(f"Loading the existing selection table from {self.table_path}")
+        try:
+            old_selection_table = pxt.get_table(
+                self.table_path,
+                if_not_exists="ignore",
+            )
+        except Error:
+            logger.info(f"No existing selection table from {self.table_path}")
+            old_selection_table = None
+
+        # selection table are expected to have a primary key allowing to idempotent updates
+        if old_selection_table is not None:
+            check_pxt_table_has_primary_key(old_selection_table, set(["idx_vector"]))
+
+        if not self.allow_existing and old_selection_table is not None:
+            raise ValueError(
+                f"Table at path {self.table_path} already exists and "
+                "allow_existing is set to False."
+            )
+
+        if isinstance(select_from, Table):
+            selection_table = self._selection_table_from_table(
+                select_from=select_from,
+                old_selection_table=old_selection_table,
+            )
+        else:
+            selection_table = self._selection_table_from_dataset(
+                select_from, old_selection_table
+            )
+
+        return selection_table
+
     def select_in_dataset(
         self, select_from: Dataset | Table, select_count: int, value: str
     ) -> GoldPxtTorchDataset:
@@ -353,35 +398,8 @@ class GoldSelector:
             if select_size <= 0:
                 raise ValueError("select_size must be a positive integer.")
 
-        logger.info(f"Loading the existing selection table from {self.table_path}")
-        try:
-            old_selection_table = pxt.get_table(
-                self.table_path,
-                if_not_exists="ignore",
-            )
-        except Error:
-            logger.info(f"No existing selection table from {self.table_path}")
-            old_selection_table = None
-
-        # selection table are expected to have a primary key allowing to idempotent updates
-        if old_selection_table is not None:
-            check_pxt_table_has_primary_key(old_selection_table, set(["idx_vector"]))
-
-        if not self.allow_existing and old_selection_table is not None:
-            raise ValueError(
-                f"Table at path {self.table_path} already exists and "
-                "allow_existing is set to False."
-            )
-
-        if isinstance(select_from, Table):
-            selection_table = self._selection_table_from_table(
-                select_from=select_from,
-                old_selection_table=old_selection_table,
-            )
-        else:
-            selection_table = self._selection_table_from_dataset(
-                select_from, old_selection_table
-            )
+        selection_table = self.setup_selection_table(select_from)
+        if isinstance(select_from, Dataset):
             select_from = selection_table
 
         assert isinstance(select_from, Table)
@@ -890,6 +908,7 @@ class GoldSelector:
         # Then, the same data point can be selected multiple times if it has multiple vectors selected.
         # To achieve select_count of unique data points, we loop until we have enough unique data points selected.
         while already_selected_count < select_count:
+            loop_start = already_selected_count
             to_select = selection_table.where(available_query)
 
             # check if selection can be achieved by taking all the remaining samples
@@ -1020,6 +1039,12 @@ class GoldSelector:
                     selection_table.idx.isin(selected_indices)
                 ).update({self.selection_key: value})
                 already_selected_count = len(selected_indices)
+
+            if already_selected_count == loop_start:
+                raise ValueError(
+                    "No new samples were selected in the iteration, but the selection is not complete. "
+                    "This might be due to an issue in the selection process or the data."
+                )
 
     def _distributed_select(
         self,

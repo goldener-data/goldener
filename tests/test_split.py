@@ -806,7 +806,7 @@ class TestGoldSplitter:
 
         pxt.drop_dir("unit_test", if_not_exists="ignore", force=True)
 
-    def test_split_with_clusterizer(self, descriptor, vectorizer, selector):
+    def test_split_with_clusterizer(self, selector):
         pxt.drop_dir("unit_test", force=True)
 
         # Build a simple vectorized table first, then let the splitter handle clustering
@@ -821,9 +821,9 @@ class TestGoldSplitter:
 
         splitter = GoldSplitter(
             sets=sets,
-            descriptor=descriptor,
+            descriptor=None,
             selector=selector,
-            vectorizer=vectorizer,
+            vectorizer=None,
             clusterizer=clusterizer,
             n_clusters=2,
         )
@@ -831,8 +831,15 @@ class TestGoldSplitter:
         split_table = splitter.split_in_table(
             to_split=DummyDataset(
                 [
-                    {"data": torch.rand(3, 8, 8), "idx": idx, "label": "dummy"}
-                    for idx in range(10)
+                    {
+                        "vectorized": torch.rand(
+                            3,
+                        ),
+                        "idx": idx_vector // 4,
+                        "label": "dummy",
+                        "idx_vector": idx_vector,
+                    }
+                    for idx_vector in range(120)
                 ]
             )
         )
@@ -844,8 +851,8 @@ class TestGoldSplitter:
         )
 
         assert set(splitted.keys()) == {"train", "val"}
-        assert len(splitted["train"]) == 5
-        assert len(splitted["val"]) == 5
+        assert len(splitted["train"]) == 15
+        assert len(splitted["val"]) == 15
 
         # Check that the clusterizer table was created and has clusters assigned
         cluster_table = pxt.get_table(clusterizer.table_path)
