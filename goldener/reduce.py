@@ -11,7 +11,7 @@ class GoldReducer:
 
     This reducer only accepts already vectorized input as 2D torch.Tensor where each row
     represents a data point and each column represents a feature. The input must have
-    shape (batch_size, feature_dim).
+    shape (vectors_num, feature_dim).
 
     Raw data (images, text, etc.) must be vectorized using appropriate tools (e.g., GoldVectorizer)
     before being passed to this reducer.
@@ -39,7 +39,7 @@ class GoldReducer:
         """
         if x.ndim != 2:
             raise ValueError(
-                f"GoldReducer only accepts 2D tensors (batch_size, feature_dim). "
+                f"GoldReducer only accepts 2D tensors (vectors_num, feature_dim). "
                 f"Got shape {x.shape}. Please ensure your input is already vectorized."
             )
 
@@ -47,7 +47,7 @@ class GoldReducer:
         """Fit the dimensionality reduction model to the data.
 
         Args:
-            x: Already vectorized 2D input tensor of shape (batch_size, feature_dim) to fit the model on.
+            x: Already vectorized 2D input tensor of shape (vectors_num, feature_dim) to fit the model on.
 
         Raises:
             ValueError: If input is not a 2D tensor.
@@ -60,7 +60,7 @@ class GoldReducer:
         """Fit the dimensionality reduction model to the data and transform it.
 
         Args:
-            x: Already vectorized 2D input tensor of shape (batch_size, feature_dim) to fit and transform.
+            x: Already vectorized 2D input tensor of shape (vectors_num, feature_dim) to fit and transform.
 
         Returns:
             Transformed tensor with reduced dimensionality.
@@ -77,7 +77,7 @@ class GoldReducer:
         """Transform the data using the fitted dimensionality reduction model.
 
         Args:
-            x: Already vectorized 2D input tensor of shape (batch_size, feature_dim) to transform.
+            x: Already vectorized 2D input tensor of shape (vectors_num, feature_dim) to transform.
 
         Returns:
             Transformed tensor with reduced dimensionality.

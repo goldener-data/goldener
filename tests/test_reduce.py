@@ -63,59 +63,41 @@ def test_gaussian_random_projection():
     assert out2.shape == (data.shape[0], 4)
 
 
-def test_reducer_rejects_1d_tensor():
-    """Test that reducer rejects 1D tensor input and requires 2D tensor."""
-    data_1d = torch.randn(10, dtype=torch.float32)
-    reducer = PCA(n_components=3)
-    dr = GoldReducer(reducer)
+class TestGoldReducerValidation:
+    """Test class for GoldReducer input validation."""
 
-    # fit should reject 1D tensor
-    with pytest.raises(ValueError, match="GoldReducer only accepts 2D tensors"):
-        dr.fit(data_1d)
+    def test_reducer_rejects_3d_tensor(self):
+        """Test that reducer rejects 3D tensor input and requires 2D tensor."""
+        data_3d = torch.randn(10, 5, 3, dtype=torch.float32)
+        reducer = PCA(n_components=3)
+        dr = GoldReducer(reducer)
 
-    # fit_transform should reject 1D tensor
-    with pytest.raises(ValueError, match="GoldReducer only accepts 2D tensors"):
-        dr.fit_transform(data_1d)
+        # fit should reject 3D tensor
+        with pytest.raises(ValueError, match="GoldReducer only accepts 2D tensors"):
+            dr.fit(data_3d)
 
-    # transform should reject 1D tensor
-    dr.fit(torch.randn(10, 5))  # First fit with valid input
-    with pytest.raises(ValueError, match="GoldReducer only accepts 2D tensors"):
-        dr.transform(data_1d)
+        # fit_transform should reject 3D tensor
+        with pytest.raises(ValueError, match="GoldReducer only accepts 2D tensors"):
+            dr.fit_transform(data_3d)
 
+        # transform should reject 3D tensor
+        dr.fit(torch.randn(10, 5))  # First fit with valid input
+        with pytest.raises(ValueError, match="GoldReducer only accepts 2D tensors"):
+            dr.transform(data_3d)
 
-def test_reducer_rejects_3d_tensor():
-    """Test that reducer rejects 3D tensor input and requires 2D tensor."""
-    data_3d = torch.randn(10, 5, 3, dtype=torch.float32)
-    reducer = PCA(n_components=3)
-    dr = GoldReducer(reducer)
+    def test_reducer_accepts_valid_2d_tensor(self):
+        """Test that reducer correctly accepts valid 2D tensor input."""
+        data = torch.randn(10, 5, dtype=torch.float32)
+        reducer = PCA(n_components=3)
+        dr = GoldReducer(reducer)
 
-    # fit should reject 3D tensor
-    with pytest.raises(ValueError, match="GoldReducer only accepts 2D tensors"):
-        dr.fit(data_3d)
+        # Should work without errors
+        dr.fit(data)
+        out = dr.transform(data)
+        assert isinstance(out, torch.Tensor)
+        assert out.shape == (10, 3)
 
-    # fit_transform should reject 3D tensor
-    with pytest.raises(ValueError, match="GoldReducer only accepts 2D tensors"):
-        dr.fit_transform(data_3d)
-
-    # transform should reject 3D tensor
-    dr.fit(torch.randn(10, 5))  # First fit with valid input
-    with pytest.raises(ValueError, match="GoldReducer only accepts 2D tensors"):
-        dr.transform(data_3d)
-
-
-def test_reducer_accepts_valid_2d_tensor():
-    """Test that reducer correctly accepts valid 2D tensor input."""
-    data = torch.randn(10, 5, dtype=torch.float32)
-    reducer = PCA(n_components=3)
-    dr = GoldReducer(reducer)
-
-    # Should work without errors
-    dr.fit(data)
-    out = dr.transform(data)
-    assert isinstance(out, torch.Tensor)
-    assert out.shape == (10, 3)
-
-    # fit_transform should also work
-    out2 = dr.fit_transform(data)
-    assert isinstance(out2, torch.Tensor)
-    assert out2.shape == (10, 3)
+        # fit_transform should also work
+        out2 = dr.fit_transform(data)
+        assert isinstance(out2, torch.Tensor)
+        assert out2.shape == (10, 3)

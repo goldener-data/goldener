@@ -42,6 +42,21 @@ logger = getLogger(__name__)
 class GoldSelectionTool(ABC):
     """Run selection of a subset of data points from vectorized samples using a coresubset selection algorithm."""
 
+    def _validate_input(self, x: torch.Tensor) -> None:
+        """Validate that input is already vectorized (2D torch.Tensor).
+
+        Args:
+            x: Input tensor to validate.
+
+        Raises:
+            ValueError: If input is not a 2D tensor.
+        """
+        if x.ndim != 2:
+            raise ValueError(
+                f"GoldSelectionTool only accepts 2D tensors (vectors_num, feature_dim). "
+                f"Got shape {x.shape}. Please ensure your input is already vectorized."
+            )
+
     @abstractmethod
     def select(
         self,
@@ -91,6 +106,7 @@ class GoldGreedyKernelPoints(GoldSelectionTool):
         Returns:
             A list of indices corresponding to the selected data points.
         """
+        self._validate_input(x)
         in_data = SupervisedData(
             data=jnp.array(x.numpy(force=True)), supervision=jnp.array(np.ones(len(x)))
         )
@@ -132,6 +148,7 @@ class GoldGreedyClosestPointSelection(GoldSelectionTool):
         Returns:
             A list of indices corresponding to the selected data points.
         """
+        self._validate_input(x)
         x_len = len(x)
         if k > x_len:
             raise ValueError("k cannot be greater than the number of data points in x.")
