@@ -37,14 +37,8 @@ class GoldReducer:
             x: Input tensor to validate.
 
         Raises:
-            TypeError: If input is not a torch.Tensor.
             ValueError: If input is not a 2D tensor.
         """
-        if not isinstance(x, torch.Tensor):
-            raise TypeError(
-                f"GoldReducer only accepts already vectorized input as torch.Tensor. "
-                f"Got {type(x).__name__}. Please vectorize your data first."
-            )
         if x.ndim != 2:
             raise ValueError(
                 f"GoldReducer only accepts 2D tensors (batch_size, feature_dim). "
@@ -58,7 +52,6 @@ class GoldReducer:
             x: Already vectorized 2D input tensor of shape (batch_size, feature_dim) to fit the model on.
 
         Raises:
-            TypeError: If input is not a torch.Tensor.
             ValueError: If input is not a 2D tensor.
         """
         self._validate_input(x)
@@ -75,7 +68,6 @@ class GoldReducer:
             Transformed tensor with reduced dimensionality.
 
         Raises:
-            TypeError: If input is not a torch.Tensor.
             ValueError: If input is not a 2D tensor.
         """
         self._validate_input(x)
@@ -91,7 +83,6 @@ class GoldReducer:
             Transformed tensor with reduced dimensionality.
 
         Raises:
-            TypeError: If input is not a torch.Tensor.
             ValueError: If input is not a 2D tensor.
         """
         self._validate_input(x)

@@ -1,5 +1,4 @@
 import torch
-import numpy as np
 import pytest
 
 from goldener.reduce import GoldReducer
@@ -62,35 +61,6 @@ def test_gaussian_random_projection():
     out2 = dr.fit_transform(data)
     assert isinstance(out2, torch.Tensor)
     assert out2.shape == (data.shape[0], 4)
-
-
-def test_reducer_rejects_numpy_array():
-    """Test that reducer rejects numpy array input and requires torch.Tensor."""
-    data_np = np.random.randn(10, 5).astype(np.float32)
-    reducer = PCA(n_components=3)
-    dr = GoldReducer(reducer)
-
-    # fit should reject numpy array
-    with pytest.raises(
-        TypeError,
-        match="GoldReducer only accepts already vectorized input as torch.Tensor",
-    ):
-        dr.fit(data_np)
-
-    # fit_transform should reject numpy array
-    with pytest.raises(
-        TypeError,
-        match="GoldReducer only accepts already vectorized input as torch.Tensor",
-    ):
-        dr.fit_transform(data_np)
-
-    # transform should reject numpy array
-    dr.fit(torch.from_numpy(data_np))  # First fit with valid input
-    with pytest.raises(
-        TypeError,
-        match="GoldReducer only accepts already vectorized input as torch.Tensor",
-    ):
-        dr.transform(data_np)
 
 
 def test_reducer_rejects_1d_tensor():
