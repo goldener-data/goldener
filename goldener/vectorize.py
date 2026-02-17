@@ -218,7 +218,7 @@ class TensorVectorizer:
     Attributes:
         keep: Filter2DWithCount instance to keep specific rows in the input `x` of `filter`.
         remove: Filter2DWithCount instance to remove specific rows in the input `x` of `filter`.
-        random: Random Filter2DWithCount instance to randomly filter vectors randomly after
+        random: Random Filter2DWithCount instance to randomly filter vectors after
         applying `keep`, `remove` and the target `y` on the input `x` of filter.
         transform_y: Optional callable to transform the target tensor before transforming it to 2D.
         channel_pos: position of the channel dimension in the input tensor to vectorize.
@@ -285,8 +285,9 @@ class TensorVectorizer:
     ) -> Vectorized:
         """Vectorize input tensor and filter based on target tensor.
 
-        If y is not provided, only filtering and vectorization are performed. If y is provided,
-        it is used to filter the vectorized x tensor.
+        If y is not provided, only filtering and vectorization are performed.
+        If y is provided, it is used to filter the vectorized x tensor, only if at least
+        1 vector location is non zero in the target.
 
         Args:
             x: Input tensor to vectorize.

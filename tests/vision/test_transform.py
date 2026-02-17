@@ -10,7 +10,7 @@ class TestPatchifyImageMask:
         mask[:, :, 0:16, 0:16] = 1.0
 
         transform = PatchifyImageMask(patch_size=16, match_ratio=0.5)
-        out = transform.transform(mask)
+        out = transform.transform(mask, {})
 
         assert out.shape == (2, 4)
         assert out.dtype == torch.float32
@@ -20,13 +20,29 @@ class TestPatchifyImageMask:
         transform = PatchifyImageMask(patch_size=16, match_ratio=0.5)
         mask = torch.zeros(32, 32)
         with pytest.raises(ValueError, match="Input tensor must have shape"):
-            transform.transform(mask)
+            transform.transform(mask, {})
 
     def test_non_divisible_size_raises(self):
         transform = PatchifyImageMask(patch_size=16, match_ratio=0.5)
         mask = torch.zeros(1, 1, 17, 32)
         with pytest.raises(ValueError, match="H and W must be divisible by patch_size"):
-            transform.transform(mask)
+            transform.transform(mask, {})
+
+    def test_wrong_channel_raises(self):
+        transform = PatchifyImageMask(patch_size=16, match_ratio=0.5)
+        mask = torch.zeros(1, 2, 17, 32)
+        with pytest.raises(
+            ValueError, match="Input mask must have a single channel (C=1)"
+        ):
+            transform.transform(mask, {})
+
+    def test_invalid_mask_raises(self):
+        transform = PatchifyImageMask(patch_size=16, match_ratio=0.5)
+        mask = 1.5 * torch.ones(1, 1, 32, 32)
+        with pytest.raises(
+            ValueError, match="Input must be a binary mask with values 0 or 1"
+        ):
+            transform.transform(mask, {})
 
     def test_patchify_logic_and_match_ratio(self):
         mask = torch.zeros(1, 1, 4, 4)
@@ -44,12 +60,12 @@ class TestPatchifyImageMask:
 
         # With match_ratio=0.5 and strict > comparison, expected ratios > 0.5 are only 0.75
         transform = PatchifyImageMask(patch_size=2, match_ratio=0.5)
-        out = transform.transform(mask)
+        out = transform.transform(mask, {})
         expected = torch.tensor([[0.0, 0.0, 0.0, 1.0]], dtype=torch.float32)
         assert torch.equal(out, expected)
 
         # With a lower threshold, more patches should pass
         transform_low = PatchifyImageMask(patch_size=2, match_ratio=0.2)
-        out_low = transform_low.transform(mask)
+        out_low = transform_low.transform(mask, {})
         expected_low = torch.tensor([[0.0, 1.0, 1.0, 1.0]], dtype=torch.float32)
         assert torch.equal(out_low, expected_low)
