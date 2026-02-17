@@ -14,10 +14,16 @@ class PatchifyImageMask(Transform):
 
     def __init__(self, patch_size: int = 16, match_ratio: float = 0.5) -> None:
         super().__init__()
+        if patch_size <= 0:
+            raise ValueError("patch_size must be a positive integer")
         self.patch_size = patch_size
+
+        if not 0.0 <= match_ratio <= 1.0:
+            raise ValueError("match_ratio must be between 0 and 1")
+
         self.match_ratio = match_ratio
 
-    def transform(self, inpt: Any, params: dict[str, Any]) -> Any:
+    def transform(self, inpt: Any, params: dict[str, Any] | None = None) -> Any:
         """Patchify a binary mask in order to align it with the tokens of a ViT model.
 
         Args:

@@ -1,3 +1,4 @@
+import pytest
 import torch
 
 from goldener.vision.vectorizers import (
@@ -32,6 +33,10 @@ class TestVitVectorizerHelpers:
         expected_batches = torch.arange(x.shape[0]).repeat_interleave(5)
         assert torch.equal(out.batch_indices, expected_batches)
 
+    def test_get_vit_prefix_tokens_vectorizer_wrong_n_raises(self):
+        with pytest.raises(ValueError, match="n_prefixes must be a positive integer"):
+            get_vit_prefix_tokens_vectorizer(n_prefixes=0)
+
     def test_get_vit_patch_tokens_vectorizer_only_remove_prefixes(self):
         x = self.make_tensor((2, 6, 4))
         vec = get_vit_patch_tokens_vectorizer(n_prefixes=2, n_random=None)
@@ -39,6 +44,16 @@ class TestVitVectorizerHelpers:
         out = vec.vectorize(x)
         assert out.vectors.shape[0] == x.shape[0] * 4
         assert out.vectors.shape[1] == x.shape[2]
+
+    def test_get_vit_patch_tokens_vectorizer_wrong_n_raises(self):
+        with pytest.raises(
+            ValueError, match="n_prefixes must be a positive integer or None"
+        ):
+            get_vit_patch_tokens_vectorizer(n_prefixes=0, n_random=None)
+        with pytest.raises(
+            ValueError, match="n_random must be a positive integer or None"
+        ):
+            get_vit_patch_tokens_vectorizer(n_prefixes=None, n_random=0)
 
     def test_get_vit_patch_tokens_vectorizer_only_random(self):
         x = self.make_tensor((2, 6, 4))

@@ -19,6 +19,9 @@ def get_vit_prefix_tokens_vectorizer(n_prefixes: int = 5) -> TensorVectorizer:
     Args:
         n_prefixes: The number of prefix tokens to keep (default is 5).
     """
+    if n_prefixes <= 0:
+        raise ValueError("n_prefixes must be a positive integer")
+
     return TensorVectorizer(
         keep=Filter2DWithCount(
             filter_count=n_prefixes, keep=True, filter_location=FilterLocation.START
@@ -44,6 +47,11 @@ def get_vit_patch_tokens_vectorizer(
            If None, no random filtering is applied.
        generator: An optional torch.Generator for reproducibility when n_random is set.
     """
+    if n_prefixes is not None and n_prefixes <= 0:
+        raise ValueError("n_prefixes must be a positive integer or None")
+    if n_random is not None and n_random <= 0:
+        raise ValueError("n_random must be a positive integer or None")
+
     return TensorVectorizer(
         remove=(
             Filter2DWithCount(
