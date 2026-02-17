@@ -94,6 +94,24 @@ class Filter2DWithCount:
         """
         return self._filter_location is FilterLocation.RANDOM
 
+    @property
+    def is_keeping(self) -> bool:
+        """Check if the filter is set to keep the filtered rows.
+
+        Returns:
+            True if the filter is set to keep the filtered rows, False if it is set to remove them.
+        """
+        return self._keep
+
+    @property
+    def filter_count(self) -> int:
+        """Get the number of rows to filter.
+
+        Returns:
+            The number of rows that the filter is set to filter.
+        """
+        return self._filter_count
+
     def filter(
         self,
         x: torch.Tensor,
@@ -200,7 +218,7 @@ class TensorVectorizer:
     Attributes:
         keep: Filter2DWithCount instance to keep specific rows in the input `x` of `filter`.
         remove: Filter2DWithCount instance to remove specific rows in the input `x` of `filter`.
-        random_filter: Random Filter2DWithCount instance to randomly filter vectors randomly after
+        random: Random Filter2DWithCount instance to randomly filter vectors after
         applying `keep`, `remove` and the target `y` on the input `x` of filter.
         transform_y: Optional callable to transform the target tensor before transforming it to 2D.
         channel_pos: position of the channel dimension in the input tensor to vectorize.
@@ -210,7 +228,7 @@ class TensorVectorizer:
         self,
         keep: Filter2DWithCount | None = None,
         remove: Filter2DWithCount | None = None,
-        random_filter: Filter2DWithCount | None = None,
+        random: Filter2DWithCount | None = None,
         transform_y: Callable[[torch.Tensor], torch.Tensor] | None = None,
         channel_pos: int = 1,
     ) -> None:
@@ -219,27 +237,47 @@ class TensorVectorizer:
         Args:
             keep: Optional filter to keep specific rows in the input.
             remove: Optional filter to remove specific rows from the input.
-            random_filter: Optional random filter to apply after keep/remove filters.
+            random: Optional random filter to apply after keep/remove filters.
             transform_y: Optional transformation to apply to the target tensor.
             channel_pos: Position of the channel dimension in the input tensor. Defaults to 1.
 
         Raises:
-            ValueError: If keep or remove filters are random, or if random_filter is not random.
+            ValueError: If keep, remove and random filters are not having the expected properties.
+            See the checks in the code for details.
         """
         self.transform_y = transform_y
         self.channel_pos = channel_pos
 
-        if keep is not None and keep.is_random:
-            raise ValueError("The 'keep' filter cannot be random.")
+        if keep is not None:
+            if keep.is_random:
+                raise ValueError("The 'keep' filter cannot be random.")
+
+            if not keep.is_keeping:
+                raise ValueError(
+                    "The 'keep' filter must be set to keep the filtered rows."
+                )
         self.keep = keep
 
-        if remove is not None and remove.is_random:
-            raise ValueError("The 'remove' filter cannot be random.")
+        if remove is not None:
+            if remove.is_random:
+                raise ValueError("The 'remove' filter cannot be random.")
+
+            if remove.is_keeping:
+                raise ValueError(
+                    "The 'remove' filter must be set to remove the filtered rows."
+                )
         self.remove = remove
 
-        if random_filter is not None and not random_filter.is_random:
-            raise ValueError("The 'random_filter' must be random.")
-        self.random_filter = random_filter
+        if random is not None:
+            if not random.is_random:
+                raise ValueError("The 'random' filter must be random.")
+
+            if not random.is_keeping:
+                raise ValueError(
+                    "The 'random' filter must be set to keep the filtered rows."
+                )
+
+        self.random = random
 
     def vectorize(
         self,
@@ -248,8 +286,9 @@ class TensorVectorizer:
     ) -> Vectorized:
         """Vectorize input tensor and filter based on target tensor.
 
-        If y is not provided, only filtering and vectorization are performed. If y is provided,
-        it is used to filter the vectorized x tensor.
+        If y is not provided, only filtering and vectorization are performed.
+        If y is provided, it is used to filter the vectorized x tensor, only if at least
+        1 vector location is non zero in the target.
 
         Args:
             x: Input tensor to vectorize.
@@ -287,7 +326,11 @@ class TensorVectorizer:
 
             if y is not None:
                 y_sample = y[idx_sample].unsqueeze(0)
-                x_sample = self._filter_2d_tensors_from_y(x_sample, y_sample)
+                if torch.any(y_sample > 0):
+                    x_sample = self._filter_2d_tensors_from_y(x_sample, y_sample)
+
+            if self.random is not None and len(x_sample) > self.random.filter_count:
+                x_sample = self._apply_filter(self.random.filter, x_sample)
 
             filtered_x.append(x_sample)
             filtered_batch_info.append(
