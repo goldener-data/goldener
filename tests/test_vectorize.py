@@ -36,6 +36,13 @@ class TestTensorsVectorizer:
         assert vec.vectors.shape == (3, 5)
         assert torch.equal(vec.batch_indices, torch.tensor([0, 1, 1]))
 
+    def test_vectorize_with_y_and_full_zero(self):
+        x = self.make_tensor((2, 2, 5))
+        y = torch.zeros(2, 2)
+        v = TensorVectorizer(channel_pos=2)
+        vec = v.vectorize(x, y)
+        assert vec.vectors.shape == (4, 5)
+
     def test_vectorize_with_keep(self):
         x = self.make_tensor()
         keep = Filter2DWithCount(
