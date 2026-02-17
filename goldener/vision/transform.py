@@ -1,4 +1,5 @@
-import torch
+from typing import Any
+
 from torchvision.transforms.v2 import Transform
 
 
@@ -15,20 +16,21 @@ class PatchifyImageMask(Transform):
         self.patch_size = patch_size
         self.match_ratio = match_ratio
 
-    def transform(self, x: torch.Tensor) -> torch.Tensor:
+    def transform(self, inpt: Any, params: dict[str, Any]) -> Any:
         """Patchify a binary mask in order to align it with the tokens of a ViT model.
 
         Args:
-            x: A binary mask tensor of shape (B, 1, H, W) where B is the batch size, H and W are the height and width of the image.
+            inpt: A binary mask tensor of shape (B, 1, H, W) where B is the batch size, H and W are the height and width of the image.
+            params: A dictionary of parameters (not used in this transform).
 
         Returns:
             A tensor of shape (B, N) where N is the number of patches (H // patch_size) * (W // patch_size)
             and each value is 1 if the ratio of non zero pixels in the patch is greater than match_ratio, otherwise 0.
         """
-        if x.ndim != 4:
+        if inpt.ndim != 4:
             raise ValueError("Input tensor must have shape (B, C, H, W)")
 
-        B, C, H, W = x.shape
+        B, C, H, W = inpt.shape
         if C != 1:
             raise ValueError("Input mask must have a single channel (C=1)")
 
@@ -38,7 +40,7 @@ class PatchifyImageMask(Transform):
         pixels_in_patch = self.patch_size * self.patch_size
 
         # Patchify over spatial dimensions (H, W) while keeping batch and channel dimensions
-        patches = x.unfold(2, self.patch_size, self.patch_size).unfold(
+        patches = inpt.unfold(2, self.patch_size, self.patch_size).unfold(
             3, self.patch_size, self.patch_size
         )
         # patches shape: (B, 1, H//ps, W//ps, ps, ps)
