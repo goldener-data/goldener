@@ -324,7 +324,8 @@ class TensorVectorizer:
 
             if y is not None:
                 y_sample = y[idx_sample].unsqueeze(0)
-                x_sample = self._filter_2d_tensors_from_y(x_sample, y_sample)
+                if torch.any(y_sample > 0):
+                    x_sample = self._filter_2d_tensors_from_y(x_sample, y_sample)
 
             if self.random is not None and len(x_sample) > self.random.filter_count:
                 x_sample = self._apply_filter(self.random.filter, x_sample)
