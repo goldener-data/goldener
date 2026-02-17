@@ -269,11 +269,11 @@ class TensorVectorizer:
 
         if random is not None:
             if not random.is_random:
-                raise ValueError("The 'random_filter' must be random.")
+                raise ValueError("The 'random' filter must be random.")
 
             if not random.is_keeping:
                 raise ValueError(
-                    "The 'random_filter' must be set to keep the filtered rows."
+                    "The 'random' filter must be set to keep the filtered rows."
                 )
 
         self.random = random
