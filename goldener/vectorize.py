@@ -242,7 +242,8 @@ class TensorVectorizer:
             channel_pos: Position of the channel dimension in the input tensor. Defaults to 1.
 
         Raises:
-            ValueError: If keep or remove filters are random, or if random_filter is not random.
+            ValueError: If keep, remove and random filters are not having the expected properties.
+            See the checks in the code for details.
         """
         self.transform_y = transform_y
         self.channel_pos = channel_pos

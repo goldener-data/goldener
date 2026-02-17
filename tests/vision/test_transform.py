@@ -5,6 +5,18 @@ from goldener.vision.transform import PatchifyImageMask
 
 
 class TestPatchifyImageMask:
+    def test_wrong_match_ratio_raises(self):
+        with pytest.raises(ValueError, match="match_ratio must be between 0 and 1"):
+            PatchifyImageMask(patch_size=16, match_ratio=-0.1)
+        with pytest.raises(ValueError, match="match_ratio must be between 0 and 1"):
+            PatchifyImageMask(patch_size=16, match_ratio=1.1)
+
+    def test_wrong_patch_size_raises(self):
+        with pytest.raises(ValueError, match="patch_size must be a positive integer"):
+            PatchifyImageMask(patch_size=0, match_ratio=0.5)
+        with pytest.raises(ValueError, match="patch_size must be a positive integer"):
+            PatchifyImageMask(patch_size=-5, match_ratio=0.5)
+
     def test_output_shape_and_dtype(self):
         mask = torch.zeros(2, 1, 32, 32)
         mask[:, :, 0:16, 0:16] = 1.0
