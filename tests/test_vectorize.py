@@ -98,19 +98,86 @@ class TestTensorsVectorizer:
         with pytest.raises(ValueError):
             v.vectorize(x)
 
-    def test_vectorizer_invalid_keep_type(self):
-        with pytest.raises(ValueError):
-            TensorVectorizer(keep=Filter2DWithCount())
+    def test_vectorizer_invalid_keep_type_random(self):
+        # keep filter cannot be random
+        keep = Filter2DWithCount(
+            filter_count=1,
+            filter_location=FilterLocation.RANDOM,
+            keep=True,
+        )
+        with pytest.raises(ValueError, match="keep"):
+            TensorVectorizer(keep=keep)
 
-    def test_vectorizer_invalid_remove_type(self):
-        with pytest.raises(ValueError):
-            TensorVectorizer(remove=Filter2DWithCount())
+    def test_vectorizer_invalid_keep_type_not_keeping(self):
+        # keep filter must have keep=True
+        keep = Filter2DWithCount(
+            filter_count=1,
+            filter_location=FilterLocation.START,
+            keep=False,
+        )
+        with pytest.raises(ValueError, match="keep"):
+            TensorVectorizer(keep=keep)
 
-    def test_vectorizer_invalid_random_type(self):
-        with pytest.raises(ValueError):
-            TensorVectorizer(
-                random_filter=Filter2DWithCount(filter_location=FilterLocation.START)
-            )
+    def test_vectorizer_invalid_remove_type_random(self):
+        # remove filter cannot be random
+        remove = Filter2DWithCount(
+            filter_count=1,
+            filter_location=FilterLocation.RANDOM,
+            keep=False,
+        )
+        with pytest.raises(ValueError, match="remove"):
+            TensorVectorizer(remove=remove)
+
+    def test_vectorizer_invalid_remove_type_not_removing(self):
+        # remove filter must have keep=False
+        remove = Filter2DWithCount(
+            filter_count=1,
+            filter_location=FilterLocation.START,
+            keep=True,
+        )
+        with pytest.raises(ValueError, match="remove"):
+            TensorVectorizer(remove=remove)
+
+    def test_vectorizer_invalid_random_type_not_random(self):
+        # random filter must be random
+        rand = Filter2DWithCount(
+            filter_count=1,
+            filter_location=FilterLocation.START,
+            keep=True,
+        )
+        with pytest.raises(ValueError, match="random"):
+            TensorVectorizer(random=rand)
+
+    def test_vectorizer_invalid_random_type_not_keeping(self):
+        # random filter must have keep=True so it selects indices to keep
+        rand = Filter2DWithCount(
+            filter_count=1,
+            filter_location=FilterLocation.RANDOM,
+            keep=False,
+        )
+        with pytest.raises(ValueError, match="random"):
+            TensorVectorizer(random=rand)
+
+    def test_vectorizer_valid_filters_combination(self):
+        # Sanity check: valid combination should construct without errors
+        keep = Filter2DWithCount(
+            filter_count=1,
+            filter_location=FilterLocation.START,
+            keep=True,
+        )
+        remove = Filter2DWithCount(
+            filter_count=1,
+            filter_location=FilterLocation.END,
+            keep=False,
+        )
+        rand = Filter2DWithCount(
+            filter_count=1,
+            filter_location=FilterLocation.RANDOM,
+            keep=True,
+        )
+        v = TensorVectorizer(keep=keep, remove=remove, random=rand)
+        x = self.make_tensor()
+        _ = v.vectorize(x)
 
 
 class TestFilter2DWithCount:
