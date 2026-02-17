@@ -31,9 +31,7 @@ class TestPatchifyImageMask:
     def test_wrong_channel_raises(self):
         transform = PatchifyImageMask(patch_size=16, match_ratio=0.5)
         mask = torch.zeros(1, 2, 17, 32)
-        with pytest.raises(
-            ValueError, match="Input mask must have a single channel (C=1)"
-        ):
+        with pytest.raises(ValueError, match="Input mask must have a single channel"):
             transform.transform(mask, {})
 
     def test_invalid_mask_raises(self):
