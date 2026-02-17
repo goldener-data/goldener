@@ -69,6 +69,17 @@ class TestTensorsVectorizer:
         assert vec.vectors.shape == (2, 5)
         assert torch.equal(vec.batch_indices, torch.tensor([0, 1]))
 
+    def test_vectorize_with_random(self):
+        x = self.make_tensor()
+        v = TensorVectorizer(
+            random=Filter2DWithCount(
+                filter_count=1, filter_location=FilterLocation.RANDOM, keep=True
+            )
+        )
+        vec = v.vectorize(x)
+        assert vec.vectors.shape == (2, 5)
+        assert torch.equal(vec.batch_indices, torch.tensor([0, 1]))
+
     def test_vectorize_with_transform_y(self):
         x = self.make_tensor()
         shape = x.shape
