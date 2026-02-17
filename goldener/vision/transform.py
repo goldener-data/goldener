@@ -1,5 +1,6 @@
 from typing import Any
 
+import torch
 from torchvision.transforms.v2 import Transform
 
 
@@ -36,6 +37,9 @@ class PatchifyImageMask(Transform):
 
         if H % self.patch_size != 0 or W % self.patch_size != 0:
             raise ValueError("H and W must be divisible by patch_size")
+
+        if not torch.all((inpt == 0) | (inpt == 1)):
+            raise ValueError("Input must be a binary mask with values 0 or 1")
 
         pixels_in_patch = self.patch_size * self.patch_size
 
