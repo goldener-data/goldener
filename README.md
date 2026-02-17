@@ -182,6 +182,7 @@ whenever you make a commit.
 To release a new version of the `goldener` package:
 1. Create a new branch for the release: `git checkout -b release-vX.Y.Z`
 2. Update the version `vX.Y.Z` in `pyproject.toml`
-3. Commit the changes with a message like `release vX.Y.Z`
-4. Merge the branch into `main`
-5. Trigger a new release on GitHub with the tag `vX.Y.Z`
+3. Run uv sync to update the lock file with the new version
+4. Commit the changes with a message like `release vX.Y.Z`
+5. Merge the branch into `main`
+6. Trigger a new release on GitHub with the tag `vX.Y.Z`
