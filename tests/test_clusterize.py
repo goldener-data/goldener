@@ -9,7 +9,7 @@ from goldener.clusterize import (
     GoldClusterizer,
     GoldSKLearnClusteringTool,
 )
-from goldener.reduce import GoldReducer
+from goldener.reduce import GoldSKLearnReductionTool
 from goldener.pxt_utils import GoldPxtTorchDataset
 
 
@@ -457,7 +457,7 @@ class TestGoldClusterizer:
 
         from sklearn.decomposition import PCA
 
-        reducer = GoldReducer(PCA(n_components=4))
+        reducer = GoldSKLearnReductionTool(PCA(n_components=4))
 
         clusterizer = GoldClusterizer(
             table_path=table_path,
