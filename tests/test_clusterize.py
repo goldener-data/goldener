@@ -57,13 +57,17 @@ class TestGoldRandomClusteringTool:
     def test_rejects_1d_tensor(self):
         """Test that GoldRandomClusteringTool rejects 1D tensor input."""
         tool = GoldRandomClusteringTool(42)
-        with pytest.raises(ValueError, match="GoldClusteringTool only accepts 2D tensors"):
+        with pytest.raises(
+            ValueError, match="GoldClusteringTool only accepts 2D tensors"
+        ):
             tool.fit(torch.randn(10), n_clusters=2)
 
     def test_rejects_3d_tensor(self):
         """Test that GoldRandomClusteringTool rejects 3D tensor input."""
         tool = GoldRandomClusteringTool(42)
-        with pytest.raises(ValueError, match="GoldClusteringTool only accepts 2D tensors"):
+        with pytest.raises(
+            ValueError, match="GoldClusteringTool only accepts 2D tensors"
+        ):
             tool.fit(torch.randn(10, 5, 3), n_clusters=2)
 
 
@@ -106,7 +110,9 @@ class TestGoldSKLearnClusteringTool:
         from sklearn.cluster import KMeans
 
         tool = GoldSKLearnClusteringTool(KMeans(n_clusters=2, random_state=0))
-        with pytest.raises(ValueError, match="GoldClusteringTool only accepts 2D tensors"):
+        with pytest.raises(
+            ValueError, match="GoldClusteringTool only accepts 2D tensors"
+        ):
             tool.fit(torch.randn(10), n_clusters=2)
 
     def test_fit_rejects_3d_tensor(self):
@@ -114,7 +120,9 @@ class TestGoldSKLearnClusteringTool:
         from sklearn.cluster import KMeans
 
         tool = GoldSKLearnClusteringTool(KMeans(n_clusters=2, random_state=0))
-        with pytest.raises(ValueError, match="GoldClusteringTool only accepts 2D tensors"):
+        with pytest.raises(
+            ValueError, match="GoldClusteringTool only accepts 2D tensors"
+        ):
             tool.fit(torch.randn(10, 5, 3), n_clusters=2)
 
     def test_predict_rejects_1d_tensor(self):
@@ -123,7 +131,9 @@ class TestGoldSKLearnClusteringTool:
 
         tool = GoldSKLearnClusteringTool(KMeans(n_clusters=2, random_state=0))
         tool.fit(torch.randn(10, 5), n_clusters=2)  # First fit with valid input
-        with pytest.raises(ValueError, match="GoldClusteringTool only accepts 2D tensors"):
+        with pytest.raises(
+            ValueError, match="GoldClusteringTool only accepts 2D tensors"
+        ):
             tool.predict(torch.randn(10))
 
     def test_predict_rejects_3d_tensor(self):
@@ -132,7 +142,9 @@ class TestGoldSKLearnClusteringTool:
 
         tool = GoldSKLearnClusteringTool(KMeans(n_clusters=2, random_state=0))
         tool.fit(torch.randn(10, 5), n_clusters=2)  # First fit with valid input
-        with pytest.raises(ValueError, match="GoldClusteringTool only accepts 2D tensors"):
+        with pytest.raises(
+            ValueError, match="GoldClusteringTool only accepts 2D tensors"
+        ):
             tool.predict(torch.randn(10, 5, 3))
 
     def test_predict_matches_sklearn_predict_shape(self):
