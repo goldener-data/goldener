@@ -175,7 +175,7 @@ class GoldClusterizer:
     Attributes:
         table_path: Path to the PixelTable table where clustering results will be stored locally.
         clustering_tool: The GoldClusteringTool implementing the clustering algorithm.
-        reducer: Optional GoldReducer instance for dimensionality reduction before clustering.
+        reducer: Optional GoldReductionTool instance for dimensionality reduction before clustering.
         chunk: Optional chunk size for processing data in chunks to reduce memory consumption.
         collate_fn: Optional function to collate dataset samples into batches composed of
             dictionaries with at least the key specified by `vectorized_key` returning a PyTorch Tensor.
@@ -229,7 +229,7 @@ class GoldClusterizer:
         Attributes:
             table_path: Path to the PixelTable table where clustering results will be stored locally.
             clustering_tool: The GoldClusteringTool implementing the clustering algorithm.
-            reducer: Optional GoldReducer instance for dimensionality reduction before clustering.
+            reducer: Optional GoldReductionTool instance for dimensionality reduction before clustering.
             chunk: Optional chunk size for processing data in chunks to reduce memory consumption.
             collate_fn: Optional function to collate dataset samples into batches composed of
                 dictionaries with at least the key specified by `vectorized_key` returning a PyTorch Tensor.

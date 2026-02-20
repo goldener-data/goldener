@@ -202,7 +202,7 @@ class GoldSelector:
     Attributes:
         table_path: Path to the PixelTable table where selection results will be stored locally.
         selection_tool: The GoldSelectionTool implementing the selection algorithm.
-        reducer: Optional GoldReducer instance for dimensionality reduction before selection.
+        reducer: Optional GoldReductionTool instance for dimensionality reduction before selection.
         chunk: Optional chunk size for processing data in chunks to reduce memory consumption.
         collate_fn: Optional function to collate dataset samples into batches composed of
             dictionaries with at least the key specified by `vectorized_key` returning a PyTorch Tensor.
@@ -258,7 +258,7 @@ class GoldSelector:
         Args:
             table_path: Path to store the PixelTable table.
             selection_tool: The GoldSelectionTool implementing the selection algorithm.
-            reducer: Optional dimensionality reducer to apply before selection.
+            reducer: Optional GoldReductionTool instance for dimensionality reduction before selection.
             chunk: Optional chunk size for processing data in chunks.
             collate_fn: Optional collate function for the DataLoader.
             vectorized_key: Key pointing to the vector for selection. Defaults to "vectorized".

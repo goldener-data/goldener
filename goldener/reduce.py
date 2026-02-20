@@ -81,7 +81,7 @@ class GoldTorchModuleReductionTool(GoldReductionTool):
     """
 
     def __init__(self, reducer: Module):
-        """Initialize the GoldRandomProjectionReductionTool.
+        """Initialize the GoldTorchModuleReductionTool.
 
         Args:
             reducer: The torch Module to use for dimensionality reduction.
@@ -109,7 +109,7 @@ class GoldSKLearnReductionTool(GoldReductionToolWithFit):
     """
 
     def __init__(self, reducer: UMAP | PCA | TSNE | GaussianRandomProjection):
-        """Initialize the GoldReducer.
+        """Initialize the GoldSKLearnReductionTool.
 
         Args:
             reducer: An instance of UMAP, PCA, TSNE, or GaussianRandomProjection for dimensionality reduction.
