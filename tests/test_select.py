@@ -12,7 +12,7 @@ import pixeltable as pxt
 from torch.utils.data import Dataset
 
 from goldener.pxt_utils import GoldPxtTorchDataset
-from goldener.reduce import GoldReducer
+from goldener.reduce import GoldSKLearnReductionTool
 from goldener.select import GoldSelector
 from goldener.select import (
     GoldGreedyClosestPointSelection,
@@ -408,7 +408,7 @@ class TestGoldSelector:
         selector = GoldSelector(
             table_path=table_path,
             allow_existing=True,
-            reducer=GoldReducer(PCA(n_components=3)),
+            reducer=GoldSKLearnReductionTool(PCA(n_components=3)),
             batch_size=10,
         )
 

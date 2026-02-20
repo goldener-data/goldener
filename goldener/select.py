@@ -29,7 +29,7 @@ from goldener.pxt_utils import (
     check_pxt_table_has_primary_key,
     get_sample_row_from_idx,
 )
-from goldener.reduce import GoldReducer
+from goldener.reduce import GoldReductionTool, GoldReductionToolWithFit
 from goldener.torch_utils import get_dataset_sample_dict
 from goldener.utils import (
     filter_batch_from_indices,
@@ -202,7 +202,7 @@ class GoldSelector:
     Attributes:
         table_path: Path to the PixelTable table where selection results will be stored locally.
         selection_tool: The GoldSelectionTool implementing the selection algorithm.
-        reducer: Optional GoldReducer instance for dimensionality reduction before selection.
+        reducer: Optional GoldReductionTool instance for dimensionality reduction before selection.
         chunk: Optional chunk size for processing data in chunks to reduce memory consumption.
         collate_fn: Optional function to collate dataset samples into batches composed of
             dictionaries with at least the key specified by `vectorized_key` returning a PyTorch Tensor.
@@ -236,7 +236,7 @@ class GoldSelector:
         selection_tool: GoldSelectionTool = GoldGreedyKernelPoints(
             feature_kernel=LinearKernel(output_scale=1, constant=0)
         ),
-        reducer: GoldReducer | None = None,
+        reducer: GoldReductionTool | None = None,
         chunk: int | None = None,
         collate_fn: Callable | None = None,
         vectorized_key: str = "vectorized",
@@ -258,7 +258,7 @@ class GoldSelector:
         Args:
             table_path: Path to store the PixelTable table.
             selection_tool: The GoldSelectionTool implementing the selection algorithm.
-            reducer: Optional dimensionality reducer to apply before selection.
+            reducer: Optional GoldReductionTool instance for dimensionality reduction before selection.
             chunk: Optional chunk size for processing data in chunks.
             collate_fn: Optional collate function for the DataLoader.
             vectorized_key: Key pointing to the vector for selection. Defaults to "vectorized".
@@ -1029,7 +1029,11 @@ class GoldSelector:
                 else:
                     # make coresubset selection for the chunk
                     if self.reducer is not None:
-                        vectors = self.reducer.fit_transform(vectors)
+                        vectors = (
+                            self.reducer.fit_transform(vectors)
+                            if isinstance(self.reducer, GoldReductionToolWithFit)
+                            else self.reducer.transform(vectors)
+                        )
 
                     coresubset_indices = self._coresubset_selection(
                         vectors, chunk_select_count, indices
