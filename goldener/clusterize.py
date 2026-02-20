@@ -35,12 +35,27 @@ logger = getLogger(__name__)
 class GoldClusteringTool(ABC):
     """Run clustering on input vectors."""
 
+    def _validate_input(self, x: torch.Tensor) -> None:
+        """Validate that input is already vectorized (2D torch.Tensor).
+
+        Args:
+            x: Input tensor to validate.
+
+        Raises:
+            ValueError: If input is not a 2D tensor.
+        """
+        if x.ndim != 2:
+            raise ValueError(
+                f"GoldClusteringTool only accepts 2D tensors (num_vectors, feature_dim). "
+                f"Got shape {x.shape}. Please ensure your input is already vectorized."
+            )
+
     @abstractmethod
     def fit(self, x: torch.Tensor, n_clusters: int) -> torch.Tensor:
         """Fit the clustering tool from a given set of vectors into n clusters.
 
         Args:
-            x: Input vectors to select from.
+            x: Input vectors to select from. Must be a 2D tensor of shape (num_vectors, feature_dim).
             n_clusters: Number of clusters to form.
 
         Returns: The cluster assignments for each input vector as a 1D tensor of cluster indices.
@@ -52,7 +67,7 @@ class GoldClusteringTool(ABC):
         """Assign the input vectors to the clusters.
 
         Args:
-            x: Input vectors to transform.
+            x: Input vectors to transform. Must be a 2D tensor of shape (num_vectors, feature_dim).
 
         Returns: The cluster assignments for each input vector as a 1D tensor of cluster indices.
         """
@@ -69,11 +84,12 @@ class GoldRandomClusteringTool(GoldClusteringTool):
         """Randomly assign each input vector to clusters of roughly the same size.
 
         Args:
-            x: Input vectors to select from.
+            x: Input vectors to select from. Must be a 2D tensor of shape (num_vectors, feature_dim).
             n_clusters: Number of clusters to form.
 
         Returns: The cluster assignments for each input vector as a 1D tensor of cluster indices.
         """
+        self._validate_input(x)
         total = len(x)
 
         if n_clusters > total:
@@ -113,11 +129,12 @@ class GoldSKLearnClusteringTool(GoldClusteringTool):
         """Fit the scikit-learn clustering tool on the input vectors and return cluster assignments.
 
         Args:
-            x: Input vectors to select from.
+            x: Input vectors to select from. Must be a 2D tensor of shape (num_vectors, feature_dim).
             n_clusters: Number of clusters to form.
 
         Returns: The cluster assignments for each input vector as a 1D tensor of cluster indices.
         """
+        self._validate_input(x)
         self.tool.n_clusters = n_clusters
         x_np = x.detach().cpu().numpy()
         labels = self.tool.fit(x_np).labels_
@@ -127,11 +144,12 @@ class GoldSKLearnClusteringTool(GoldClusteringTool):
         """Assign the input vectors to clusters using the fitted scikit-learn clustering tool.
 
         Args:
-            x: Input vectors to assign to clusters.
+            x: Input vectors to assign to clusters. Must be a 2D tensor of shape (num_vectors, feature_dim).
 
         Returns:
             A 1D tensor of cluster indices predicted for each input vector.
         """
+        self._validate_input(x)
         x_np = x.detach().cpu().numpy()
         return torch.from_numpy(self.tool.predict(x_np))
 
