@@ -184,7 +184,7 @@ class GoldClusterizer:
         include_vectorized_in_table: Whether to keep the vectorized data in the cluster table.
             It is only applied if the cluster table is created from a Table (it is forced anyway for Dataset). Default is False.
         cluster_key: Column name to store the clustering value in the PixelTable table. Default is "cluster".
-        class_key: Optional key for class-based stratified clustering.
+        label_key: Optional key for label-based stratified clustering.
         to_keep_schema: Optional dictionary defining additional columns to keep from the original dataset/table
             into the cluster table. The keys are the column names and the values are the PixelTable types.
         min_pxt_insert_size: Minimum number of rows to accumulate before inserting into PixelTable. Default is 100.
@@ -213,7 +213,7 @@ class GoldClusterizer:
         vectorized_key: str = "vectorized",
         include_vectorized_in_table: bool = False,
         cluster_key: str = "cluster",
-        class_key: str | None = None,
+        label_key: str | None = None,
         to_keep_schema: dict[str, type] | None = None,
         min_pxt_insert_size: int = 100,
         batch_size: int = 1,
@@ -238,7 +238,7 @@ class GoldClusterizer:
             include_vectorized_in_table: Whether to keep the vectorized data in the cluster table. Defaults to False.
                     It is only applied if the cluster table is created from a Table (it is forced anyway for Dataset).
             cluster_key: Column name to store the clustering value in the PixelTable table. Default is "cluster".
-            class_key: Optional key for class-based stratified clustering.
+            label_key: Optional key for label-based stratified clustering.
             to_keep_schema: Optional dictionary defining additional columns to keep from the original dataset/table
                 into the cluster table. The keys are the column names and the values are the PixelTable types.
             min_pxt_insert_size: Minimum number of rows to accumulate before inserting into PixelTable. Default is 100.
@@ -261,7 +261,7 @@ class GoldClusterizer:
         self.vectorized_key = vectorized_key
         self.include_vectorized_in_table = include_vectorized_in_table
         self.cluster_key = cluster_key
-        self.class_key = class_key
+        self.label_key = label_key
         self.to_keep_schema = to_keep_schema
         self.min_pxt_insert_size = min_pxt_insert_size
         self.batch_size = batch_size
@@ -408,8 +408,8 @@ class GoldClusterizer:
         if self.to_keep_schema is not None:
             minimal_schema |= self.to_keep_schema
 
-        if self.class_key is not None:
-            minimal_schema[self.class_key] = pxt.String
+        if self.label_key is not None:
+            minimal_schema[self.label_key] = pxt.String
 
         cluster_table = get_valid_table(
             table=old_cluster_table
@@ -489,8 +489,8 @@ class GoldClusterizer:
         if self.cluster_key in cluster_from.columns():
             col_list.append(self.cluster_key)
 
-        if self.class_key is not None and self.class_key in cluster_from.columns():
-            col_list.append(self.class_key)
+        if self.label_key is not None and self.label_key in cluster_from.columns():
+            col_list.append(self.label_key)
 
         self._add_rows_to_cluster_table_from_dataset(
             cluster_from=GoldPxtTorchDataset(
@@ -527,8 +527,8 @@ class GoldClusterizer:
         if self.to_keep_schema is not None:
             minimal_schema |= self.to_keep_schema
 
-        if self.class_key is not None:
-            minimal_schema[self.class_key] = pxt.String
+        if self.label_key is not None:
+            minimal_schema[self.label_key] = pxt.String
 
         cluster_table = get_valid_table(
             table=old_cluster_table
@@ -643,8 +643,8 @@ class GoldClusterizer:
             to_insert_keys = ["idx", self.cluster_key]
             if self.to_keep_schema is not None:
                 to_insert_keys.extend(list(self.to_keep_schema.keys()))
-            if self.class_key is not None and self.class_key in batch:
-                to_insert_keys.append(self.class_key)
+            if self.label_key is not None and self.label_key in batch:
+                to_insert_keys.append(self.label_key)
             if include_vectorized:
                 to_insert_keys.append(self.vectorized_key)
 
@@ -667,8 +667,8 @@ class GoldClusterizer:
         table: Table,
         cluster_key: str,
         cluster_idx: int | None = None,
-        class_key: str | None = None,
-        class_value: str | None = None,
+        label_key: str | None = None,
+        label_value: str | None = None,
         idx_key: str = "idx_vector",
     ) -> set[int]:
         """Get the indices of samples clustered in a given cluster.
@@ -678,8 +678,8 @@ class GoldClusterizer:
             cluster_key: Column name used to store the clustering values.
             cluster_idx: Optional cluster index to filter samples by cluster.
             If None, all clustered samples are returned.
-            class_key: Optional column name used to filter samples by class.
-            class_value: Optional class value to filter samples by class.
+            label_key: Optional column name used to filter samples by label.
+            label_value: Optional label value to filter samples by label.
             idx_key: Column name used to get sample indices.
         """
         idx_col = get_expr_from_column_name(table, idx_key)
@@ -689,12 +689,12 @@ class GoldClusterizer:
             if cluster_idx is None
             else cluster_col == cluster_idx
         )
-        if class_value is not None and class_key is not None:
-            class_col = get_expr_from_column_name(table, class_key)
-            query = query & (class_col == class_value)
+        if label_value is not None and label_key is not None:
+            label_col = get_expr_from_column_name(table, label_key)
+            query = query & (label_col == label_value)
         else:
-            if class_key is not None or class_value is not None:
-                raise ValueError("class_key and class_value must be set together.")
+            if label_key is not None or label_value is not None:
+                raise ValueError("label_key and label_value must be set together.")
 
         return set(
             [
@@ -714,60 +714,60 @@ class GoldClusterizer:
     ) -> None:
         """Run sequential (single-process) clustering process.
 
-        This private method handles class-stratified clustering if a class_key is configured,
+        This private method handles label-stratified clustering if a label_key is configured,
         otherwise performs clustering on the full dataset. It delegates the actual clustering
-        to _class_cluster.
+        to _label_cluster.
 
         Args:
             cluster_from: The source table with vectorized data.
             cluster_table: The table to store clustering results.
             n_clusters: Number of clusters.
         """
-        if self.class_key is not None:
-            class_col = get_expr_from_column_name(cluster_table, self.class_key)
-            class_values = [
-                distinct_item[self.class_key]
-                for distinct_item in cluster_table.select(class_col)
+        if self.label_key is not None:
+            label_col = get_expr_from_column_name(cluster_table, self.label_key)
+            label_values = [
+                distinct_item[self.label_key]
+                for distinct_item in cluster_table.select(label_col)
                 .distinct()
                 .collect()
             ]
 
-            for class_idx, class_value in enumerate(class_values):
+            for label_idx, label_value in enumerate(label_values):
                 already_clustered = len(
                     self.get_cluster_indices(
                         table=cluster_table,
                         cluster_key=self.cluster_key,
-                        class_key=self.class_key,
-                        class_value=class_value,
+                        label_key=self.label_key,
+                        label_value=label_value,
                     )
                 )
-                class_still_to_cluster_count = (
+                label_still_to_cluster_count = (
                     cluster_table.where(
-                        class_col == class_value  # noqa: E712
+                        label_col == label_value  # noqa: E712
                     )
                     .select(cluster_table.idx_vector)
                     .distinct()
                     .count()
                 )
 
-                class_still_to_cluster_count = (
-                    class_still_to_cluster_count - already_clustered
+                label_still_to_cluster_count = (
+                    label_still_to_cluster_count - already_clustered
                 )
-                if class_still_to_cluster_count == 0:
+                if label_still_to_cluster_count == 0:
                     logger.info(
-                        f"Class '{class_value}' already fully clustered, skipping."
+                        f"Label '{label_value}' already fully clustered, skipping."
                     )
                     continue
-                elif class_still_to_cluster_count < 0:
+                elif label_still_to_cluster_count < 0:
                     raise ValueError(
                         "The size of the cluster table has decreased since the 1st clustering computation"
                     )
 
-                self._cluster_class(
+                self._cluster_label(
                     cluster_from,
                     cluster_table,
                     n_clusters,
-                    class_value=class_value,
+                    label_value=label_value,
                 )
 
         else:
@@ -782,20 +782,20 @@ class GoldClusterizer:
             logger.info(
                 f"Clustering {still_to_cluster_count} samples in {n_clusters} clusters."
             )
-            self._cluster_class(
+            self._cluster_label(
                 cluster_from,
                 cluster_table,
                 n_clusters,
             )
 
-    def _cluster_class(
+    def _cluster_label(
         self,
         cluster_from: Table,
         cluster_table: Table,
         n_clusters: int,
-        class_value: str | None = None,
+        label_value: str | None = None,
     ) -> None:
-        """Perform clustering for a specific class or all data.
+        """Perform clustering for a specific label or all data.
 
         This private method implements chunked clustering.
         It processes data in chunks to manage memory, applies optional dimensionality reduction,
@@ -805,7 +805,7 @@ class GoldClusterizer:
             cluster_from: The source table with vectorized data.
             cluster_table: The table to store clustering results.
             n_clusters: Number of clusters.
-            class_value: Optional class value to filter samples by class.
+            label_value: Optional label value to filter samples by label.
 
         Raises:
             ValueError: If an unexpected empty chunk is encountered during clustering.
@@ -813,10 +813,10 @@ class GoldClusterizer:
         cluster_col = get_expr_from_column_name(cluster_table, self.cluster_key)
         vectorized_col = get_expr_from_column_name(cluster_from, self.vectorized_key)
 
-        if class_value is not None:
-            assert self.class_key is not None
-            class_col = get_expr_from_column_name(cluster_table, self.class_key)
-            available_query = (cluster_col == None) & (class_col == class_value)  # noqa: E712 E711
+        if label_value is not None:
+            assert self.label_key is not None
+            label_col = get_expr_from_column_name(cluster_table, self.label_key)
+            available_query = (cluster_col == None) & (label_col == label_value)  # noqa: E712 E711
         else:
             available_query = cluster_col == None  # noqa: E711
 
@@ -828,8 +828,8 @@ class GoldClusterizer:
         available_for_clustering = len(to_cluster_vector_indices)
         if available_for_clustering == 0:
             logger.info(
-                f"No samples to cluster for class '{class_value}'."
-                if class_value is not None
+                f"No samples to cluster for label '{label_value}'."
+                if label_value is not None
                 else "No samples to cluster."
             )
             return

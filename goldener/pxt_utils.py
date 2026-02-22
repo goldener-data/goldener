@@ -271,23 +271,20 @@ def get_distinct_value_and_count_in_column(
     }
 
 
-def get_column_distinct_ratios(table: Table, class_expr: Expr) -> dict[str, float]:
+def get_column_distinct_ratios(table: Table, col_expr: Expr) -> dict[str, float]:
     """Get the ratios of distinct values in a specified column of a PixelTable table.
 
     Args:
         table: The PixelTable table.
-        class_expr: The column expression to analyze.
+        col_expr: The column expression to analyze.
 
     Returns:
         A dictionary mapping distinct values to their ratios in the specified column.
     """
-    value_and_count = get_distinct_value_and_count_in_column(table, class_expr)
+    value_and_count = get_distinct_value_and_count_in_column(table, col_expr)
     ratios = get_ratios_for_counts(list(value_and_count.values()))
 
-    return {
-        class_label: class_ratio
-        for class_label, class_ratio in zip(value_and_count.keys(), ratios)
-    }
+    return {value: ratio for value, ratio in zip(value_and_count.keys(), ratios)}
 
 
 def get_sample_row_from_idx(

@@ -386,8 +386,8 @@ class GoldSplitter:
             or from the selected table (if `in_described_table` is False).
 
         Raises:
-            ValueError: If any set results in zero samples due to its ratio, if class_key is not found,
-            or if class stratification results in zero samples for any class in a set.
+            ValueError: If any set results in zero samples due to its ratio, if label_key is not found,
+            or if label stratification results in zero samples for any label in a set.
         """
         description = (
             self.descriptor.describe_in_table(to_split)

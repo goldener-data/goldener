@@ -322,7 +322,7 @@ class TestGoldSelector:
         selector = GoldSelector(
             table_path=table_path,
             allow_existing=True,
-            class_key="label",
+            label_key="label",
             batch_size=10,
             max_batches=None,
         )
@@ -340,8 +340,8 @@ class TestGoldSelector:
                     selection_table,
                     "train",
                     selector.selection_key,
-                    class_key=selector.class_key,
-                    class_value="0",
+                    label_key=selector.label_key,
+                    label_value="0",
                 )
             )
             == 5
@@ -352,8 +352,8 @@ class TestGoldSelector:
                     selection_table,
                     "train",
                     selector.selection_key,
-                    class_key=selector.class_key,
-                    class_value="1",
+                    label_key=selector.label_key,
+                    label_value="1",
                 )
             )
             == 5
@@ -719,8 +719,8 @@ class TestGoldSelector:
             table=src_table,
             value="train",
             selection_key="selected",
-            class_key="label",
-            class_value="value",
+            label_key="label",
+            label_value="value",
         )
         assert sample_indices == set(range(25))
 
@@ -728,8 +728,8 @@ class TestGoldSelector:
             table=src_table,
             value="train",
             selection_key="selected",
-            class_key="label",
-            class_value="other",
+            label_key="label",
+            label_value="other",
         )
         assert sample_indices == set(range(25, 50, 1))
 
@@ -740,8 +740,8 @@ class TestGoldSelector:
                 table=src_table,
                 value="train",
                 selection_key="selected",
-                class_key="label",
-                class_value=None,
+                label_key="label",
+                label_value=None,
             )
 
         with pytest.raises(
@@ -751,8 +751,8 @@ class TestGoldSelector:
                 table=src_table,
                 value="train",
                 selection_key="selected",
-                class_key=None,
-                class_value="other",
+                label_key=None,
+                label_value="other",
             )
 
         pxt.drop_dir("unit_test", force=True)
