@@ -57,6 +57,10 @@ class GoldDescriptor:
             the value at `data_key` in the format expected by the feature extractor.
         data_key: Key in the batch dictionary that contains the data to extract features from. Default is "data".
         target_key: Key in the batch dictionary that contains the target/label information. Default is "target".
+        label_key: Optional key for labels in the batch dictionary. Default is None.
+        target_to_label: Optional mapping from target values to label strings. Default is None.
+        exclude_full_zero_target: Whether to exclude samples with a target tensor containing
+            only zeros (in case of multi target). Default is False.
         description_key: Column name to store the extracted features in the PixelTable table. Default is "features".
         to_keep_schema: Optional dictionary defining additional columns to keep from the original dataset/table
             into the description table. The keys are the column names and the values are the PixelTable types.
@@ -84,6 +88,9 @@ class GoldDescriptor:
         collate_fn: Callable | None = None,
         data_key: str = "data",
         target_key: str = "target",
+        label_key: str | None = None,
+        target_to_label: dict[tuple[int, ...], str] | None = None,
+        exclude_full_zero_target: bool = False,
         description_key: str = "features",
         to_keep_schema: dict[str, type] | None = None,
         min_pxt_insert_size: int = 100,
@@ -105,6 +112,10 @@ class GoldDescriptor:
             collate_fn: Optional function to collate dataset samples into batches.
             data_key: Key in the batch dictionary containing the data. Defaults to "data".
             target_key: Key in the batch dictionary containing the target/label. Defaults to "target".
+            label_key: Optional key for labels in the batch dictionary. Default is None.
+            target_to_label: Optional mapping from target values to label strings. Default is None.
+            exclude_full_zero_target: Whether to exclude samples with a target tensor containing
+                only zeros (in case of multi target). Default is False.
             description_key: Key for storing extracted features. Defaults to "features".
             to_keep_schema: Optional schema for additional columns to preserve.
             min_pxt_insert_size: Minimum number of rows to accumulate before inserting into PixelTable. Defaults to 100.
@@ -123,6 +134,9 @@ class GoldDescriptor:
         self.collate_fn = collate_fn
         self.data_key = data_key
         self.target_key = target_key
+        self.label_key = label_key
+        self.target_to_label = target_to_label
+        self.exclude_full_zero_target = exclude_full_zero_target
         self.description_key = description_key
         self.to_keep_schema = to_keep_schema
         self.min_pxt_insert_size = min_pxt_insert_size
@@ -559,6 +573,9 @@ class GoldDescriptor:
                     target_key=self.target_key,
                     to_keep=to_keep_keys,
                     starts=start_idx,
+                    label_key=self.label_key,
+                    target_to_label=self.target_to_label,
+                    exclude_full_zero_target=self.exclude_full_zero_target,
                 )
 
                 start_idx = max(batch["idx_vector"]) + 1

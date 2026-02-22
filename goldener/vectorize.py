@@ -427,6 +427,10 @@ class GoldVectorizer:
         data_key: Key in the batch dictionary that contains the data to vectorize. Default is "features".
         target_key: Optional key in the batch dictionary containing the target used to filter vectors. Default is "target".
         vectorized_key: Column name to store the resulting vectors in the PixelTable table. Default is "vectorized".
+        label_key: Optional key for labels in the batch dictionary. Default is None.
+        target_to_label: Optional mapping from target values to label strings. Default is None.
+        exclude_full_zero_target: Whether to exclude samples with a target tensor containing
+            only zeros (in case of multi target). Default is False.
         to_keep_schema: Optional dictionary defining additional columns to keep from the original dataset/table
             into the vectorized table. The keys are the column names and the values are the PixelTable types.
         min_pxt_insert_size: Minimum number of rows to accumulate before inserting into the PixelTable table. Default is 100.
@@ -473,6 +477,10 @@ class GoldVectorizer:
             data_key: Key for data in the batch dictionary. Defaults to "features".
             target_key: Key for target in the batch dictionary. Defaults to "target".
             vectorized_key: Column name for storing vectors. Defaults to "vectorized".
+            label_key: Optional key for labels in the batch dictionary. Default is None.
+            target_to_label: Optional mapping from target values to label strings. Default is None.
+            exclude_full_zero_target: Whether to exclude samples with a target tensor containing
+                only zeros (in case of multi target). Default is False.
             to_keep_schema: Optional schema for additional columns to preserve.
             min_pxt_insert_size: Minimum number of rows to accumulate before inserting into the PixelTable table. Default is 100.
             batch_size: Batch size used when iterating over the data.

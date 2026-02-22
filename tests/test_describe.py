@@ -498,6 +498,117 @@ class TestGoldDescriptor:
 
         pxt.drop_dir("unit_test", force=True)
 
+    def test_describe_in_dataset_from_table_with_vectorizer_and_multitarget(
+        self, extractor, vectorizer
+    ):
+        pxt.drop_dir("unit_test", force=True)
+
+        src_path = "unit_test.src_table_input"
+
+        target = torch.zeros(1, 8, 8).numpy()
+        target[0, 0, 0] = 25
+
+        source_rows = [
+            {
+                "idx": 0,
+                "data": torch.zeros(3, 8, 8).numpy(),
+                "label": [
+                    "class_1",
+                ],
+                "target": target,
+            },
+            {
+                "idx": 1,
+                "data": torch.zeros(3, 8, 8).numpy(),
+                "label": [
+                    "class_1",
+                ],
+                "target": target,
+            },
+        ]
+
+        pxt.create_dir("unit_test", if_exists="ignore")
+        src_table = pxt.create_table(
+            src_path, source=source_rows, if_exists="replace_force"
+        )
+
+        desc = GoldDescriptor(
+            table_path="unit_test.test_describe",
+            extractor=extractor,
+            vectorizer=vectorizer,
+            target_to_label={(25,): "class_1", (0,): "class_2"},
+            batch_size=2,
+            collate_fn=None,
+            device=torch.device("cpu"),
+            allow_existing=False,
+            drop_table=True,
+        )
+
+        description = desc.describe_in_table(src_table)
+
+        assert description.count() == 128
+        for row in description.collect():
+            assert row["idx"] in (0, 1)
+            assert row["features"].shape == (4,)
+
+        pxt.drop_dir("unit_test", force=True)
+
+    def test_describe_in_dataset_from_table_with_vectorizer_and_multitarget_without_zeros(
+        self, extractor, vectorizer
+    ):
+        pxt.drop_dir("unit_test", force=True)
+
+        src_path = "unit_test.src_table_input"
+
+        target = torch.zeros(1, 8, 8).numpy()
+        target[0, 0, 0] = 25
+
+        source_rows = [
+            {
+                "idx": 0,
+                "data": torch.zeros(3, 8, 8).numpy(),
+                "label": [
+                    "class_1",
+                ],
+                "target": target,
+            },
+            {
+                "idx": 1,
+                "data": torch.zeros(3, 8, 8).numpy(),
+                "label": [
+                    "class_1",
+                ],
+                "target": target,
+            },
+        ]
+
+        pxt.create_dir("unit_test", if_exists="ignore")
+        src_table = pxt.create_table(
+            src_path, source=source_rows, if_exists="replace_force"
+        )
+
+        desc = GoldDescriptor(
+            table_path="unit_test.test_describe",
+            extractor=extractor,
+            vectorizer=vectorizer,
+            target_to_label={(25,): "class_1", (0,): "class_2"},
+            exclude_full_zero_target=True,
+            batch_size=2,
+            collate_fn=None,
+            device=torch.device("cpu"),
+            allow_existing=False,
+            drop_table=True,
+        )
+
+        description = desc.describe_in_table(src_table)
+
+        assert description.count() == 2
+        for row in description.collect():
+            assert row["idx"] in (0, 1)
+            assert row["features"].shape == (4,)
+
+        pxt.drop_dir("unit_test", force=True)
+
     def test_describe_in_table_after_restart_with_vectorizer(self, extractor):
         pxt.drop_dir("unit_test", force=True)
 
