@@ -426,6 +426,67 @@ class TestGoldSelector:
 
         pxt.drop_dir("unit_test", force=True)
 
+    def test_select_in_table_with_reducer_and_include_reduced_in_table(self):
+        pxt.drop_dir("unit_test", force=True)
+
+        table_path = "unit_test.test_select_reducer_reduced"
+
+        dataset = DummyDataset(
+            [{"vectorized": torch.rand(5), "idx": idx} for idx in range(100)]
+        )
+
+        selector = GoldSelector(
+            table_path=table_path,
+            allow_existing=True,
+            reducer=GoldSKLearnReductionTool(PCA(n_components=3)),
+            include_reduced_in_table=True,
+            batch_size=10,
+        )
+
+        selection_table = selector.select_in_table(
+            dataset, select_size=10, value="train"
+        )
+
+        assert selection_table.count() == 100
+        assert (
+            selection_table.where(
+                selection_table[selector.selection_key] == "train"
+            ).count()
+            == 10
+        )
+        assert selector.reduced_key in selection_table.columns()
+        for row in selection_table.collect():
+            assert row[selector.reduced_key].shape == (3,)
+
+        pxt.drop_dir("unit_test", force=True)
+
+    def test_select_in_table_without_reducer_include_reduced_in_table_has_no_effect(
+        self,
+    ):
+        pxt.drop_dir("unit_test", force=True)
+
+        table_path = "unit_test.test_select_no_reducer_reduced"
+
+        dataset = DummyDataset(
+            [{"vectorized": torch.rand(5), "idx": idx} for idx in range(100)]
+        )
+
+        selector = GoldSelector(
+            table_path=table_path,
+            allow_existing=True,
+            include_reduced_in_table=True,
+            batch_size=10,
+        )
+
+        selection_table = selector.select_in_table(
+            dataset, select_size=10, value="train"
+        )
+
+        assert selection_table.count() == 100
+        assert selector.reduced_key not in selection_table.columns()
+
+        pxt.drop_dir("unit_test", force=True)
+
     def test_select_in_table_with_max_batches(self):
         pxt.drop_dir("unit_test", force=True)
 

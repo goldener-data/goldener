@@ -210,6 +210,9 @@ class GoldSelector:
         vectorized_key: Key in the batch dictionary that contains the vectorized data for selection. Default is "vectorized".
         include_vectorized_in_table: Whether to include the vectorized data in the selection table. Defaults to False.
         It is only applied if the cluster table is created from a Table (it is forced anyway for Dataset).
+        include_reduced_in_table: Whether to store the reduced features (computed by `reducer`) in the selection table.
+            Only has effect when `reducer` is not None. Defaults to False.
+        reduced_key: Column name to store the reduced features in the PixelTable table. Default is "reduced".
         selection_key: Column name to store the selection value in the PixelTable table. Default is "selected".
         label_key: Optional key for label-based stratified selection.
         to_keep_schema: Optional dictionary defining additional columns to keep from the original dataset/table
@@ -241,6 +244,8 @@ class GoldSelector:
         collate_fn: Callable | None = None,
         vectorized_key: str = "vectorized",
         include_vectorized_in_table: bool = False,
+        include_reduced_in_table: bool = False,
+        reduced_key: str = "reduced",
         selection_key: str = "selected",
         label_key: str | None = None,
         to_keep_schema: dict[str, type] | None = None,
@@ -264,6 +269,9 @@ class GoldSelector:
             vectorized_key: Key pointing to the vector for selection. Defaults to "vectorized".
             include_vectorized_in_table: Whether to include the vectorized data in the selection table. Defaults to False.
                 It is only applied if the selection table is created from a Table (it is forced anyway for Dataset).
+            include_reduced_in_table: Whether to store the reduced features (computed by `reducer`) in the selection table.
+                Only has effect when `reducer` is not None. Defaults to False.
+            reduced_key: Column name to store the reduced features. Defaults to "reduced".
             selection_key: Key for storing selection values. Defaults to "selected".
             label_key: Optional key for label stratification.
             to_keep_schema: Optional schema for additional columns to preserve.
@@ -283,6 +291,8 @@ class GoldSelector:
         self.collate_fn = collate_fn
         self.vectorized_key = vectorized_key
         self.include_vectorized_in_table = include_vectorized_in_table
+        self.include_reduced_in_table = include_reduced_in_table
+        self.reduced_key = reduced_key
         self.selection_key = selection_key
         self.label_key = label_key
         self.to_keep_schema = to_keep_schema
@@ -449,6 +459,7 @@ class GoldSelector:
             logger.info(
                 f"Selection table already fully filled out for {value} from {self.table_path}"
             )
+            self._compute_and_store_reduced_features(select_from, selection_table)
             return selection_table
         elif self.distribute:
             self._distributed_select(select_from, selection_table, select_count, value)
@@ -464,6 +475,8 @@ class GoldSelector:
                 )
             } rows with value {value} at {self.table_path}"
         )
+
+        self._compute_and_store_reduced_features(select_from, selection_table)
 
         return selection_table
 
@@ -1086,6 +1099,77 @@ class GoldSelector:
             NotImplementedError: Always raised as distributed mode is not yet implemented.
         """
         raise NotImplementedError("Distributed selection is not implemented yet.")
+
+    def _compute_and_store_reduced_features(
+        self,
+        vectors_from: Table,
+        result_table: Table,
+    ) -> None:
+        """Compute reduced features and store them in the result table.
+
+        When `include_reduced_in_table` is True and a `reducer` is configured, this method
+        loads all vectors from `vectors_from`, applies the reducer, and stores the resulting
+        reduced features in `result_table` under the `reduced_key` column. The operation
+        is idempotent: rows that already have reduced features stored will be skipped.
+
+        Args:
+            vectors_from: The source table containing the original vectors (`vectorized_key` column).
+            result_table: The table to update with reduced features (uses `idx_vector` as primary key).
+        """
+        if self.reducer is None or not self.include_reduced_in_table:
+            return
+
+        if self.reduced_key in result_table.columns():
+            reduced_col = get_expr_from_column_name(result_table, self.reduced_key)
+            if (
+                result_table.where(reduced_col != None).count()  # noqa: E711
+                == result_table.count()
+            ):
+                logger.info(
+                    f"Reduced features already fully computed in {self.table_path}"
+                )
+                return
+
+        vectorized_col = get_expr_from_column_name(vectors_from, self.vectorized_key)
+        rows = vectors_from.select(vectors_from.idx_vector, vectorized_col).collect()
+
+        if not rows:
+            return
+
+        idx_vectors = [row["idx_vector"] for row in rows]
+        vectors = torch.stack(
+            [torch.from_numpy(row[self.vectorized_key]) for row in rows], dim=0
+        )
+
+        if isinstance(self.reducer, GoldReductionToolWithFit):
+            reduced = self.reducer.fit_transform(vectors)
+        else:
+            reduced = self.reducer.transform(vectors)
+
+        if self.reduced_key not in result_table.columns():
+            reduced_shape = tuple(reduced[0].shape)
+            result_table.add_column(
+                **{
+                    self.reduced_key: pxt.Array[  # type: ignore[misc]
+                        reduced_shape, pxt.Float
+                    ]
+                }
+            )
+
+        ready_to_insert = [
+            {
+                "idx_vector": idx_vector,
+                self.reduced_key: reduced_vec.detach().cpu().numpy(),
+            }
+            for idx_vector, reduced_vec in zip(idx_vectors, reduced)
+        ]
+
+        for i in range(0, len(ready_to_insert), self.min_pxt_insert_size):
+            result_table.batch_update(ready_to_insert[i : i + self.min_pxt_insert_size])
+
+        logger.info(
+            f"Stored {len(ready_to_insert)} reduced features in {self.table_path}"
+        )
 
     def _coresubset_selection(
         self, x: torch.Tensor, select_count: int, indices: torch.Tensor

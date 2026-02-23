@@ -487,6 +487,55 @@ class TestGoldClusterizer:
         ]
         assert set(distinct_clusters).issubset(set(range(3)))
 
+    def test_cluster_in_table_with_reducer_and_include_reduced_in_table(self):
+        table_path = "unit_test.test_cluster_reducer_reduced"
+
+        dataset = DummyDataset(
+            [{"vectorized": torch.rand(8), "idx": idx} for idx in range(30)]
+        )
+
+        from sklearn.decomposition import PCA
+
+        reducer = GoldSKLearnReductionTool(PCA(n_components=4))
+
+        clusterizer = GoldClusterizer(
+            table_path=table_path,
+            clustering_tool=GoldRandomClusteringTool(random_state=0),
+            allow_existing=True,
+            batch_size=10,
+            reducer=reducer,
+            include_reduced_in_table=True,
+        )
+
+        cluster_table = clusterizer.cluster_in_table(dataset, n_clusters=3)
+
+        assert cluster_table.count() == 30
+        assert clusterizer.reduced_key in cluster_table.columns()
+        for row in cluster_table.collect():
+            assert row[clusterizer.reduced_key].shape == (4,)
+
+    def test_cluster_in_table_without_reducer_include_reduced_in_table_has_no_effect(
+        self,
+    ):
+        table_path = "unit_test.test_cluster_no_reducer_reduced"
+
+        dataset = DummyDataset(
+            [{"vectorized": torch.rand(8), "idx": idx} for idx in range(30)]
+        )
+
+        clusterizer = GoldClusterizer(
+            table_path=table_path,
+            clustering_tool=GoldRandomClusteringTool(random_state=0),
+            allow_existing=True,
+            batch_size=10,
+            include_reduced_in_table=True,
+        )
+
+        cluster_table = clusterizer.cluster_in_table(dataset, n_clusters=3)
+
+        assert cluster_table.count() == 30
+        assert clusterizer.reduced_key not in cluster_table.columns()
+
     def test_cluster_in_dataset_and_drop_table(self):
         table_path = "unit_test.test_cluster_dataset_drop"
 
