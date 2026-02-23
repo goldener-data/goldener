@@ -11,11 +11,11 @@ A python library orchestrating data during the full life cycle of machine learni
 [![License](https://img.shields.io/badge/License-Apache%202.0-0530AD.svg)](https://opensource.org/licenses/Apache-2.0)
 [![PyPI Package](https://img.shields.io/pypi/v/goldener?color=6D165C)](https://pypi.org/project/goldener/)
 
-[**Overview**](#-overview) |
-[**Principles**](#-key-design-principles) |
-[**Features**](#-features) |
-[**Installation**](#-installation) |
-[**Contribute**](#-contributing)
+[**Overview**](#-Overview) |
+[**Principles**](#-Key-design-principles) |
+[**Features**](#-Example-of-features) |
+[**Installation**](#-Installation) |
+[**Contribute**](#-Contribute)
 
 # Overview
 
@@ -32,8 +32,8 @@ of any ML pipelines while **minimizing the costs** (time, performance, computing
 
 When it's time to annotate data, Goldener find the most representative subset to annotate. During annotation, it can help
 to define annotation guidelines by spotting specific cases or as well run annotation quality checks.
-Once enough data is annotated, Goldener can split it in multiple sets (train, validation, test) ensuring a reproduction of
-the task variability reproduction. During the training phase, Goldener can balance efficiently the data
+Once enough data is annotated, Goldener can split it in multiple sets (train, validation, test) ensuring the reproduction
+of the task variability. During the training phase, Goldener can balance efficiently the data
 to optimize the training time and the model performance. Finally, when the model is deployed, Goldener can find
 the most informative data to monitor the model performance and detect any drift in the data distribution.
 
@@ -108,7 +108,7 @@ from goldener import (
     GoldSelector,
 )
 
-gd = GoldDescriptor(...) # reuse the descriptor  used for smart sampling
+gd = GoldDescriptor(...) # reuse the descriptor used for smart sampling
 gselector = GoldSelector(...)
 gs = GoldSplitter(
     sets=[GoldSet("train", 0.7), GoldSet("val", 0.3)],
@@ -142,7 +142,7 @@ from goldener import (
 )
 from sklearn.cluster import KMeans
 
-gd = GoldDescriptor(...)
+gd = GoldDescriptor(...) # reuse the descriptor used for smart sampling
 gcluster = GoldClusterizer(
     table_path="my_table_for_clusterization",
     clustering_tool=GoldSKLearnClusteringTool(KMeans(n_clusters=10)),
