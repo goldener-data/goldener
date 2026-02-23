@@ -10,6 +10,7 @@ from goldener.utils import (
     check_all_same_type,
     get_sampling_count_from_size,
     split_sampling_among_chunks,
+    transform_batch_from_multiple_to_binarized_targets,
 )
 
 
@@ -268,7 +269,7 @@ class TestGetRatiosForCounts:
         assert ratios == [1.0]
 
     def test_empty_counts_raises_value_error(self):
-        counts: list[int] = []
+        counts = []
         with pytest.raises(ValueError, match="Counts list cannot be empty"):
             get_ratios_for_counts(counts)
 
@@ -400,3 +401,142 @@ class TestSplitSamplingAmongChunks:
             ValueError, match="Split count .* cannot be greater than chunk size"
         ):
             split_sampling_among_chunks(to_split, chunk_sizes)
+
+
+class TestTransformBatchFromMultipleToBinarizedTargets:
+    def test_simple_usage(self):
+        target = torch.zeros(2, 1)
+        target[0, 0] = 25
+        data = torch.arange(6).reshape(2, 3)
+        batch = {
+            "data": data,
+            "target": target,
+            "label": [
+                {
+                    "A",
+                },
+                {
+                    "B",
+                },
+            ],
+        }
+
+        target_to_label = {
+            (0,): "A",
+            (25,): "B",
+        }
+
+        out = transform_batch_from_multiple_to_binarized_targets(
+            batch=batch,
+            target_key="target",
+            label_key="label",
+            target_to_label=target_to_label,
+        )
+
+        assert (out["data"] == torch.cat([data] * 2, dim=0)).all()
+        new_target = torch.zeros(4, 1)
+        new_target[1, 0] = 1
+        new_target[2, 0] = 1
+        assert (out["target"] == new_target).all()
+        assert set(out["label"]) == {"A", "B"}
+
+    def test_with_exclude_zero(self):
+        target = torch.zeros(2, 1)
+        target[0, 0] = 25
+        data = torch.arange(6).reshape(2, 3)
+        batch = {
+            "data": data,
+            "target": target,
+            "label": [
+                {
+                    "A",
+                },
+                {
+                    "B",
+                },
+            ],
+        }
+
+        target_to_label = {
+            (0,): "A",
+            (25,): "B",
+        }
+
+        out = transform_batch_from_multiple_to_binarized_targets(
+            batch=batch,
+            target_key="target",
+            label_key="label",
+            target_to_label=target_to_label,
+            exclude_full_zero=True,
+        )
+
+        assert (out["data"] == data).all()
+        new_target = torch.zeros(2, 1)
+        new_target[0, 0] = 1
+        assert (out["target"] == new_target).all()
+        assert set(out["label"]) == {
+            "B",
+        }
+
+    def test_with_target_to_label_missing_failure(self):
+        target = torch.zeros(2, 1)
+        target[0, 0] = 25
+        data = torch.arange(6).reshape(2, 3)
+        batch = {
+            "data": data,
+            "target": target,
+            "label": [
+                {
+                    "A",
+                },
+                {
+                    "B",
+                },
+            ],
+        }
+
+        target_to_label = {
+            (1, 0): "A",
+        }
+
+        with pytest.raises(
+            ValueError, match="Unique target .* not found in target_to_label mapping"
+        ):
+            transform_batch_from_multiple_to_binarized_targets(
+                batch=batch,
+                target_key="target",
+                label_key="label",
+                target_to_label=target_to_label,
+            )
+
+    def test_with_no_target_failure(self):
+        target = torch.zeros(2, 1)
+        data = torch.arange(6).reshape(2, 3)
+        batch = {
+            "data": data,
+            "target": target,
+            "label": [
+                {
+                    "A",
+                },
+                {
+                    "B",
+                },
+            ],
+        }
+
+        target_to_label = {
+            (1, 0): "A",
+        }
+
+        with pytest.raises(
+            ValueError,
+            match="No valid targets found after applying exclude_full_zero filter.",
+        ):
+            transform_batch_from_multiple_to_binarized_targets(
+                batch=batch,
+                target_key="target",
+                label_key="label",
+                target_to_label=target_to_label,
+                exclude_full_zero=True,
+            )

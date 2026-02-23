@@ -154,7 +154,7 @@ class TestGoldSplitter:
             GoldSet(name="train", size=0.5),
             GoldSet(name="val", size=0.5),
         ]
-        selector.class_key = "label"
+        selector.label_key = "label"
         splitter = GoldSplitter(
             sets=sets,
             descriptor=descriptor,
@@ -249,9 +249,9 @@ class TestGoldSplitter:
 
         pxt.drop_dir("unit_test", if_not_exists="ignore", force=True)
 
-    def test_class_key_not_found(self, descriptor, selector, vectorizer):
+    def test_label_key_not_found(self, descriptor, selector, vectorizer):
         pxt.drop_dir("unit_test", force=True)
-        selector.class_key = "nonexistent"
+        selector.label_key = "nonexistent"
         sets = [
             GoldSet(name="train", size=0.5),
             GoldSet(name="val", size=0.5),
@@ -264,7 +264,7 @@ class TestGoldSplitter:
         )
 
         with pytest.raises(
-            ValueError, match="class_key and class_value must be set together"
+            ValueError, match="label_key and label_value must be set together"
         ):
             splitter.split_in_table(
                 to_split=DummyDataset(
@@ -312,7 +312,7 @@ class TestGoldSplitter:
         self, descriptor, selector, vectorizer
     ):
         pxt.drop_dir("unit_test", force=True)
-        selector.class_key = "label"
+        selector.label_key = "label"
         sets = [
             GoldSet(name="train", size=0.0001),
             GoldSet(name="val", size=0.9999),
@@ -815,7 +815,7 @@ class TestGoldSplitter:
         clusterizer = GoldClusterizer(
             table_path="unit_test.clusterizer_split",
             clustering_tool=GoldRandomClusteringTool(random_state=0),
-            class_key="label",
+            label_key="label",
             allow_existing=False,
         )
 

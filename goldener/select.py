@@ -211,7 +211,7 @@ class GoldSelector:
         include_vectorized_in_table: Whether to include the vectorized data in the selection table. Defaults to False.
         It is only applied if the cluster table is created from a Table (it is forced anyway for Dataset).
         selection_key: Column name to store the selection value in the PixelTable table. Default is "selected".
-        class_key: Optional key for class-based stratified selection.
+        label_key: Optional key for label-based stratified selection.
         to_keep_schema: Optional dictionary defining additional columns to keep from the original dataset/table
             into the selection table. The keys are the column names and the values are the PixelTable types.
         min_pxt_insert_size: Minimum number of rows to accumulate before inserting into PixelTable. Default is 100.
@@ -242,7 +242,7 @@ class GoldSelector:
         vectorized_key: str = "vectorized",
         include_vectorized_in_table: bool = False,
         selection_key: str = "selected",
-        class_key: str | None = None,
+        label_key: str | None = None,
         to_keep_schema: dict[str, type] | None = None,
         min_pxt_insert_size: int = 100,
         batch_size: int = 1,
@@ -265,7 +265,7 @@ class GoldSelector:
             include_vectorized_in_table: Whether to include the vectorized data in the selection table. Defaults to False.
                 It is only applied if the selection table is created from a Table (it is forced anyway for Dataset).
             selection_key: Key for storing selection values. Defaults to "selected".
-            class_key: Optional key for class stratification.
+            label_key: Optional key for label stratification.
             to_keep_schema: Optional schema for additional columns to preserve.
             min_pxt_insert_size: Minimum number of rows to accumulate before inserting into PixelTable. Default is 100.
             batch_size: Batch size used when iterating over the data.
@@ -284,7 +284,7 @@ class GoldSelector:
         self.vectorized_key = vectorized_key
         self.include_vectorized_in_table = include_vectorized_in_table
         self.selection_key = selection_key
-        self.class_key = class_key
+        self.label_key = label_key
         self.to_keep_schema = to_keep_schema
         self.min_pxt_insert_size = min_pxt_insert_size
         self.batch_size = batch_size
@@ -487,8 +487,8 @@ class GoldSelector:
         if self.to_keep_schema is not None:
             minimal_schema |= self.to_keep_schema
 
-        if self.class_key is not None:
-            minimal_schema[self.class_key] = pxt.String
+        if self.label_key is not None:
+            minimal_schema[self.label_key] = pxt.String
 
         selection_table = get_valid_table(
             table=old_selection_table
@@ -568,8 +568,8 @@ class GoldSelector:
         if self.selection_key in select_from.columns():
             col_list.append(self.selection_key)
 
-        if self.class_key is not None and self.class_key in select_from.columns():
-            col_list.append(self.class_key)
+        if self.label_key is not None and self.label_key in select_from.columns():
+            col_list.append(self.label_key)
 
         self._add_rows_to_selection_table_from_dataset(
             select_from=GoldPxtTorchDataset(
@@ -606,8 +606,8 @@ class GoldSelector:
         if self.to_keep_schema is not None:
             minimal_schema |= self.to_keep_schema
 
-        if self.class_key is not None:
-            minimal_schema[self.class_key] = pxt.String
+        if self.label_key is not None:
+            minimal_schema[self.label_key] = pxt.String
 
         selection_table = get_valid_table(
             table=old_selection_table
@@ -726,8 +726,8 @@ class GoldSelector:
             to_insert_keys = ["idx", self.selection_key]
             if self.to_keep_schema is not None:
                 to_insert_keys.extend(list(self.to_keep_schema.keys()))
-            if self.class_key is not None and self.class_key in batch:
-                to_insert_keys.append(self.class_key)
+            if self.label_key is not None and self.label_key in batch:
+                to_insert_keys.append(self.label_key)
             if include_vectorized:
                 to_insert_keys.append(self.vectorized_key)
 
@@ -750,8 +750,8 @@ class GoldSelector:
         table: Table,
         value: str | None,
         selection_key: str,
-        class_key: str | None = None,
-        class_value: str | None = None,
+        label_key: str | None = None,
+        label_value: str | None = None,
         idx_key: str = "idx",
     ) -> set[int]:
         """Get the indices of samples selected with a given value.
@@ -760,18 +760,18 @@ class GoldSelector:
             table: PixelTable table to query.
             value: Value in the selection_key column to filter selected samples.
             selection_key: Column name used to store selection values.
-            class_key: Optional column name used to filter samples by class.
-            class_value: Optional class value to filter samples by class.
+            label_key: Optional column name used to filter samples by label.
+            label_value: Optional label value to filter samples by label.
             idx_key: Column name used to get sample indices.
         """
         idx_col = get_expr_from_column_name(table, idx_key)
         selection_col = get_expr_from_column_name(table, selection_key)
-        if class_value is not None and class_key is not None:
-            class_col = get_expr_from_column_name(table, class_key)
-            query = (selection_col == value) & (class_col == class_value)  # noqa: E712
+        if label_value is not None and label_key is not None:
+            label_col = get_expr_from_column_name(table, label_key)
+            query = (selection_col == value) & (label_col == label_value)  # noqa: E712
         else:
-            if class_key is not None or class_value is not None:
-                raise ValueError("class_key and class_value must be set together.")
+            if label_key is not None or label_value is not None:
+                raise ValueError("label_key and label_value must be set together.")
             query = selection_col == value  # noqa: E712
 
         return set(
@@ -793,9 +793,9 @@ class GoldSelector:
     ) -> None:
         """Run sequential (single-process) selection process.
 
-        This private method handles class-stratified selection if a class_key is configured,
+        This private method handles label-stratified selection if a label_key is configured,
         otherwise performs selection on the full dataset. It delegates the actual coresubset
-        selection to _class_select.
+        selection to _label_select.
 
         Args:
             select_from: The source table with vectorized data.
@@ -803,79 +803,79 @@ class GoldSelector:
             select_count: Number of samples to select.
             value: Value to assign to selected samples in the selection_key column.
         """
-        if self.class_key is not None:
-            class_col = get_expr_from_column_name(selection_table, self.class_key)
-            class_ratios = get_column_distinct_ratios(selection_table, class_col)
+        if self.label_key is not None:
+            label_col = get_expr_from_column_name(selection_table, self.label_key)
+            label_ratios = get_column_distinct_ratios(selection_table, label_col)
 
-            for class_idx, (class_value, class_ratio) in enumerate(
-                class_ratios.items()
+            for label_idx, (label_value, label_ratio) in enumerate(
+                label_ratios.items()
             ):
                 already_selected = len(
                     self.get_selection_indices(
                         table=selection_table,
                         value=value,
                         selection_key=self.selection_key,
-                        class_key=self.class_key,
-                        class_value=class_value,
+                        label_key=self.label_key,
+                        label_value=label_value,
                     )
                 )
-                if class_idx < len(class_ratios) - 1:
-                    class_count = int(select_count * class_ratio)
+                if label_idx < len(label_ratios) - 1:
+                    label_count = int(select_count * label_ratio)
                 else:
-                    # The last class takes the missing samples count to avoid rounding issues
-                    other_classes = len(
+                    # The last label takes the missing samples count to avoid rounding issues
+                    other_labels = len(
                         self.get_selection_indices(
                             table=selection_table,
                             value=value,
                             selection_key=self.selection_key,
                         )
                     )
-                    class_count = select_count - other_classes
+                    label_count = select_count - other_labels
 
                 logger.info(
-                    f"Selecting {class_count} samples for class '{class_value}' for value '{value}'"
+                    f"Selecting {label_count} samples for label '{label_value}' for value '{value}'"
                 )
 
-                if class_count == 0:
+                if label_count == 0:
                     raise ValueError(
-                        f"Class '{class_value}' has ratio {class_ratio} which results in zero samples "
+                        f"Label '{label_value}' has ratio {label_ratio} which results in zero samples "
                         f"for the requested select_count of {select_count}. "
                     )
 
-                class_count = class_count - already_selected
-                if class_count == 0:
+                label_count = label_count - already_selected
+                if label_count == 0:
                     continue
-                elif class_count < 0:
+                elif label_count < 0:
                     raise ValueError(
                         "The size of the selection table has decreased since the 1st selection computation"
                     )
 
-                self._select_class(
+                self._select_label(
                     select_from,
                     selection_table,
-                    class_count,
+                    label_count,
                     value,
-                    class_value=class_value,
+                    label_value=label_value,
                 )
 
         else:
             logger.info(f"Selecting {select_count} samples for value '{value}'")
-            self._select_class(
+            self._select_label(
                 select_from,
                 selection_table,
                 select_count,
                 value,
             )
 
-    def _select_class(
+    def _select_label(
         self,
         select_from: Table,
         selection_table: Table,
         select_count: int,
         value: str | None,
-        class_value: str | None = None,
+        label_value: str | None = None,
     ) -> None:
-        """Perform coresubset selection for a specific class or all data.
+        """Perform coresubset selection for a specific label or all data.
 
         This private method implements chunked coresubset selection.
         It processes data in chunks to manage memory, applies optional dimensionality reduction,
@@ -886,7 +886,7 @@ class GoldSelector:
             selection_table: The table to store selection results.
             select_count: Number of samples to select.
             value: Value to assign to selected samples in the selection_key column.
-            class_value: Optional class value to filter samples by class.
+            label_value: Optional label value to filter samples by label.
         """
         selection_col = get_expr_from_column_name(selection_table, self.selection_key)
         vectorized_col = get_expr_from_column_name(select_from, self.vectorized_key)
@@ -896,15 +896,15 @@ class GoldSelector:
                 table=selection_table,
                 value=value,
                 selection_key=self.selection_key,
-                class_key=self.class_key,
-                class_value=class_value,
+                label_key=self.label_key,
+                label_value=label_value,
             )
         )
 
-        if class_value is not None:
-            assert self.class_key is not None
-            class_col = get_expr_from_column_name(selection_table, self.class_key)
-            available_query = (selection_col == None) & (class_col == class_value)  # noqa: E712 E711
+        if label_value is not None:
+            assert self.label_key is not None
+            label_col = get_expr_from_column_name(selection_table, self.label_key)
+            available_query = (selection_col == None) & (label_col == label_value)  # noqa: E712 E711
         else:
             available_query = selection_col == None  # noqa: E711
 
@@ -1053,8 +1053,8 @@ class GoldSelector:
                     table=selection_table,
                     value=value,
                     selection_key=self.selection_key,
-                    class_key=self.class_key,
-                    class_value=class_value,
+                    label_key=self.label_key,
+                    label_value=label_value,
                 )
                 selection_table.where(
                     selection_table.idx.isin(selected_indices)

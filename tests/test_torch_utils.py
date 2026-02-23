@@ -7,6 +7,7 @@ from goldener.torch_utils import (
     np_transform_from_torch,
     make_2d_tensor,
     ResetableTorchIterableDataset,
+    get_unique_values_in_tensor,
 )
 
 
@@ -166,3 +167,36 @@ class TestResetableTorchIterableDataset:
         dataset.reset()
         start_after_reset = next(iter(dataset))
         assert start_after_reset == start
+
+
+class TestGetUniqueValuesInTensor:
+    def test_unique_along_dim1_vectors(self):
+        t = torch.zeros((2, 3, 4, 4), dtype=torch.uint8)
+        t[0, :, 0, 0] = torch.tensor([1, 2, 3])
+        t[1, :, 3, 3] = torch.tensor([3, 2, 1])
+        out = get_unique_values_in_tensor(t, dim=1)
+        expected = torch.tensor([[0, 0, 0], [1, 2, 3], [3, 2, 1]], dtype=torch.uint8)
+        assert (out == expected).all()
+
+    def test_unique_along_last_dim_scalars(self):
+        t = torch.zeros(
+            (
+                2,
+                3,
+            ),
+            dtype=torch.uint8,
+        )
+        t[
+            0,
+            :,
+        ] = torch.tensor([1, 2, 3])
+        out = get_unique_values_in_tensor(t, dim=-1)
+        expected = torch.tensor([[0, 0, 0], [1, 2, 3]], dtype=torch.uint8)
+        assert (out == expected).all()
+
+    def test_dim0_behavior(self):
+        t = torch.zeros((2,), dtype=torch.uint8)
+        t[0] = torch.tensor(3)
+        out = get_unique_values_in_tensor(t, dim=0)
+        expected = torch.tensor([3, 0], dtype=torch.uint8)
+        assert (out == expected).all()

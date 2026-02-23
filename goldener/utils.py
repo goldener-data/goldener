@@ -3,6 +3,8 @@ from typing import Iterable, Any
 
 import torch
 
+from goldener.torch_utils import get_unique_values_in_tensor
+
 
 def check_x_and_y_shapes(x_shape: tuple[int, ...], y_shape: tuple[int, ...]) -> None:
     """Check compatibility of shapes of x and y tensors.
@@ -305,3 +307,90 @@ def get_sampling_count_from_size(
         raise ValueError("Total size must be provided when sampling size is a float.")
 
     return math.ceil(sampling_size * total_size)
+
+
+def transform_batch_from_multiple_to_binarized_targets(
+    batch: dict[str, Any],
+    target_key: str,
+    label_key: str | None,
+    target_to_label: dict[tuple[int, ...], str],
+    exclude_full_zero: bool = False,
+) -> dict[str, Any]:
+    """Transform a batch with multiple targets into a batch with binarized targets for each label.
+
+    Args:
+        batch: A dictionary representing a batch of data, where the target key contains a target with multiple
+            values corresponding to the labels in target_to_label.
+        target_key: The key in the batch dictionary that contains the target.
+        label_key: The key in the batch dictionary that containes the labels.
+        target_to_label: A mapping from unique target tuples to label values.
+        exclude_full_zero: Whether to exclude the all-zero target from the transformation (default: False).
+
+    Returns:
+        A new batch dictionary where the target key contains binarized targets for each label
+        and the label key contains the corresponding labels,
+        with other batch elements duplicated accordingly.
+    """
+    multi_target = batch[target_key]
+
+    multi_target_shape = multi_target.shape
+    bin_target_shape = list(multi_target_shape)
+    bin_target_shape[1] = 1
+
+    # create a new binarized target from the target
+    # containing a different value for each label
+    target_flattened = multi_target.movedim(1, -1).reshape(-1, multi_target_shape[1])
+    target_per_label = {}
+    for unique_target in get_unique_values_in_tensor(target_flattened, -1):
+        if exclude_full_zero and (unique_target == 0).all():
+            continue  # skip the all-zero target if specified
+
+        unique_target_tuple = tuple(unique_target.tolist())
+        if unique_target_tuple not in target_to_label:
+            raise ValueError(
+                f"Unique target {unique_target} not found in target_to_label mapping."
+            )
+        label = target_to_label[unique_target_tuple]
+
+        new_target = (
+            (target_flattened == unique_target.unsqueeze(0))
+            .all(dim=1)
+            .to(torch.uint8)
+            .reshape(bin_target_shape)
+        )
+
+        target_per_label[label] = new_target
+
+    if not target_per_label:
+        raise ValueError(
+            "No valid targets found after applying exclude_full_zero filter."
+        )
+
+    # duplicate the batch element for each label/target and
+    # insert the corresponding binarized target/label in the batch alongside them.
+    new_batch: dict[str, torch.Tensor | list[Any]] = {}
+    n_values = len(target_per_label)
+    for batch_key, batch_value in batch.items():
+        if batch_key not in (target_key, label_key):
+            if isinstance(batch_value, torch.Tensor):
+                new_batch[batch_key] = torch.cat([batch_value] * n_values, dim=0)
+            else:
+                if not isinstance(batch_value, list):
+                    raise ValueError(
+                        f"Batch value for key {batch_key} must be a list or a torch.Tensor. Got {type(batch_value)}."
+                    )
+                new_batch[batch_key] = batch_value * n_values
+        else:
+            if batch_key == target_key:
+                new_batch[target_key] = torch.cat(
+                    [target for target in target_per_label.values()],
+                    dim=0,
+                )
+            elif label_key is not None and batch_key == label_key:
+                new_batch[label_key] = list(target_per_label.keys())
+
+    # add label if not already there
+    if label_key is not None and label_key not in new_batch:
+        new_batch[label_key] = list(target_per_label.keys())
+
+    return new_batch

@@ -27,7 +27,11 @@ from goldener.pxt_utils import (
     get_max_value_in_column,
 )
 from goldener.torch_utils import make_2d_tensor, get_dataset_sample_dict
-from goldener.utils import check_x_and_y_shapes, filter_batch_from_indices
+from goldener.utils import (
+    check_x_and_y_shapes,
+    filter_batch_from_indices,
+    transform_batch_from_multiple_to_binarized_targets,
+)
 
 logger = getLogger(__name__)
 
@@ -423,6 +427,10 @@ class GoldVectorizer:
         data_key: Key in the batch dictionary that contains the data to vectorize. Default is "features".
         target_key: Optional key in the batch dictionary containing the target used to filter vectors. Default is "target".
         vectorized_key: Column name to store the resulting vectors in the PixelTable table. Default is "vectorized".
+        label_key: Optional key for labels in the batch dictionary. Default is None.
+        target_to_label: Optional mapping from target values to label strings. Default is None.
+        exclude_full_zero_target: Whether to exclude samples with a target tensor containing
+            only zeros (in case of multi target). Default is False.
         to_keep_schema: Optional dictionary defining additional columns to keep from the original dataset/table
             into the vectorized table. The keys are the column names and the values are the PixelTable types.
         min_pxt_insert_size: Minimum number of rows to accumulate before inserting into the PixelTable table. Default is 100.
@@ -448,6 +456,9 @@ class GoldVectorizer:
         data_key: str = "features",
         target_key: str = "target",
         vectorized_key: str = "vectorized",
+        label_key: str | None = None,
+        target_to_label: dict[tuple[int, ...], str] | None = None,
+        exclude_full_zero_target: bool = False,
         to_keep_schema: dict[str, type] | None = None,
         min_pxt_insert_size: int = 100,
         batch_size: int = 1,
@@ -466,6 +477,10 @@ class GoldVectorizer:
             data_key: Key for data in the batch dictionary. Defaults to "features".
             target_key: Key for target in the batch dictionary. Defaults to "target".
             vectorized_key: Column name for storing vectors. Defaults to "vectorized".
+            label_key: Optional key for labels in the batch dictionary. Default is None.
+            target_to_label: Optional mapping from target values to label strings. Default is None.
+            exclude_full_zero_target: Whether to exclude samples with a target tensor containing
+                only zeros (in case of multi target). Default is False.
             to_keep_schema: Optional schema for additional columns to preserve.
             min_pxt_insert_size: Minimum number of rows to accumulate before inserting into the PixelTable table. Default is 100.
             batch_size: Batch size used when iterating over the data.
@@ -480,6 +495,9 @@ class GoldVectorizer:
         self.collate_fn = collate_fn
         self.data_key = data_key
         self.target_key = target_key
+        self.label_key = label_key
+        self.target_to_label = target_to_label
+        self.exclude_full_zero_target = exclude_full_zero_target
         self.vectorized_key = vectorized_key
         self.to_keep_schema = to_keep_schema
         self.min_pxt_insert_size = min_pxt_insert_size
@@ -647,7 +665,6 @@ class GoldVectorizer:
             )
             vectorized = self.vectorizer.vectorize(
                 sample[self.data_key],
-                sample.get(self.target_key, None),
             ).vectors[0]
             vectorized_table.add_column(
                 **{
@@ -685,17 +702,11 @@ class GoldVectorizer:
                 excluded=[self.vectorized_key],
             )
 
-            target = sample.get(self.target_key, None)
-            if target is not None and self.collate_fn is not None:
-                assert isinstance(target, torch.Tensor)
-                target = target.unsqueeze(0)
-
             vectorized = (
                 self.vectorizer.vectorize(
                     sample[self.data_key].unsqueeze(0)
                     if self.collate_fn is None
                     else sample[self.data_key],
-                    target,
                 )
                 .vectors[0]
                 .detach()
@@ -850,6 +861,9 @@ class GoldVectorizer:
                 target_key=self.target_key,
                 to_keep=to_keep_keys,
                 starts=start_idx,
+                target_to_label=self.target_to_label,
+                label_key=self.label_key,
+                exclude_full_zero_target=self.exclude_full_zero_target,
             )
 
             start_idx = max(batch["idx_vector"]) + 1
@@ -927,9 +941,12 @@ def vectorize_and_unwrap_in_batch(
     vectorizer: TensorVectorizer,
     data_key: str,
     vectorized_key: str,
-    target_key: str | None,
+    target_key: str | None = None,
+    label_key: str | None = None,
+    target_to_label: dict[tuple[int, ...], str] | None = None,
     to_keep: list[str] | None = None,
     starts: int = 0,
+    exclude_full_zero_target: bool = True,
 ) -> dict[str, Any]:
     """Vectorize a batch and insert the results into a PixelTable table.
 
@@ -937,17 +954,33 @@ def vectorize_and_unwrap_in_batch(
     TensorVectorizer and inserts the resulting vectors into the given PixelTable table.
 
     Args:
-        vectorized_table: The PixelTable table to insert vectorized outputs into.
         batch: The batch dictionary containing data to vectorize.
         vectorizer: The TensorVectorizer instance to use for vectorization.
         data_key: Key in the batch dictionary that contains the data to vectorize.
         vectorized_key: Column name to store the resulting vectors in the PixelTable table.
         target_key: Optional key in the batch dictionary containing the target used to filter vectors.
+        label_key: Optional key in the batch dictionary containing the labels.
+        target_to_label: Optional mapping from target values to labels for binarization.
         to_keep: Optional list of additional keys to preserve from the batch.
+        starts: Starting index for assigning new `idx_vector` values.
+        exclude_full_zero_target: Whether to exclude samples with a full zero target when binarizing
+        targets based on the target_to_label mapping. Default is True.
     """
-    target = (
-        batch[target_key] if target_key is not None and target_key in batch else None
-    )
+    if target_key is None or target_key not in batch:
+        target = None
+    else:
+        # in presence of multiple labels, the batch is "augmented"
+        # to have one entry per label by binarizing the target based on the target-label mapping.
+        if target_to_label is not None:
+            batch = transform_batch_from_multiple_to_binarized_targets(
+                batch=batch,
+                target_key=target_key,
+                label_key=label_key,
+                target_to_label=target_to_label,
+                exclude_full_zero=exclude_full_zero_target,
+            )
+
+        target = batch[target_key]
 
     vectorized = vectorizer.vectorize(
         batch[data_key],

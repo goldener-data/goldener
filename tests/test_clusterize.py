@@ -603,7 +603,7 @@ class TestGoldClusterizer:
             clustering_tool=GoldRandomClusteringTool(random_state=0),
             allow_existing=True,
             batch_size=8,
-            class_key="label",
+            label_key="label",
         )
 
         cluster_table = clusterizer.cluster_in_table(dataset, n_clusters=4)
@@ -619,7 +619,7 @@ class TestGoldClusterizer:
             == 40
         )
 
-        label_col = cluster_table[clusterizer.class_key]
+        label_col = cluster_table[clusterizer.label_key]
         total_class0 = (
             cluster_table.where(label_col == "0")
             .select(cluster_table.idx)
@@ -644,14 +644,14 @@ class TestGoldClusterizer:
         class0_indices = clusterizer.get_cluster_indices(
             table=cluster_table,
             cluster_key=clusterizer.cluster_key,
-            class_key=clusterizer.class_key,
-            class_value="0",
+            label_key=clusterizer.label_key,
+            label_value="0",
         )
         class1_indices = clusterizer.get_cluster_indices(
             table=cluster_table,
             cluster_key=clusterizer.cluster_key,
-            class_key=clusterizer.class_key,
-            class_value="1",
+            label_key=clusterizer.label_key,
+            label_value="1",
         )
 
         assert class0_indices.union(class1_indices) == set(range(40))
@@ -694,7 +694,7 @@ class TestGoldClusterizer:
             table_path=cluster_path,
             clustering_tool=GoldRandomClusteringTool(random_state=0),
             allow_existing=True,
-            class_key="label",
+            label_key="label",
         )
 
         cluster_table = clusterizer._cluster_table_from_table(
@@ -718,14 +718,14 @@ class TestGoldClusterizer:
         class0_indices = clusterizer.get_cluster_indices(
             table=cluster_table,
             cluster_key=clusterizer.cluster_key,
-            class_key=clusterizer.class_key,
-            class_value="0",
+            label_key=clusterizer.label_key,
+            label_value="0",
         )
         class1_indices = clusterizer.get_cluster_indices(
             table=cluster_table,
             cluster_key=clusterizer.cluster_key,
-            class_key=clusterizer.class_key,
-            class_value="1",
+            label_key=clusterizer.label_key,
+            label_value="1",
         )
 
         assert class0_indices.union(class1_indices) == {0, 1, 2, 3, 4, 5}
@@ -735,5 +735,5 @@ class TestGoldClusterizer:
             clusterizer.get_cluster_indices(
                 table=cluster_table,
                 cluster_key=clusterizer.cluster_key,
-                class_key=clusterizer.class_key,
+                label_key=clusterizer.label_key,
             )

@@ -205,3 +205,16 @@ def get_dataset_sample_dict(
             raise ValueError(f"Sample contains rejected keys: {present_rejected_keys}")
 
     return sample
+
+
+def get_unique_values_in_tensor(tensor: torch.Tensor, dim: int = 1) -> torch.Tensor:
+    """Get the unique values/vectors of a given dimension in a tensor.
+
+    Args:
+        tensor: The input tensor to get unique values from.
+        dim: The dimension along which to get unique values. Default is 1.
+
+    Returns:
+        A tensor with all the unique values of the input tensor for teh specified dimension.
+    """
+    return torch.unique(tensor.movedim(dim, -1).reshape(-1, tensor.shape[dim]), dim=0)
