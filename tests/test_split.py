@@ -249,7 +249,7 @@ class TestGoldSplitter:
 
         pxt.drop_dir("unit_test", if_not_exists="ignore", force=True)
 
-    def test_class_key_not_found(self, descriptor, selector, vectorizer):
+    def test_label_key_not_found(self, descriptor, selector, vectorizer):
         pxt.drop_dir("unit_test", force=True)
         selector.label_key = "nonexistent"
         sets = [
@@ -264,7 +264,7 @@ class TestGoldSplitter:
         )
 
         with pytest.raises(
-            ValueError, match="class_key and class_value must be set together"
+            ValueError, match="label_key and class_value must be set together"
         ):
             splitter.split_in_table(
                 to_split=DummyDataset(

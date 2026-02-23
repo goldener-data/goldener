@@ -508,3 +508,35 @@ class TestTransformBatchFromMultipleToBinarizedTargets:
                 label_key="label",
                 target_to_label=target_to_label,
             )
+
+    def test_with_no_target_failure(self):
+        target = torch.zeros(2, 1)
+        data = torch.arange(6).reshape(2, 3)
+        batch = {
+            "data": data,
+            "target": target,
+            "label": [
+                {
+                    "A",
+                },
+                {
+                    "B",
+                },
+            ],
+        }
+
+        target_to_label = {
+            (1, 0): "A",
+        }
+
+        with pytest.raises(
+            ValueError,
+            match="No valid targets found after applying exclude_full_zero filter.",
+        ):
+            transform_batch_from_multiple_to_binarized_targets(
+                batch=batch,
+                target_key="target",
+                label_key="label",
+                target_to_label=target_to_label,
+                exclude_full_zero=True,
+            )

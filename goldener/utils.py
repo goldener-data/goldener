@@ -361,6 +361,11 @@ def transform_batch_from_multiple_to_binarized_targets(
 
         target_per_label[label] = new_target
 
+    if not target_per_label:
+        raise ValueError(
+            "No valid targets found after applying exclude_full_zero filter."
+        )
+
     # duplicate the batch element for each label/target and
     # insert the corresponding binarized target/label in the batch alongside them.
     new_batch: dict[str, torch.Tensor | list[Any]] = {}
@@ -374,10 +379,7 @@ def transform_batch_from_multiple_to_binarized_targets(
                     raise ValueError(
                         f"Batch value for key {batch_key} must be a list or a torch.Tensor. Got {type(batch_value)}."
                     )
-                new_value = batch_value
-                for _ in range(n_values - 1):
-                    new_value += batch_value
-                new_batch[batch_key] = new_value
+                new_batch[batch_key] = batch_value * n_values
         else:
             if batch_key == target_key:
                 new_batch[target_key] = torch.cat(

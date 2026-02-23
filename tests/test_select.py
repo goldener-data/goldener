@@ -734,7 +734,7 @@ class TestGoldSelector:
         assert sample_indices == set(range(25, 50, 1))
 
         with pytest.raises(
-            ValueError, match="class_key and class_value must be set together"
+            ValueError, match="label_key and label_value must be set together"
         ):
             GoldSelector.get_selection_indices(
                 table=src_table,
@@ -745,7 +745,7 @@ class TestGoldSelector:
             )
 
         with pytest.raises(
-            ValueError, match="class_key and class_value must be set together"
+            ValueError, match="label_key and label_value must be set together"
         ):
             GoldSelector.get_selection_indices(
                 table=src_table,
