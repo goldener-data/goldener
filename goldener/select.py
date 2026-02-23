@@ -181,6 +181,66 @@ class GoldGreedyClosestPointSelection(GoldSelectionTool):
         return selected_indices
 
 
+class GoldGreedyFarthestPointSelection(GoldSelectionTool):
+    """Create a coresubset from selecting the farthest points iteratively.
+
+    This is a greedy algorithm that selects iteratively the point with the farthest nearest neighbors
+    among the not selected points.
+
+    Attributes:
+        device: The torch device to use for computations.
+    """
+
+    def __init__(self, device: torch.device | str) -> None:
+        self.device = device
+
+    def select(
+        self,
+        x: torch.Tensor,
+        k: int,
+    ) -> list[int]:
+        """Select a subset of data points from the input data by choosing iteratively the point
+        with the farthest nearest neighbors among the not selected points.
+
+        Args:
+            x: A 2D torch.Tensor where each row represents a data point.
+            k: The number of data points to select.
+
+        Returns:
+            A list of indices corresponding to the selected data points.
+        """
+        self._validate_input(x)
+        x_len = len(x)
+        if k > x_len:
+            raise ValueError("k cannot be greater than the number of data points in x.")
+
+        if k == x_len:
+            return list(range(x_len))
+
+        x = x.to(self.device)
+
+        selected_indices: list[int] = []
+        remaining_indices = set(range(len(x)))
+
+        for selection_idx in range(k):
+            remaining_indices_as_list = list(remaining_indices)
+            remaining_vectors = x[remaining_indices_as_list]
+
+            distance = torch.cdist(remaining_vectors, remaining_vectors)
+            distance = (
+                distance
+                + torch.eye(len(remaining_vectors), device=x.device, dtype=x.dtype)
+                * distance.max()
+            )  # set self-distance to max
+            point_with_farthest = int(distance.min(dim=1).values.argmax().item())
+            index_in_original = remaining_indices_as_list[point_with_farthest]
+
+            selected_indices.append(index_in_original)
+            remaining_indices.remove(index_in_original)
+
+        return selected_indices
+
+
 class GoldSelector:
     """Select a subset of data points from vectorized samples.
 
