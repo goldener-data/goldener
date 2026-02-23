@@ -1,117 +1,178 @@
-![goldener](docs/statics/goldener_brand.png)
+<picture class="github-only">
+    <img
+        alt="Goldener Logo"
+        src="https://raw.githubusercontent.com/goldener-data/goldener/main/docs/statics/goldener_brand.png"
+        width="70%"
+    />
+</picture>
 
-# Goldener - Make your data even more valuable
+A python library orchestrating data during the full life cycle of machine learning pipelines.
 
-Goldener is an open-source Python library (Apache 2 licence) designed to manage the orchestration
-of data (sampling, splitting and labeling) during the full life cycle of machine learning (ML) pipelines.
+[![License](https://img.shields.io/badge/License-Apache%202.0-0530AD.svg)](https://opensource.org/licenses/Apache-2.0)
+[![PyPI Package](https://img.shields.io/pypi/v/goldener?color=6D165C)](https://pypi.org/project/goldener/)
 
-In the artificial intelligence (AI) era, the data is the new gold. Being able to collect it is already something.
-However, using it blindly is for sure costly: annotation cost, storage cost, training cost. Goldener is
-aiming to reduce all these costs by optimizing:
-- Data sampling and splitting: sample the right data ensuring just enough representativeness for the task.
-- Data labeling: Ensure high-quality data at scale with optimized human in loop processes.
+[**Overview**](#-overview) |
+[**Principles**](#-key-design-principles) |
+[**Features**](#-features) |
+[**Installation**](#-installation) |
+[**Contribute**](#-contributing)
 
-## Sampling and labeling in AI life cycle
+# Overview
 
-Successful machine learning pipelines are all about data. All along the AI life cycle, getting access
-to data fully modelizing the target task is key. Both training and test data are then crucial to the success of
-the ML pipelines and are continuously updated to ensure the pipeline performances during its whole usage:
+Goldener is an **open-source Python library** (Apache 2 licence) designed to manage the **orchestration
+of data** (sampling, splitting) during the full life cycle of machine learning (ML) pipelines.
 
-- **Training**: The training data defines the model ability to succeed its task.
-    Training from not representative enough data makes the model unable to learn the task adequately. In the meantime,
-    using too much data will slow down the training process. Once the model is deployed,
-    selecting new training data efficiently is as well crucial to solve data drift issues.
-- **Test**: The test data drives the design and validation of tested pipelines. Testing from not representative enough data
-    ends up with bad design decision, hence to poor performances in production. Once the model is deployed, selecting
-    new testing data is as well crucial to monitor the model performances and ensure it succeeds its task.
+In the artificial intelligence (AI) era, the data is the new gold. Being able to collect it is already something
+but **creating value from it is the real challenge**. Goldener is designed to help to make the most of the available data.
+It provides tools to orchestrate data during the full life cycle of machine learning pipelines,
+from the training phase to the monitoring phase.
 
-In the meantime, all the sampled data is required to be labelled in order to be used during the ML lifecycle, at least for
-the test/monitoring sets in case of unsupervised learning. Labeling data is costly and time-consuming,
-especially when it comes to large datasets. Most of the time, it involves an iterative process including human
-labelers potentially helped by some AI tools. An efficient data sampling before labeling allows to optimize
-the time and cost to access new labeled data. In the meantime, depending on the task and target, the bad quality of the
-labeled data can:
-- Lead to a model unable to learn the task adequately (wrong labels pushing it in the wrong direction)
-- Lead to wrong design decisions during the model validation phase (wrong test data leading to wrong conclusions)
+Goldener makes the **right data** available at the **right time**, allowing to **optimize the performance**
+of any ML pipelines while **minimizing the costs** (time, performance, computing resources) of data sampling and labeling.
 
-The goal of Goldener is to provide the orchestration ensuring the access to high-quality and representative enough data
-during the whole life cycle of the ML pipelines. With Goldener, the users get the right data at the right time, ensuring the best performances
-of the ML pipelines while minimizing the costs of data sampling and labeling.
+When it's time to annotate data, Goldener find the most representative subset to annotate. During annotation, it can help
+to define annotation guidelines by spotting specific cases or as well run annotation quality checks.
+Once enough data is annotated, Goldener can split it in multiple sets (train, validation, test) ensuring a reproduction of
+the task variability reproduction. During the training phase, Goldener can balance efficiently the data
+to optimize the training time and the model performance. Finally, when the model is deployed, Goldener can find
+the most informative data to monitor the model performance and detect any drift in the data distribution.
 
-<div align="center">
-    <img src="docs/statics/goldener_ai_lifecycle.png" alt="Sampling and labeling during AI lifecycle" width="600"/>
-</div>
+# Key design principles
 
-
-## Goldener for sampling and labeling orchestration
-
-As a gardener exploiting the most of a good ground, Goldener aims to make the most of your gold (data)
-and make it even more valuable. Mainly, Goldener features a set of tools to help you to:
-
-- **Gold prospection**: Sample and split the most valuable gold (data)
-    - Sample among raw data: Spot the data allowing to train a pipeline for a task,
-    or spot weaknesses of a deployed pipeline while minimizing the need for labeling.
-    - Split labeled data: Ensure enough representativeness in both the training and test sets
-    while optimizing the training process in effectiveness and time.
-
-- **Gold refining**: Ensure the gold (data) quality
-    - Assist in the labeling process: Make human labeling faster with some smart labeling tools
-    (for instance create image segmentation masks from a single click).
-    - Label data automatically: Propose labels for raw data based on foundation models or existing labeled data.
-    - Curate newly labeled data: Identify potential labeling mistakes allowing humans labelers to converge
-    toward high quality labeled data.
-
-
-## Key design principles
-
-Goldener is designed to process large datasets efficiently and effectively. It is built on the assumption
+Goldener is designed to process large datasets efficiently. It is built on the assumption
 that every AI lifecycle is most of the time iterative and incremental. Its design principles are:
 
 - **Progressive batch processing**: Each task can be stopped and restarted on demand (or failure).
 Already computed results are not recomputed.
+- **Multipurposes embeddings**: The same embeddings are used for
+the different for different tasks (selection, splitting, monitoring, etc.).
+- **Modality-agnostic**: The same tool is actionable for any data modalities (text, image, video, tabular, etc.)
+and even for multimodality data.
+
+This is not yet applied but for the next iterations, the following principles will be as well followed:
+
 - **Distributed first**: Any task can be distributed across multiple machines.
 - **On demand access to pipelines**: All processing pipelines are serializable.
 They are stored and available whenever a new request is made.
-- **Multipurposes embeddings**: Whenever it is possible, the same embeddings are used for
-the different prospection and refining actions on the same data.
 
-To orchestrate both the sampling and labeling of data in Goldener, the same data is moving from steps to steps
-during the AI lifecycle. In addition, the information gathered all along the cycle is leveraged to drive the efficiency
-of the next sampling and labeling. Thus, all the data is cached behind the scene and accessible any time.
 
-<div align="center">
-    <img src="docs/statics/goldener_data_workflow.png" alt="Data workflow in Goldener" width="600"/>
-</div>
+# Example of features
 
-## Current focus
+## Sampling among not annotated data
 
-Goldener is a work in progress and is currently in the early stages of development.
-The current focus is on releasing and validating the first feature around data splitting.
-Thus, for now the features are not runnable with a distributed workflow. Hopefully,
-we will get to it soon.
+Goldener can find the most representative data subset to annotate. It can extract and store semantic knowledge of the data
+from embeddings extracted with pre-trained models. Then, it leverages this knowledge to find the most representative subset of data to annotate.
 
-## Main features
+```python
 
-- GoldFeatureExtractor: Extract embeddings/features of different layers from data. We added
-ways to fuse features from multiple layers to get richer representations.
-- GoldDescriptor: Extract features/embeddings of a full dataset and  store them locally.
-- GoldSelector: Select a subset of data from a dataset based on the features extracted from a model.
-The selection is optimized to ensure representativeness while minimizing redundancy.
-- GoldSplitter: Split the data of a dataset in multiple split based on the repartition of the features
-extracted from a model. The splits are optimized to ensure representativeness while minimizing
-redundancy.
+from goldener import (
+    GoldSelector,
+    GoldDescriptor,
+    TorchGoldFeatureExtractor,
+    TorchGoldFeatureExtractorConfig,
+    TensorVectorizer,
+)
 
-## Installation
+gd = GoldDescriptor(
+    table_path="my_table_for_description",
+    extractor=TorchGoldFeatureExtractor(
+        TorchGoldFeatureExtractorConfig(
+            model=my_model,
+            layers=my_layers,
+        )
+    ),
+    vectorizer=TensorVectorizer()
+)
+
+gs = GoldSelector(
+    table_path="my_table_for_selection", selection_key="selection"
+)
+
+description = gd.describe_in_table(dataset)
+selection_table = gs.select_in_table(description, 100, "to_annotate")
+selected = GoldSelector.get_selection_indices(selection_table, "to_annotate", "selection")
+
+```
+
+## Splitting annotated data in train and validation sets
+
+Goldener can split data between the train and validation sets ensuring that the training set is containing
+most of the different situations for the tasks. From a description of the samples (embeddings), the most different/unique
+elements are kept for the training set while the least informative ones are kept for the validation set.
+
+```python
+from goldener import (
+    GoldSet,
+    GoldSplitter,
+    GoldDescriptor,
+    GoldSelector,
+)
+
+gd = GoldDescriptor(...) # reuse the descriptor  used for smart sampling
+gselector = GoldSelector(...)
+gs = GoldSplitter(
+    sets=[GoldSet("train", 0.7), GoldSet("val", 0.3)],
+    descriptor=gd,
+    selector=gselector,
+)
+
+split_table = gs.split_in_table(dataset)
+splits = gs.get_split_indices(
+    split_table, selection_key="selected", idx_key="idx"
+)
+train_indices = splits["train"]
+val_indices = splits["val"]
+
+```
+
+## Clustering data to define annotation guidelines
+
+Among the data, there are often multiple "modes" (e.g. different types of images, different types of text, etc.).
+Goldener can clusterize the data to find these different modes. Then, the different clusters can be leveraged
+to define annotation guidelines for each cluster.
+
+```python
+from goldener import (
+    GoldClusterizer,
+    GoldSKLearnClusteringTool,
+    GoldDescriptor,
+    TorchGoldFeatureExtractor,
+    TorchGoldFeatureExtractorConfig,
+    TensorVectorizer,
+)
+from sklearn.cluster import KMeans
+
+gd = GoldDescriptor(...)
+gcluster = GoldClusterizer(
+    table_path="my_table_for_clusterization",
+    clustering_tool=GoldSKLearnClusteringTool(KMeans(n_clusters=10)),
+    cluster_key="cluster",
+)
+
+description = gd.describe_in_table(dataset)
+clustered_table = gcluster.clusterize_in_table(description)
+
+for cluster_id in range(10):
+    cluster_indices = get_cluster_indices(clustered_table, "cluster", cluster_id)
+
+    # sample few samples and use them to define annotation guidelines for this cluster
+
+```
+
+
+# Installation
+
+Installing Goldener is as simple as running the following command:
 
 ```bash
 pip install goldener
 ```
 
-## Contributing
+# Contribute
 
 We welcome contributions to Goldener! Here's how you can help:
 
-### Getting Started
+## Getting Started
 
 1. Fork the repository
 2. Clone your fork
@@ -122,7 +183,7 @@ We welcome contributions to Goldener! Here's how you can help:
 7. A maintainer will review your PR and may request changes
 8. Once approved, your PR will be merged
 
-### Development
+## Development
 
 To set up the development environment:
 
@@ -177,7 +238,7 @@ The pre-commit hooks will automatically run:
 
 whenever you make a commit.
 
-### Release Process
+## Release Process
 
 To release a new version of the `goldener` package:
 1. Create a new branch for the release: `git checkout -b release-vX.Y.Z`
