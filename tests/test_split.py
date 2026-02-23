@@ -264,7 +264,7 @@ class TestGoldSplitter:
         )
 
         with pytest.raises(
-            ValueError, match="label_key and class_value must be set together"
+            ValueError, match="label_key and label_value must be set together"
         ):
             splitter.split_in_table(
                 to_split=DummyDataset(
