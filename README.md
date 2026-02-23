@@ -11,11 +11,11 @@ A python library orchestrating data during the full life cycle of machine learni
 [![License](https://img.shields.io/badge/License-Apache%202.0-0530AD.svg)](https://opensource.org/licenses/Apache-2.0)
 [![PyPI Package](https://img.shields.io/pypi/v/goldener?color=6D165C)](https://pypi.org/project/goldener/)
 
-[**Overview**](#-Overview) |
-[**Principles**](#-Key-design-principles) |
-[**Features**](#-Example-of-features) |
-[**Installation**](#-Installation) |
-[**Contribute**](#-Contribute)
+[**Overview**](#overview) |
+[**Principles**](#key-design-principles) |
+[**Features**](#example-of-features) |
+[**Installation**](#installation) |
+[**Contribute**](#contribute)
 
 # Overview
 
