@@ -27,6 +27,7 @@ from goldener.select import (
     GoldSelector,
     GoldGreedyClosestPointSelection,
     GoldGreedyFarthestPointSelection,
+    GoldGreedyKCenterSelection,
     GoldGreedyKernelPoints,
 )
 from goldener.split import GoldSet, GoldSplitter
@@ -60,6 +61,7 @@ __all__ = (
     "GoldSelector",
     "GoldGreedyClosestPointSelection",
     "GoldGreedyFarthestPointSelection",
+    "GoldGreedyKCenterSelection",
     "GoldGreedyKernelPoints",
     "GoldSet",
     "GoldSplitter",
