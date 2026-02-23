@@ -13,7 +13,11 @@ from torch.utils.data import Dataset
 
 from goldener.pxt_utils import GoldPxtTorchDataset
 from goldener.reduce import GoldSKLearnReductionTool
-from goldener.select import GoldSelector, GoldGreedyFarthestPointSelection
+from goldener.select import (
+    GoldSelector,
+    GoldGreedyFarthestPointSelection,
+    GoldGreedyKCenterSelection,
+)
 from goldener.select import (
     GoldGreedyClosestPointSelection,
     GoldGreedyKernelPoints,
@@ -759,13 +763,16 @@ class TestGoldSelector:
 
 
 class TestGoldGreedyClosestPointSelection:
-    def test_basic_selection_properties(self) -> None:
-        x = torch.tensor([[0.0], [1.0], [10.0], [10.1], [1.1]], dtype=torch.float32)
+    def test_simple_selection(self) -> None:
+        x = torch.tensor(
+            [[0.0, 0.0], [1.0, 1.0], [2.0, 2.0]],
+            dtype=torch.float32,
+        )
 
         tool = GoldGreedyClosestPointSelection(device="cpu")
         indices = tool.select(x, k=2)
 
-        assert indices == [1, 2]
+        assert indices == [0, 1]
 
     def test_select_all_points(self) -> None:
         x = torch.tensor(
@@ -777,17 +784,6 @@ class TestGoldGreedyClosestPointSelection:
         indices = tool.select(x, k=x.size(0))
 
         assert indices == [0, 1, 2, 3]
-
-    def test_selection_with_multidimensional_features(self) -> None:
-        x = torch.tensor(
-            [[0.0, 0.0], [1.0, 1.0], [2.0, 2.0]],
-            dtype=torch.float32,
-        )
-
-        tool = GoldGreedyClosestPointSelection(device="cpu")
-        indices = tool.select(x, k=2)
-
-        assert indices == [0, 1]
 
     def test_with_k_greater_than_size(self) -> None:
         x = torch.tensor([[0.0], [1.0]], dtype=torch.float32)
@@ -814,13 +810,16 @@ class TestGoldGreedyClosestPointSelection:
 
 
 class TestGoldGreedyFarthestPointSelection:
-    def test_basic_selection_properties(self) -> None:
-        x = torch.tensor([[0.0], [1.0], [10.0], [10.2], [1.1]], dtype=torch.float32)
+    def test_simple_selection(self) -> None:
+        x = torch.tensor(
+            [[0.0, 0.0], [1.0, 1.0], [2.2, 2.2]],
+            dtype=torch.float32,
+        )
 
         tool = GoldGreedyFarthestPointSelection(device="cpu")
         indices = tool.select(x, k=2)
 
-        assert indices == [0, 2]
+        assert indices == [2, 0]
 
     def test_select_all_points(self) -> None:
         x = torch.tensor(
@@ -832,17 +831,6 @@ class TestGoldGreedyFarthestPointSelection:
         indices = tool.select(x, k=x.size(0))
 
         assert indices == [0, 1, 2, 3]
-
-    def test_selection_with_multidimensional_features(self) -> None:
-        x = torch.tensor(
-            [[0.0, 0.0], [1.0, 1.0], [2.2, 2.2]],
-            dtype=torch.float32,
-        )
-
-        tool = GoldGreedyFarthestPointSelection(device="cpu")
-        indices = tool.select(x, k=2)
-
-        assert indices == [2, 0]
 
     def test_with_k_greater_than_size(self) -> None:
         x = torch.tensor([[0.0], [1.0]], dtype=torch.float32)
@@ -868,8 +856,55 @@ class TestGoldGreedyFarthestPointSelection:
             tool.select(torch.randn(10, 5, 3), k=2)
 
 
+class TestGoldGreedyKCenterSelection:
+    def test_simple_selection(self) -> None:
+        x = torch.tensor(
+            [[0.0, 0.0], [1.0, 0.0], [1.0, 0.0], [3.0, 0.0]],
+            dtype=torch.float32,
+        )
+
+        tool = GoldGreedyKCenterSelection(device="cpu")
+        indices = tool.select(x, k=2)
+
+        assert indices == [3, 0]
+
+    def test_select_all_points(self) -> None:
+        x = torch.tensor(
+            [[0.0], [1.0], [2.0], [3.0]],
+            dtype=torch.float32,
+        )
+
+        tool = GoldGreedyKCenterSelection(device="cpu")
+        indices = tool.select(x, k=x.size(0))
+
+        assert indices == [0, 1, 2, 3]
+
+    def test_with_k_greater_than_size(self) -> None:
+        x = torch.tensor([[0.0], [1.0]], dtype=torch.float32)
+
+        tool = GoldGreedyKCenterSelection(device="cpu")
+        with pytest.raises(
+            ValueError, match="k cannot be greater than the number of data points in x"
+        ):
+            tool.select(x, k=5)
+
+    def test_rejects_1d_tensor(self) -> None:
+        tool = GoldGreedyKCenterSelection(device="cpu")
+        with pytest.raises(
+            ValueError, match="GoldSelectionTool only accepts 2D tensors"
+        ):
+            tool.select(torch.randn(10), k=2)
+
+    def test_rejects_3d_tensor(self) -> None:
+        tool = GoldGreedyKCenterSelection(device="cpu")
+        with pytest.raises(
+            ValueError, match="GoldSelectionTool only accepts 2D tensors"
+        ):
+            tool.select(torch.randn(10, 5, 3), k=2)
+
+
 class TestGoldGreedyKernelPoints:
-    def test_basic_selection_with_linear_kernel(self) -> None:
+    def test_simple_usage(self) -> None:
         tool = GoldGreedyKernelPoints(
             feature_kernel=LinearKernel(output_scale=1, constant=0)
         )

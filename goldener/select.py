@@ -120,6 +120,65 @@ class GoldGreedyKernelPoints(GoldSelectionTool):
         return coreset.unweighted_indices.tolist()
 
 
+class GoldGreedyKCenterSelection(GoldSelectionTool):
+    """Create a coresubset from selecting with the K Center greedy algorithm.
+
+    This is a greedy algorithm that selects iteratively the farthest to the already selected points
+    among the not selected points. The first center is selected as the point with
+    the largest aggregated distance to all the other points.
+
+    Attributes:
+        device: The torch device to use for computations.
+    """
+
+    def __init__(self, device: torch.device | str) -> None:
+        self.device = device
+
+    def select(
+        self,
+        x: torch.Tensor,
+        k: int,
+    ) -> list[int]:
+        """Select a subset of data points from the input data by choosing iteratively the point
+        with the farthest nearest neighbors among the not selected points.
+
+        Args:
+            x: A 2D torch.Tensor where each row represents a data point.
+            k: The number of data points to select.
+
+        Returns:
+            A list of indices corresponding to the selected data points.
+        """
+        self._validate_input(x)
+        x_len = len(x)
+        if k > x_len:
+            raise ValueError("k cannot be greater than the number of data points in x.")
+
+        if k == x_len:
+            return list(range(x_len))
+
+        x = x.to(self.device)
+
+        # the first point is the one with the largest aggregated distance to all the other points
+        sample_to_sample_distance = torch.cdist(x, x)
+        first_idx = int(sample_to_sample_distance.norm(dim=1).argmax().item())
+        selected_indices = [first_idx]
+        if k == 1:
+            return selected_indices
+
+        # the next points are selected iteratively as the ones
+        # with the largest distance to the already selected points
+        distances = sample_to_sample_distance[first_idx]
+        for selection_idx in range(k - 1):
+            next_idx = int(distances.argmax().item())
+            selected_indices.append(next_idx)
+
+            distances_to_next = torch.linalg.norm(x - x[next_idx], ord=2, dim=1)
+            distances = torch.stack([distances, distances_to_next]).min(dim=0).values
+
+        return selected_indices
+
+
 class GoldGreedyClosestPointSelection(GoldSelectionTool):
     """Create a coresubset from selecting the closest points iteratively.
 
