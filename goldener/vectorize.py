@@ -431,6 +431,7 @@ class GoldVectorizer:
         target_to_label: Optional mapping from target values to label strings. Default is None.
         exclude_full_zero_target: Whether to exclude samples with a target tensor containing
             only zeros (in case of multi target). Default is False.
+        exclude_labels: Optional set of label strings to exclude from vectorization. Default is None.
         to_keep_schema: Optional dictionary defining additional columns to keep from the original dataset/table
             into the vectorized table. The keys are the column names and the values are the PixelTable types.
         min_pxt_insert_size: Minimum number of rows to accumulate before inserting into the PixelTable table. Default is 100.
@@ -458,6 +459,7 @@ class GoldVectorizer:
         vectorized_key: str = "vectorized",
         label_key: str | None = None,
         target_to_label: dict[tuple[int, ...], str] | None = None,
+        exclude_labels: set[str] | None = None,
         exclude_full_zero_target: bool = False,
         to_keep_schema: dict[str, type] | None = None,
         min_pxt_insert_size: int = 100,
@@ -479,6 +481,7 @@ class GoldVectorizer:
             vectorized_key: Column name for storing vectors. Defaults to "vectorized".
             label_key: Optional key for labels in the batch dictionary. Default is None.
             target_to_label: Optional mapping from target values to label strings. Default is None.
+            exclude_labels: Optional set of label strings to exclude from vectorization. Default is None.
             exclude_full_zero_target: Whether to exclude samples with a target tensor containing
                 only zeros (in case of multi target). Default is False.
             to_keep_schema: Optional schema for additional columns to preserve.
@@ -497,6 +500,7 @@ class GoldVectorizer:
         self.target_key = target_key
         self.label_key = label_key
         self.target_to_label = target_to_label
+        self.exclude_labels = exclude_labels
         self.exclude_full_zero_target = exclude_full_zero_target
         self.vectorized_key = vectorized_key
         self.to_keep_schema = to_keep_schema
@@ -864,7 +868,11 @@ class GoldVectorizer:
                 target_to_label=self.target_to_label,
                 label_key=self.label_key,
                 exclude_full_zero_target=self.exclude_full_zero_target,
+                exclude_labels=self.exclude_labels,
             )
+
+            if not batch:
+                continue
 
             start_idx = max(batch["idx_vector"]) + 1
 
@@ -874,6 +882,7 @@ class GoldVectorizer:
                 to_insert_keys,
                 "idx_vector",
             )
+
             ready_to_insert.extend(batch_as_list)
             if len(ready_to_insert) >= self.min_pxt_insert_size:
                 vectorized_table.batch_update(ready_to_insert, if_not_exists="insert")
@@ -944,6 +953,7 @@ def vectorize_and_unwrap_in_batch(
     target_key: str | None = None,
     label_key: str | None = None,
     target_to_label: dict[tuple[int, ...], str] | None = None,
+    exclude_labels: set[str] | None = None,
     to_keep: list[str] | None = None,
     starts: int = 0,
     exclude_full_zero_target: bool = True,
@@ -961,6 +971,7 @@ def vectorize_and_unwrap_in_batch(
         target_key: Optional key in the batch dictionary containing the target used to filter vectors.
         label_key: Optional key in the batch dictionary containing the labels.
         target_to_label: Optional mapping from target values to labels for binarization.
+        exclude_labels: Optional set of label strings to exclude from vectorization. Default is None.
         to_keep: Optional list of additional keys to preserve from the batch.
         starts: Starting index for assigning new `idx_vector` values.
         exclude_full_zero_target: Whether to exclude samples with a full zero target when binarizing
@@ -978,7 +989,11 @@ def vectorize_and_unwrap_in_batch(
                 label_key=label_key,
                 target_to_label=target_to_label,
                 exclude_full_zero=exclude_full_zero_target,
+                exclude_labels=exclude_labels,
             )
+
+            if not batch:
+                return {}
 
         target = batch[target_key]
 
