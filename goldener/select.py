@@ -220,7 +220,7 @@ class GoldGreedyClosestPointSelection(GoldSelectionTool):
         selected_indices: list[int] = []
         remaining_indices = set(range(len(x)))
 
-        for selection_idx in range(k):
+        for _ in range(k):
             remaining_indices_as_list = list(remaining_indices)
             remaining_vectors = x[remaining_indices_as_list]
 
@@ -281,7 +281,7 @@ class GoldGreedyFarthestPointSelection(GoldSelectionTool):
         selected_indices: list[int] = []
         remaining_indices = set(range(len(x)))
 
-        for selection_idx in range(k):
+        for _ in range(k):
             remaining_indices_as_list = list(remaining_indices)
             remaining_vectors = x[remaining_indices_as_list]
 
