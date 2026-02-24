@@ -263,12 +263,14 @@ def get_distinct_value_and_count_in_column(
     Returns:
         A dictionary mapping distinct values to their counts in the specified column.
     """
-    return {
+    value_and_count = {
         distinct_item[col_expr.display_str()]: table.where(
             col_expr == distinct_item[col_expr.display_str()]
         ).count()
         for distinct_item in table.select(col_expr).distinct().collect()
     }
+
+    return dict(sorted(value_and_count.items()))
 
 
 def get_column_distinct_ratios(table: Table, col_expr: Expr) -> dict[str, float]:
