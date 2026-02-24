@@ -1,6 +1,7 @@
 import pytest
 import torch
 
+from goldener.vision.transform import PatchifyImageMask
 from goldener.vision.vectorizers import (
     get_vit_class_token_vectorizer,
     get_vit_prefix_tokens_vectorizer,
@@ -90,3 +91,29 @@ class TestVitVectorizerHelpers:
         out = vec.vectorize(x)
         assert out.vectors.shape[0] == x.shape[0] * 3
         assert out.vectors.shape[1] == x.shape[2]
+
+    def test_get_vit_patch_tokens_vectorizer_with_transform_y(self):
+        x = self.make_tensor((2, 196, 324))
+        x[:, 0, :] = 999 * torch.ones(
+            (324,)
+        )  # make sure the first token is different to test the remove logic
+        y = torch.zeros((2, 1, 224, 224))
+        y[:, :, 0:14, 0:14] = 1.0
+
+        patchify = PatchifyImageMask(16, 0.5)
+
+        vec = get_vit_patch_tokens_vectorizer(
+            n_prefixes=None, n_random=None, transform_y=patchify.transform
+        )
+
+        out = vec.vectorize(x, y)
+        assert (
+            out.vectors
+            == 999
+            * torch.ones(
+                (
+                    2,
+                    324,
+                )
+            )
+        ).all()

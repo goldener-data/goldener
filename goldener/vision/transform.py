@@ -58,4 +58,4 @@ class PatchifyImageMask(Transform):
         # compute the ratio of non zero pixels in each patch
         ratios = patches.sum(dim=-1) / pixels_in_patch
 
-        return (ratios > self.match_ratio).float()
+        return (ratios > self.match_ratio).float().unsqueeze(1)
