@@ -169,7 +169,7 @@ class GoldGreedyKCenterSelection(GoldSelectionTool):
         # the next points are selected iteratively as the ones
         # with the largest distance to the already selected points
         distances = sample_to_sample_distance[first_idx]
-        for selection_idx in range(k - 1):
+        for _ in range(k - 1):
             next_idx = int(distances.argmax().item())
             selected_indices.append(next_idx)
 
