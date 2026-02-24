@@ -375,8 +375,6 @@ def transform_batch_from_multiple_to_binarized_targets(
     # insert the corresponding binarized target/label in the batch alongside them.
     new_batch: dict[str, torch.Tensor | list[Any]] = {}
     n_values = len(target_per_label)
-    if n_values == 0:
-        return {}  # no valid targets to transform
 
     for batch_key, batch_value in batch.items():
         if batch_key not in (target_key, label_key):

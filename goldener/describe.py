@@ -578,14 +578,10 @@ class GoldDescriptor:
                 start_idx = max(batch["idx_vector"]) + 1
 
                 to_insert_keys = [self.description_key, "idx"] + to_keep_keys
-                batch_as_list = (
-                    make_batch_ready_for_table(
-                        batch,
-                        to_insert_keys,
-                        "idx_vector",
-                    )
-                    if batch
-                    else []
+                batch_as_list = make_batch_ready_for_table(
+                    batch,
+                    to_insert_keys,
+                    "idx_vector",
                 )
 
             ready_to_insert.extend(batch_as_list)

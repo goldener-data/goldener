@@ -923,7 +923,7 @@ def unwrap_vectors_in_batch(
     """
     if label_key is None and exclude_labels is not None:
         raise ValueError(
-            "If excluded_labels is provided, label_key must also be provided."
+            "If exclude_labels is provided, label_key must also be provided."
         )
 
     new_batch: dict[str, Any] = {
