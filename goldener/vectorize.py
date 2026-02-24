@@ -900,6 +900,8 @@ def unwrap_vectors_in_batch(
     batch: dict[str, Any],
     starts: int = 0,
     to_keep: list[str] | None = None,
+    label_key: str | None = None,
+    exclude_labels: set[str] | None = None,
 ) -> dict[str, Any]:
     """Unwrap vectorized output into individual rows for table insertion.
 
@@ -913,10 +915,17 @@ def unwrap_vectors_in_batch(
         batch: Original batch dictionary with metadata.
         starts: Starting index for assigning new `idx_vector` values.
         to_keep: Optional list of additional keys to preserve from the batch.
+        label_key: Optional key for labels in the batch dictionary. Default is None.
+        exclude_labels: Optional set of label strings to exclude from vectorization. Default is None.
 
     Returns:
         Dictionary with unwrapped vectors and metadata, ready for table insertion.
     """
+    if label_key is None and exclude_labels is not None:
+        raise ValueError(
+            "If excluded_labels is provided, label_key must also be provided."
+        )
+
     new_batch: dict[str, Any] = {
         "idx": [],
         vectorized_key: [],
@@ -931,16 +940,26 @@ def unwrap_vectors_in_batch(
         for batch_idx, idx_value in enumerate(batch["idx"])
     ]
 
+    check_label = label_key is not None and exclude_labels is not None
     vectorized_idx = vectorized.batch_indices
     for vec_idx, vector in enumerate(vectorized.vectors):
-        new_batch[vectorized_key].append(vector)
-        new_batch["idx_vector"].append(starts + vec_idx)
         batch_idx = vectorized_idx[vec_idx].item()
         assert isinstance(batch_idx, int)
+
+        if check_label:
+            label = batch[label_key][batch_idx]  # type: ignore[index]
+            if label in exclude_labels:  # type: ignore[operator]
+                continue
+
+        new_batch[vectorized_key].append(vector)
+        new_batch["idx_vector"].append(starts + vec_idx)
         new_batch["idx"].append(sample_indices[batch_idx])
         if to_keep is not None:
             for key in to_keep:
                 new_batch[key].append(batch[key][batch_idx])
+
+    if not new_batch["idx_vector"]:
+        return {}
 
     return new_batch
 
@@ -1008,6 +1027,8 @@ def vectorize_and_unwrap_in_batch(
         batch=batch,
         starts=starts,
         to_keep=to_keep,
+        label_key=label_key,
+        exclude_labels=exclude_labels,
     )
 
     return batch
