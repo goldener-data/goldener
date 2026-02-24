@@ -173,7 +173,7 @@ class GoldGreedyKCenterSelection(GoldSelectionTool):
             next_idx = int(distances.argmax().item())
             selected_indices.append(next_idx)
 
-            distances_to_next = torch.linalg.norm(x - x[next_idx], ord=2, dim=1)
+            distances_to_next = sample_to_sample_distance[next_idx]
             distances = torch.stack([distances, distances_to_next]).min(dim=0).values
 
         return selected_indices
