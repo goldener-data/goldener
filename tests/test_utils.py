@@ -478,6 +478,42 @@ class TestTransformBatchFromMultipleToBinarizedTargets:
             "B",
         }
 
+    def test_with_exclude_labels(self):
+        target = torch.zeros(2, 1)
+        target[0, 0] = 25
+        data = torch.arange(6).reshape(2, 3)
+        batch = {
+            "data": data,
+            "target": target,
+            "label": [
+                {
+                    "A",
+                },
+                {
+                    "B",
+                },
+            ],
+        }
+
+        target_to_label = {
+            (0,): "A",
+            (25,): "B",
+        }
+
+        out = transform_batch_from_multiple_to_binarized_targets(
+            batch=batch,
+            target_key="target",
+            label_key="label",
+            target_to_label=target_to_label,
+            exclude_labels={"A"},
+        )
+
+        assert (out["data"] == torch.cat([data], dim=0)).all()
+        new_target = torch.zeros(2, 1)
+        new_target[0, 0] = 1
+        assert (out["target"] == new_target).all()
+        assert set(out["label"]) == {"B"}
+
     def test_with_target_to_label_missing_failure(self):
         target = torch.zeros(2, 1)
         target[0, 0] = 25

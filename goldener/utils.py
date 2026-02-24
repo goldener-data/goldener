@@ -314,6 +314,7 @@ def transform_batch_from_multiple_to_binarized_targets(
     target_key: str,
     label_key: str | None,
     target_to_label: dict[tuple[int, ...], str],
+    exclude_labels: set[str] | None = None,
     exclude_full_zero: bool = False,
 ) -> dict[str, Any]:
     """Transform a batch with multiple targets into a batch with binarized targets for each label.
@@ -324,6 +325,7 @@ def transform_batch_from_multiple_to_binarized_targets(
         target_key: The key in the batch dictionary that contains the target.
         label_key: The key in the batch dictionary that containes the labels.
         target_to_label: A mapping from unique target tuples to label values.
+        exclude_labels: An optional set of labels to exclude from the transformation (default: None).
         exclude_full_zero: Whether to exclude the all-zero target from the transformation (default: False).
 
     Returns:
@@ -352,6 +354,9 @@ def transform_batch_from_multiple_to_binarized_targets(
             )
         label = target_to_label[unique_target_tuple]
 
+        if exclude_labels is not None and label in exclude_labels:
+            continue
+
         new_target = (
             (target_flattened == unique_target.unsqueeze(0))
             .all(dim=1)
@@ -370,6 +375,7 @@ def transform_batch_from_multiple_to_binarized_targets(
     # insert the corresponding binarized target/label in the batch alongside them.
     new_batch: dict[str, torch.Tensor | list[Any]] = {}
     n_values = len(target_per_label)
+
     for batch_key, batch_value in batch.items():
         if batch_key not in (target_key, label_key):
             if isinstance(batch_value, torch.Tensor):

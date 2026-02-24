@@ -573,6 +573,61 @@ class TestGoldVectorizer:
 
         pxt.drop_dir("unit_test", force=True)
 
+    def test_vectorize_in_table_with_excluded_labels(self):
+        pxt.drop_dir("unit_test", force=True)
+
+        src_path = "unit_test.src_table_vectorize"
+        desc_path = "unit_test.vectorize_from_table"
+
+        features = torch.zeros(4, 3).numpy()
+        features[:, 0] = torch.ones((4,))
+
+        target = torch.zeros(2, 3).numpy()
+        target[:, 0] = torch.tensor([25, 25])
+
+        source_rows = [
+            {
+                "idx": 0,
+                "features": features,
+                "label": list({"class_0", "class_1"}),
+                "target": target,
+            },
+            {
+                "idx": 1,
+                "features": features,
+                "label": list({"class_0", "class_1"}),
+                "target": target,
+            },
+        ]
+
+        pxt.create_dir("unit_test", if_exists="ignore")
+        src_table = pxt.create_table(
+            src_path, source=source_rows, if_exists="replace_force"
+        )
+
+        gv = GoldVectorizer(
+            table_path=desc_path,
+            vectorizer=TensorVectorizer(),
+            collate_fn=None,
+            data_key="features",
+            vectorized_key="vectorized",
+            to_keep_schema={"label": pxt.String},
+            batch_size=1,
+            num_workers=0,
+            allow_existing=False,
+            target_to_label={(0, 0): "class_0", (25, 25): "class_1"},
+            label_key="label",
+            exclude_labels={"class_0"},
+        )
+
+        out_table = gv.vectorize_in_table(src_table)
+        assert out_table.count() == 2
+        for row_idx, row in enumerate(out_table.collect()):
+            assert (row["vectorized"] == torch.ones((4,))).all()
+            assert row["label"] == "class_1"
+
+        pxt.drop_dir("unit_test", force=True)
+
     def test_vectorize_in_table_without_idx(
         self,
     ):
