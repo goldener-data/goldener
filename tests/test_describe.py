@@ -543,7 +543,7 @@ class TestGoldDescriptor:
 
         for i, sample in enumerate(iter(dataset)):
             assert sample["idx_vector"] < 64
-            assert sample["label"].shape == "dummy"
+            assert sample["label"] == "dummy"
 
         dataset.keep_cache = False
 
