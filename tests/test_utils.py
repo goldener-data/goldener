@@ -405,16 +405,14 @@ class TestSplitSamplingAmongChunks:
 
 class TestTransformBatchFromMultipleToBinarizedTargets:
     def test_simple_usage(self):
-        target = torch.zeros(2, 1)
+        target = torch.zeros(2, 2)
         target[0, 0] = 25
         data = torch.arange(6).reshape(2, 3)
         batch = {
             "data": data,
             "target": target,
             "label": [
-                {
-                    "A",
-                },
+                {"A", "B"},
                 {
                     "B",
                 },
@@ -422,8 +420,8 @@ class TestTransformBatchFromMultipleToBinarizedTargets:
         }
 
         target_to_label = {
-            (0,): "A",
-            (25,): "B",
+            (0, 0): "A",
+            (25, 0): "B",
         }
 
         out = transform_batch_from_multiple_to_binarized_targets(
@@ -438,7 +436,7 @@ class TestTransformBatchFromMultipleToBinarizedTargets:
         new_target[1, 0] = 1
         new_target[2, 0] = 1
         assert (out["target"] == new_target).all()
-        assert set(out["label"]) == {"A", "B"}
+        assert out["label"] == ["A", "A", "B", "B"]
 
     def test_with_exclude_zero(self):
         target = torch.zeros(2, 1)

@@ -393,7 +393,10 @@ def transform_batch_from_multiple_to_binarized_targets(
                     dim=0,
                 )
             elif label_key is not None and batch_key == label_key:
-                new_batch[label_key] = list(target_per_label.keys())
+                new_labels = []
+                for label, target in target_per_label.items():
+                    new_labels += [label] * len(target)
+                new_batch[label_key] = new_labels
 
     # add label if not already there
     if label_key is not None and label_key not in new_batch:
