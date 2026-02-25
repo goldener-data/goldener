@@ -436,7 +436,7 @@ class TestTransformBatchFromMultipleToBinarizedTargets:
         new_target[1, 0] = 1
         new_target[2, 0] = 1
         assert (out["target"] == new_target).all()
-        assert set(out["label"]) == {"A", "B"}
+        assert out["label"] == ["A", "A", "B", "B"]
 
     def test_with_exclude_zero(self):
         target = torch.zeros(2, 1)
