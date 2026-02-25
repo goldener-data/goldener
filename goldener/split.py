@@ -445,7 +445,9 @@ class GoldSplitter:
                     selection_col == gold_set.name
                 ).count()
                 not_yet_selected = selected_table.where(selection_col == None)  # noqa: E711
-                not_yet_selected_count = not_yet_selected.count()
+                not_yet_selected_count = (
+                    not_yet_selected.select(selected_table.idx).distinct().count()
+                )
                 if not_yet_selected_count == 0 and already_in_set_count == 0:
                     raise ValueError(
                         f"Not enough data to split among {len(self._sets)} sets."
