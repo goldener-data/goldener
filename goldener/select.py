@@ -553,7 +553,8 @@ class GoldSelector:
         selection_indices = self.get_selection_indices(
             selection_table, value, self.selection_key
         )
-        if len(selection_indices) > 0:
+        already_selected_count = len(selection_indices)
+        if already_selected_count > 0:
             # if new vectors have been added to the selection table
             # make sure already selected samples are already flagged out
             set_value_to_idx_rows(
@@ -564,15 +565,25 @@ class GoldSelector:
                 value=value,
             )
 
-        if len(selection_indices) == select_count:
+        still_to_select_count = select_count - already_selected_count
+        if still_to_select_count == 0:
             logger.info(
                 f"Selection table already fully filled out for {value} from {self.table_path}"
             )
             return selection_table
+        elif still_to_select_count < 0:
+            raise ValueError(
+                f"Selection table already contains {already_selected_count} selected samples for {value}, "
+                f"which is more than the requested {select_count} samples."
+            )
         elif self.distribute:
-            self._distributed_select(select_from, selection_table, select_count, value)
+            self._distributed_select(
+                select_from, selection_table, still_to_select_count, value
+            )
         else:
-            self._sequential_select(select_from, selection_table, select_count, value)
+            self._sequential_select(
+                select_from, selection_table, still_to_select_count, value
+            )
 
         logger.info(
             f"Selection table populated {
@@ -929,15 +940,6 @@ class GoldSelector:
             for label_idx, (label_value, label_ratio) in enumerate(
                 label_ratios.items()
             ):
-                already_selected = len(
-                    self.get_selection_indices(
-                        table=selection_table,
-                        value=value,
-                        selection_key=self.selection_key,
-                        label_key=self.label_key,
-                        label_value=label_value,
-                    )
-                )
                 if label_idx < len(label_ratios) - 1:
                     label_count = int(select_count * label_ratio)
                 else:
@@ -956,18 +958,11 @@ class GoldSelector:
                 )
 
                 if label_count == 0:
-                    raise ValueError(
+                    logger.info(
                         f"Label '{label_value}' has ratio {label_ratio} which results in zero samples "
                         f"for the requested select_count of {select_count}. "
                     )
-
-                label_count = label_count - already_selected
-                if label_count == 0:
                     continue
-                elif label_count < 0:
-                    raise ValueError(
-                        "The size of the selection table has decreased since the 1st selection computation"
-                    )
 
                 self._select_label(
                     select_from,

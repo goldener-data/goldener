@@ -318,8 +318,13 @@ class TestGoldSelector:
 
         dataset = DummyDataset(
             [
-                {"vectorized": torch.rand(5), "idx": idx, "label": str(idx % 2)}
-                for idx in range(100)
+                {
+                    "vectorized": torch.rand(5),
+                    "idx": idx % 200,
+                    "label": str(idx % 2),
+                    "idx_vector": idx,
+                }
+                for idx in range(1000)
             ]
         )
 
@@ -333,11 +338,11 @@ class TestGoldSelector:
 
         selection_table = selector.select_in_table(
             dataset,
-            select_size=10,
+            select_size=100,
             value="train",
         )
 
-        assert selection_table.count() == 100
+        assert selection_table.count() == 1000
         assert (
             len(
                 selector.get_selection_indices(
@@ -348,7 +353,7 @@ class TestGoldSelector:
                     label_value="0",
                 )
             )
-            == 5
+            == 50
         )
         assert (
             len(
@@ -360,7 +365,7 @@ class TestGoldSelector:
                     label_value="1",
                 )
             )
-            == 5
+            == 50
         )
 
         pxt.drop_dir("unit_test", force=True)
