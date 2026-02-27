@@ -707,7 +707,15 @@ def vectorized():
 
 @pytest.fixture
 def batch():
-    return {"idx": list(range(2)), "label": ["a", "b"], "data": torch.zeros(2, 3, 3)}
+    target = torch.zeros(2, 1, 3)
+    target[0, 0, 0] = 1
+    target[1, 0, 0] = 1
+    return {
+        "idx": list(range(2)),
+        "label": ["a", "b"],
+        "data": torch.zeros(2, 3, 3),
+        "target": target,
+    }
 
 
 class TestUnwrapVectorsInBatch:
@@ -734,6 +742,11 @@ class TestUnwrapVectorsInBatch:
         assert "vectorized" not in result
 
     def test_with_start(self, vectorized, batch):
+        result = unwrap_vectors_in_batch(vectorized, "vectorized", batch, starts=100)
+        assert result["idx_vector"] == [100, 101, 102, 103]
+
+    def test_with_idx_as_tensor(self, vectorized, batch):
+        batch["idx"] = torch.tensor(batch["idx"])
         result = unwrap_vectors_in_batch(vectorized, "vectorized", batch, starts=100)
         assert result["idx_vector"] == [100, 101, 102, 103]
 
@@ -788,3 +801,14 @@ class TestVectorizeAndUnwrapInBatch:
         )
         vectors = result["vectorized"]
         assert len(vectors) == 6
+
+    def test_with_existing_target_key(self, batch, vectorizer):
+        result = vectorize_and_unwrap_in_batch(
+            batch=batch,
+            vectorizer=vectorizer,
+            data_key="data",
+            vectorized_key="vectorized",
+            target_key="target",
+        )
+        vectors = result["vectorized"]
+        assert len(vectors) == 2
