@@ -716,6 +716,9 @@ class TestGoldSelector:
         )
 
         assert sample_indices == set(range(50))
+        assert len(sample_indices) == GoldSelector.get_selection_count(
+            table=src_table, value="train", selection_key="selected"
+        )
 
         sample_indices = GoldSelector.get_selection_indices(
             table=src_table,
