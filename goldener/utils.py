@@ -424,7 +424,7 @@ def get_sampling_count_from_ratios(
         A dictionary mapping keys to their corresponding sampling counts (integers).
             The dictionary is sorted by count in ascending order.
     """
-    if sum(ratios.values()) != 1.0:
+    if not math.isclose(sum(ratios.values()), 1.0, rel_tol=1e-9, abs_tol=0.0):
         raise ValueError("Ratios must sum to 1.0")
 
     # compute the count per key and make sure they sum to the sampling size by

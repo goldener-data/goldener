@@ -578,13 +578,9 @@ class GoldSelector:
                 f"which is more than the requested {select_count} samples."
             )
         elif self.distribute:
-            self._distributed_select(
-                select_from, selection_table, still_to_select_count, value
-            )
+            self._distributed_select(select_from, selection_table, select_count, value)
         else:
-            self._sequential_select(
-                select_from, selection_table, still_to_select_count, value
-            )
+            self._sequential_select(select_from, selection_table, select_count, value)
 
         logger.info(
             f"Selection table populated {
@@ -1133,7 +1129,7 @@ class GoldSelector:
             # check if selection can be achieved by taking all the remaining samples
             # without running coresubset selection
             still_selectable = to_select.select(selection_table.idx).distinct().count()
-            still_to_select = select_count - already_selected_count
+            loop_select_count = still_to_select - current_selected_count
             if still_to_select == still_selectable:
                 set_value_to_idx_rows(
                     table=selection_table,
@@ -1183,7 +1179,7 @@ class GoldSelector:
                 ]
 
             select_count_per_chunk = split_sampling_among_chunks(
-                to_split=still_to_select,
+                to_split=loop_select_count,
                 chunk_sizes=[len(chunk) for chunk in chunk_assignment],
             )
 

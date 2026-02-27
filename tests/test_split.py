@@ -324,7 +324,7 @@ class TestGoldSplitter:
             vectorizer=vectorizer,
         )
 
-        with pytest.raises(ValueError, match="which results in zero samples"):
+        with pytest.raises(ValueError, match="While trying to adjust counts"):
             splitter.split_in_table(
                 to_split=DummyDataset(
                     [

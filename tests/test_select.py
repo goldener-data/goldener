@@ -660,6 +660,33 @@ class TestGoldSelector:
 
         pxt.drop_dir("unit_test", force=True)
 
+    def test_select_in_table_from_dataset_with_already_selected(self):
+        pxt.drop_dir("unit_test", force=True)
+
+        table_path = "unit_test.test_select_from_dataset"
+
+        dataset = DummyDataset(
+            [
+                {
+                    "vectorized": torch.rand(5),
+                    "idx": idx,
+                    "selected": "train" if idx % 10 else "val",
+                }
+                for idx in range(100)
+            ]
+        )
+
+        selector = GoldSelector(
+            table_path=table_path, allow_existing=False, batch_size=10, max_batches=2
+        )
+
+        with pytest.raises(
+            ValueError, match="Cannot select more unique data points than available"
+        ):
+            selector.select_in_table(dataset, select_size=15, value="train")
+
+        pxt.drop_dir("unit_test", force=True)
+
     def test_select_in_dataset_with_drop_table(self):
         pxt.drop_dir("unit_test", force=True)
 
