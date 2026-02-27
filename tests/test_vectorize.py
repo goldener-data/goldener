@@ -6,6 +6,9 @@ from goldener.vectorize import (
     Filter2DWithCount,
     FilterLocation,
     GoldVectorizer,
+    Vectorized,
+    unwrap_vectors_in_batch,
+    vectorize_and_unwrap_in_batch,
 )
 
 
@@ -856,3 +859,119 @@ class TestGoldVectorizer:
             gv.vectorize_in_table(dataset)
 
         pxt.drop_dir("unit_test", force=True)
+
+
+@pytest.fixture
+def vectorized():
+    vectors = torch.arange(20, dtype=torch.float32).reshape(4, 5)
+    batch_indices = torch.tensor([0, 0, 1, 1])
+    return Vectorized(vectors=vectors, batch_indices=batch_indices)
+
+
+@pytest.fixture
+def batch():
+    target = torch.zeros(2, 1, 3)
+    target[0, 0, 0] = 1
+    target[1, 0, 0] = 1
+    return {
+        "idx": list(range(2)),
+        "label": ["a", "b"],
+        "data": torch.zeros(2, 3, 3),
+        "target": target,
+    }
+
+
+class TestUnwrapVectorsInBatch:
+    def test_simple_usage(self, vectorized, batch):
+        result = unwrap_vectors_in_batch(vectorized, "vectorized", batch)
+        vectors = result["vectorized"]
+        assert (vectors[0] == torch.tensor([0, 1, 2, 3, 4])).all()
+        assert (vectors[1] == torch.tensor([5, 6, 7, 8, 9])).all()
+        assert (vectors[2] == torch.tensor([10, 11, 12, 13, 14])).all()
+        assert (vectors[3] == torch.tensor([15, 16, 17, 18, 19])).all()
+        assert result["idx"] == [0, 0, 1, 1]
+        assert result["idx_vector"] == [0, 1, 2, 3]
+
+    def test_to_keep_adds_keys(self, vectorized, batch):
+        result = unwrap_vectors_in_batch(
+            vectorized, "vectorized", batch, to_keep=["label"]
+        )
+        assert "label" in result
+        assert result["label"] == ["a", "a", "b", "b"]
+
+    def test_custom_vectorized_key(self, vectorized, batch):
+        result = unwrap_vectors_in_batch(vectorized, "embeddings", batch)
+        assert "embeddings" in result
+        assert "vectorized" not in result
+
+    def test_with_start(self, vectorized, batch):
+        result = unwrap_vectors_in_batch(vectorized, "vectorized", batch, starts=100)
+        assert result["idx_vector"] == [100, 101, 102, 103]
+
+    def test_with_idx_as_tensor(self, vectorized, batch):
+        batch["idx"] = torch.tensor(batch["idx"])
+        result = unwrap_vectors_in_batch(vectorized, "vectorized", batch, starts=100)
+        assert result["idx_vector"] == [100, 101, 102, 103]
+
+
+@pytest.fixture
+def vectorizer() -> TensorVectorizer:
+    return TensorVectorizer(channel_pos=2)
+
+
+class TestVectorizeAndUnwrapInBatch:
+    def test_simple_usage(self, batch, vectorizer):
+        result = vectorize_and_unwrap_in_batch(
+            batch=batch,
+            vectorizer=vectorizer,
+            data_key="data",
+            vectorized_key="vectorized",
+            target_key=None,
+        )
+        assert set(result.keys()) == {"idx", "vectorized", "idx_vector"}
+        assert result["idx"] == [0, 0, 0, 1, 1, 1]
+        assert result["idx_vector"] == [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+        ]
+        vectors = result["vectorized"]
+        assert len(vectors) == 6
+        for i in range(6):
+            assert (vectors[i] == torch.zeros(3)).all()
+
+    def test_with_start(self, batch, vectorizer):
+        result = vectorize_and_unwrap_in_batch(
+            batch=batch,
+            vectorizer=vectorizer,
+            data_key="data",
+            vectorized_key="vectorized",
+            target_key=None,
+            starts=100,
+        )
+        assert result["idx_vector"] == [100, 101, 102, 103, 104, 105]
+
+    def test_with_missing_target_key(self, batch, vectorizer):
+        result = vectorize_and_unwrap_in_batch(
+            batch=batch,
+            vectorizer=vectorizer,
+            data_key="data",
+            vectorized_key="vectorized",
+            target_key="missing_key",
+        )
+        vectors = result["vectorized"]
+        assert len(vectors) == 6
+
+    def test_with_existing_target_key(self, batch, vectorizer):
+        result = vectorize_and_unwrap_in_batch(
+            batch=batch,
+            vectorizer=vectorizer,
+            data_key="data",
+            vectorized_key="vectorized",
+            target_key="target",
+        )
+        vectors = result["vectorized"]
+        assert len(vectors) == 2
