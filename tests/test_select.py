@@ -681,7 +681,8 @@ class TestGoldSelector:
         )
 
         with pytest.raises(
-            ValueError, match="Cannot select more unique data points than available"
+            ValueError,
+            match=" selected samples for train, which is more than the requested",
         ):
             selector.select_in_table(dataset, select_size=15, value="train")
 
