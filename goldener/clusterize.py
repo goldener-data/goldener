@@ -109,6 +109,50 @@ class GoldRandomClusteringTool(GoldClusteringTool):
         raise NotImplementedError("Random clustering tool does not support predict.")
 
 
+def get_random_chunk_assignment(
+    to_chunk: list[int],
+    max_chunk_size: int | None = None,
+    random_state: int | None = None,
+) -> list[list[int]]:
+    """Assign indices to random chunks.
+
+    Args:
+        to_chunk: List of indices to chunk.
+        max_chunk_size: Maximum size of each chunk. If None, all indices are returned
+            in a single chunk.
+        random_state: Optional random state for reproducibility during chunk assignment.
+
+    Returns:
+        A list of chunks, where each chunk is a list of indices
+        from `to_chunk` randomly assigned.
+    """
+
+    to_chunk_size = len(to_chunk)
+    if max_chunk_size is None or max_chunk_size >= to_chunk_size:
+        return [to_chunk]  # all in one chunk
+
+    chunk_count = math.ceil(
+        to_chunk_size / max_chunk_size
+    )  # make sure chunk size is not above specification
+    random_assignment = (
+        GoldRandomClusteringTool(random_state=random_state)
+        .fit(
+            torch.empty(to_chunk_size, 1),  # dummy input for random clustering
+            chunk_count,
+        )
+        .tolist()
+    )
+
+    return [
+        [
+            idx_vector
+            for vect_pos, idx_vector in enumerate(to_chunk)
+            if random_assignment[vect_pos] == chunk_idx
+        ]
+        for chunk_idx in range(chunk_count)
+    ]
+
+
 class GoldSKLearnClusteringTool(GoldClusteringTool):
     """Chunk data randomly into clusters of almost equal size."""
 

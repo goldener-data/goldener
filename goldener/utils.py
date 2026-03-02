@@ -116,19 +116,15 @@ def split_sampling_among_chunks(to_split: int, chunk_sizes: list[int]) -> list[i
         raise ValueError("Total size of chunks must be greater than 0.")
 
     ratios = get_ratios_for_counts(chunk_sizes)
-    first_split_counts = [math.floor(ratio * to_split) for ratio in ratios[:-1]]
+    counts = get_sampling_count_from_ratios(
+        ratios={
+            i: ratio for i, ratio in enumerate(ratios)
+        },  # add dummy keys for the ratios
+        sampling_size=to_split,
+        force_non_zero=False,
+    )
 
-    split_counts = first_split_counts + [
-        to_split - sum(first_split_counts)
-    ]  # ensure the last count is adjusted to sum to to_split
-
-    for split_count, chunk_size in zip(split_counts, chunk_sizes):
-        if split_count > chunk_size:
-            raise ValueError(
-                f"Split count {split_count} cannot be greater than chunk size {chunk_size}"
-            )
-
-    return split_counts
+    return [count for count in counts.values()]
 
 
 def filter_batch_from_indices(
@@ -406,7 +402,7 @@ def transform_batch_from_multiple_to_binarized_targets(
 
 
 def get_sampling_count_from_ratios(
-    ratios: dict[str, float], sampling_size: int, force_non_zero: bool = False
+    ratios: dict[Any, float], sampling_size: int, force_non_zero: bool = False
 ) -> dict[str, int]:
     """Get the sampling count for each key from the ratios.
 

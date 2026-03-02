@@ -1,4 +1,3 @@
-import math
 from abc import ABC, abstractmethod
 from logging import getLogger
 from typing import Callable, Any
@@ -18,7 +17,7 @@ from coreax.solvers import GreedyKernelPoints
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 
-from goldener.clusterize import GoldRandomClusteringTool
+from goldener.clusterize import get_random_chunk_assignment
 from goldener.pxt_utils import (
     set_value_to_idx_rows,
     GoldPxtTorchDataset,
@@ -1000,17 +999,21 @@ class GoldSelector:
             # (the selection count ends up to 0 for the label) and the selection
             # is going on ignoring the count selected in the previous round.
             force_all_labels = True
-            labels = set(
-                row[self.label_key]
-                for row in selection_table.select(label_col).distinct().collect()
-            )
-            label_counts = self._compute_label_count_from_available(
-                selection_table=selection_table,
-                labels=labels,
-                select_count=select_count,
-                force_all_labels=force_all_labels,
+            labels = sorted(
+                set(
+                    row[self.label_key]
+                    for row in selection_table.select(label_col).distinct().collect()
+                )
             )
             while already_selected_count < select_count:
+                label_counts = self._compute_label_count_from_available(
+                    selection_table=selection_table,
+                    labels=labels,
+                    select_count=select_count,
+                    force_all_labels=force_all_labels,
+                    value=value if force_all_labels else None,
+                )
+
                 for label_idx, (label_value, label_count) in enumerate(
                     label_counts.items()
                 ):
@@ -1037,12 +1040,6 @@ class GoldSelector:
                 force_all_labels = False
                 already_selected_count = self.get_selection_count(
                     selection_table, value=value, selection_key=self.selection_key
-                )
-                label_counts = self._compute_label_count_from_available(
-                    selection_table=selection_table,
-                    labels=labels,
-                    select_count=select_count - already_selected_count,
-                    force_all_labels=force_all_labels,
                 )
 
         else:
@@ -1083,6 +1080,10 @@ class GoldSelector:
         selection_col = get_expr_from_column_name(selection_table, self.selection_key)
         vectorized_col = get_expr_from_column_name(select_from, self.vectorized_key)
 
+        # define the number of samples to select from the already sampled ones for the label
+        # when more_than_already is False, the selection is done to select only the remaining samples
+        # to reach select_count. When it is True, the selection is done to select the full select_count
+        # even if some samples have already been selected
         already_selected_count = self.get_selection_count(
             table=selection_table,
             value=value,
@@ -1090,7 +1091,13 @@ class GoldSelector:
             label_key=self.label_key,
             label_value=label_value,
         )
+        still_to_select = (
+            select_count - already_selected_count
+            if not more_than_already
+            else select_count
+        )
 
+        # validate that there is still enough samples to select from
         available_samples_for_selection_count = self.get_selection_count(
             table=selection_table,
             value=None,
@@ -1098,18 +1105,15 @@ class GoldSelector:
             label_key=self.label_key,
             label_value=label_value,
         )
-
-        still_to_select = (
-            select_count - already_selected_count
-            if not more_than_already
-            else select_count
-        )
-
         if available_samples_for_selection_count < still_to_select:
             raise ValueError(
                 "Cannot select more unique data points than available in the dataset."
             )
 
+        # The coresubset selection is done from all the vectors (after filtering) of all data points
+        # (depending on data, a data point can have multiple vectors).
+        # Then, the same data point can be selected multiple times if it has multiple vectors selected.
+        # To achieve select_count of unique data points, we loop until we have enough unique data points selected.
         if label_value is not None:
             assert self.label_key is not None
             label_col = get_expr_from_column_name(selection_table, self.label_key)
@@ -1117,27 +1121,27 @@ class GoldSelector:
         else:
             available_query = selection_col == None  # noqa: E711
 
-        # The coresubset selection is done from all the vectors (after filtering) of all data points
-        # (depending on data, a data point can have multiple vectors).
-        # Then, the same data point can be selected multiple times if it has multiple vectors selected.
-        # To achieve select_count of unique data points, we loop until we have enough unique data points selected.
         current_selected_count = 0
         while current_selected_count < still_to_select:
-            loop_start = current_selected_count
-            to_select = selection_table.where(available_query)
+            loop_start = (
+                current_selected_count  # validate some samples have been selected
+            )
+            selection_pool = selection_table.where(available_query)
 
-            # check if selection can be achieved by taking all the remaining samples
-            # without running coresubset selection
-            still_selectable = to_select.select(selection_table.idx).distinct().count()
+            # when the number of samples to select is the same as the number of samples available for selection,
+            # the coresubset selection can be skipped and all the available samples are selected
+            still_selectable = (
+                selection_pool.select(selection_table.idx).distinct().count()
+            )
             loop_select_count = still_to_select - current_selected_count
-            if still_to_select == still_selectable:
+            if loop_select_count == still_selectable:
                 set_value_to_idx_rows(
                     table=selection_table,
                     col_expr=selection_col,
                     idx_expr=selection_table.idx,
                     indices=set(
                         row["idx"]
-                        for row in to_select.select(selection_table.idx)
+                        for row in selection_pool.select(selection_table.idx)
                         .distinct()
                         .collect()
                     ),
@@ -1148,36 +1152,13 @@ class GoldSelector:
             # assign the vectors to chunks for chunked selection
             to_select_vector_indices = [
                 row["idx_vector"]
-                for row in to_select.select(selection_table.idx_vector).collect()
+                for row in selection_pool.select(selection_table.idx_vector).collect()
             ]
-            available_vectors_for_selection = len(to_select_vector_indices)
-            assert available_vectors_for_selection > 0
-
-            if self.chunk is None or self.chunk >= available_vectors_for_selection:
-                chunk_assignment = [to_select_vector_indices]  # all in one chunk
-            else:
-                chunk_count = math.ceil(
-                    available_vectors_for_selection / self.chunk
-                )  # make sure chunk size is not above specification
-                random_assignment = (
-                    GoldRandomClusteringTool(random_state=self.random_state)
-                    .fit(
-                        torch.empty(
-                            available_vectors_for_selection, 1
-                        ),  # dummy input for random clustering
-                        chunk_count,
-                    )
-                    .tolist()
-                )
-                chunk_assignment = [
-                    [
-                        idx_vector
-                        for vect_pos, idx_vector in enumerate(to_select_vector_indices)
-                        if random_assignment[vect_pos] == chunk_idx
-                    ]
-                    for chunk_idx in range(chunk_count)
-                ]
-
+            chunk_assignment = get_random_chunk_assignment(
+                to_chunk=to_select_vector_indices,
+                max_chunk_size=self.chunk,
+                random_state=self.random_state,
+            )
             select_count_per_chunk = split_sampling_among_chunks(
                 to_split=loop_select_count,
                 chunk_sizes=[len(chunk) for chunk in chunk_assignment],
@@ -1190,9 +1171,9 @@ class GoldSelector:
                 if chunk_select_count == 0:
                     continue
 
-                # do it again because selection from previous chunks might have selected some of
-                # the samples in the current chunk, making them no longer available for selection
-                # in the current chunk
+                # update the vector available for selection because the selection from previous chunks
+                # might have selected some of the samples in the current chunk, making them no longer
+                # available for selection in the current chunk
                 chunk_vector_indices_not_selected = [
                     row["idx_vector"]
                     for row in selection_table.where(
@@ -1246,18 +1227,16 @@ class GoldSelector:
                     value=value,
                 )
 
-                # the sample might have been selected multiple times
-                selected_indices = self.get_selection_indices(
-                    table=selection_table,
-                    value=value,
-                    selection_key=self.selection_key,
-                    label_key=self.label_key,
-                    label_value=label_value,
+                current_selected_count = (
+                    self.get_selection_count(
+                        table=selection_table,
+                        value=value,
+                        selection_key=self.selection_key,
+                        label_key=self.label_key,
+                        label_value=label_value,
+                    )
+                    - already_selected_count
                 )
-                selection_table.where(
-                    selection_table.idx.isin(selected_indices)
-                ).update({self.selection_key: value})
-                current_selected_count = len(selected_indices) - already_selected_count
 
             if current_selected_count == loop_start:
                 raise ValueError(
@@ -1305,20 +1284,31 @@ class GoldSelector:
     def _compute_label_count_from_available(
         self,
         selection_table: Table,
-        labels: set[str],
+        labels: list[str],
         select_count: int,
         force_all_labels: bool = True,
+        value: str | None = None,
     ) -> dict[str, int]:
-        value_and_count = {
-            label: self.get_selection_count(
+        value_and_count = {}
+        for label in labels:
+            label_count = self.get_selection_count(
                 selection_table,
                 None,
                 self.selection_key,
                 self.label_key,
                 label,
             )
-            for label in labels
-        }
+            if value is not None:
+                already_selected = self.get_selection_count(
+                    selection_table,
+                    value,
+                    self.selection_key,
+                    self.label_key,
+                    label,
+                )
+                label_count += already_selected
+            value_and_count[label] = label_count
+
         ratio_values = get_ratios_for_counts(list(value_and_count.values()))
         label_ratios = {
             value: ratio for value, ratio in zip(value_and_count.keys(), ratio_values)
