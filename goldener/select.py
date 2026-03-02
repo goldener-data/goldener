@@ -1006,37 +1006,64 @@ class GoldSelector:
                 )
             )
             while already_selected_count < select_count:
-                label_counts = self._compute_label_count_from_available(
+                selection_label_counts = self._compute_label_counts_for_selection(
                     selection_table=selection_table,
                     labels=labels,
                     select_count=select_count,
+                    value=value,
                     force_all_labels=force_all_labels,
-                    value=value if force_all_labels else None,
                 )
+                label_counts_init = {
+                    label: self.get_selection_count(
+                        selection_table,
+                        value,
+                        self.selection_key,
+                        self.label_key,
+                        label,
+                    )
+                    for label in labels
+                }
 
                 for label_idx, (label_value, label_count) in enumerate(
-                    label_counts.items()
+                    selection_label_counts.items()
                 ):
                     if label_count == 0:
-                        if not force_all_labels:
-                            continue
+                        if force_all_labels:
+                            raise ValueError(
+                                f"Not enough sample for Label '{label_value}' to run the selection"
+                            )
 
-                        raise ValueError(
-                            f"Not enough sample for Label '{label_value}' to run the selection"
+                        continue
+
+                    # if the label is already selected for at least the target count defined for the label,
+                    # skip the label (over selection is not an issue)
+                    label_count_status = (
+                        self.get_selection_count(
+                            selection_table,
+                            value,
+                            self.selection_key,
+                            self.label_key,
+                            label_value,
                         )
+                        - label_counts_init[label_value]
+                    )
+                    if label_count_status >= label_count:
+                        continue
 
+                    # select the missing ones
                     logger.info(
                         f"Selecting {label_count} samples for label '{label_value}' for value '{value}'"
                     )
                     self._select_label(
                         select_from,
                         selection_table,
-                        label_count,
+                        label_count - label_count_status,
                         value,
                         label_value=label_value,
                         more_than_already=not force_all_labels,
                     )
 
+                # after the first loop, labels with lower population might are allowed to be sampled again.
                 force_all_labels = False
                 already_selected_count = self.get_selection_count(
                     selection_table, value=value, selection_key=self.selection_key
@@ -1133,6 +1160,15 @@ class GoldSelector:
             still_selectable = (
                 selection_pool.select(selection_table.idx).distinct().count()
             )
+            if still_selectable == 0:
+                if not more_than_already:
+                    raise ValueError(
+                        "No more sample available for selection, but the selection is not complete. "
+                        "This might be due to an issue in the selection process or the data."
+                    )
+
+                break
+
             loop_select_count = still_to_select - current_selected_count
             if loop_select_count == still_selectable:
                 set_value_to_idx_rows(
@@ -1281,39 +1317,49 @@ class GoldSelector:
 
         return set(indices[torch.tensor(selected_indices)].tolist())
 
-    def _compute_label_count_from_available(
+    def _compute_label_counts_for_selection(
         self,
         selection_table: Table,
         labels: list[str],
         select_count: int,
-        force_all_labels: bool = True,
         value: str | None = None,
+        force_all_labels: bool = True,
     ) -> dict[str, int]:
-        value_and_count = {}
-        for label in labels:
-            label_count = self.get_selection_count(
-                selection_table,
-                None,
-                self.selection_key,
-                self.label_key,
-                label,
-            )
-            if value is not None:
-                already_selected = self.get_selection_count(
+        assert self.label_key is not None
+        label_col = get_expr_from_column_name(selection_table, self.label_key)
+        selection_col = get_expr_from_column_name(selection_table, self.selection_key)
+
+        # When all labels are required, all the samples with the label that are not yet selected for another
+        # value are included in the count of the label (even if they are not selectable for the current value)
+        # This allows to maximize the idempotence of the selection process
+        value_and_count = {
+            label: (
+                selection_table.where(
+                    (label_col == label) & selection_col.isin([value, None])
+                )
+                .select(selection_table.idx)
+                .distinct()
+                .count()
+                if force_all_labels
+                else self.get_selection_count(
                     selection_table,
-                    value,
+                    None,
                     self.selection_key,
                     self.label_key,
                     label,
                 )
-                label_count += already_selected
-            value_and_count[label] = label_count
-
-        ratio_values = get_ratios_for_counts(list(value_and_count.values()))
-        label_ratios = {
-            value: ratio for value, ratio in zip(value_and_count.keys(), ratio_values)
+            )
+            for label in labels
         }
-        label_counts = get_sampling_count_from_ratios(
+
+        label_ratios = {
+            value: ratio
+            for value, ratio in zip(
+                value_and_count.keys(),
+                get_ratios_for_counts(list(value_and_count.values())),
+            )
+        }
+
+        return get_sampling_count_from_ratios(
             label_ratios, select_count, force_non_zero=force_all_labels
         )
-        return label_counts
