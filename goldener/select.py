@@ -1006,24 +1006,40 @@ class GoldSelector:
                 )
             )
             while already_selected_count < select_count:
+                # For the first loop, the initial count is the target and all labels are forced to be selected.
+                # For the next loops, only the missing count is targeted
+                loop_select_count = (
+                    select_count  # force_all_labels means 1st initial selection loop
+                    if force_all_labels
+                    else select_count
+                    - already_selected_count  # otherwise, select only the remaining samples to select after counting the already selected ones for the label
+                )
+                # During the loop over the labels, the status of each label is computed and this values
+                # allows to define how many samples are still to select for the label
+                # For the first loop, the initial population is considered as null in order to maximize the idempotence.
+                # For the next loops, the already selected samples are the basis for the selection
+                label_counts_init = (
+                    {label: 0 for label in labels}
+                    if force_all_labels
+                    else {
+                        label: self.get_selection_count(
+                            selection_table,
+                            value,
+                            self.selection_key,
+                            self.label_key,
+                            label,
+                        )
+                        for label in labels
+                    }
+                )
+
                 selection_label_counts = self._compute_label_counts_for_selection(
                     selection_table=selection_table,
                     labels=labels,
-                    select_count=select_count,
+                    select_count=loop_select_count,
                     value=value,
                     force_all_labels=force_all_labels,
                 )
-                label_counts_init = {
-                    label: self.get_selection_count(
-                        selection_table,
-                        value,
-                        self.selection_key,
-                        self.label_key,
-                        label,
-                    )
-                    for label in labels
-                }
-
                 for label_idx, (label_value, label_count) in enumerate(
                     selection_label_counts.items()
                 ):
@@ -1050,7 +1066,8 @@ class GoldSelector:
                     if label_count_status >= label_count:
                         continue
 
-                    # select the missing ones
+                    # select the missing ones based on the current status of the label
+                    # in order to reach the target count for the label
                     logger.info(
                         f"Selecting {label_count} samples for label '{label_value}' for value '{value}'"
                     )
@@ -1060,7 +1077,7 @@ class GoldSelector:
                         label_count - label_count_status,
                         value,
                         label_value=label_value,
-                        more_than_already=not force_all_labels,
+                        from_already=force_all_labels,
                     )
 
                 # after the first loop, labels with lower population might are allowed to be sampled again.
@@ -1085,7 +1102,7 @@ class GoldSelector:
         select_count: int,
         value: str | None,
         label_value: str | None = None,
-        more_than_already: bool = False,
+        from_already: bool = True,
     ) -> None:
         """Perform coresubset selection for a specific label or all data.
 
@@ -1099,9 +1116,9 @@ class GoldSelector:
             select_count: Number of samples to select.
             value: Value to assign to selected samples in the selection_key column.
             label_value: Optional label value to filter samples by label.
-            more_than_already: Whether to select more samples than the already selected ones for the label.
-                If True, the selection is done to select the full select_count even if some samples have already
-                been selected for the label. If False, the selection is done to select only the remaining samples
+            from_already: Whether to restart selection from the already selected ones for the label.
+                If False, the selection is done to select the full select_count even if some samples have already
+                been selected for the label. If True, the selection is done to select only the remaining samples
                  to reach select_count when counting the already selected ones for the label.
         """
         selection_col = get_expr_from_column_name(selection_table, self.selection_key)
@@ -1118,11 +1135,6 @@ class GoldSelector:
             label_key=self.label_key,
             label_value=label_value,
         )
-        still_to_select = (
-            select_count - already_selected_count
-            if not more_than_already
-            else select_count
-        )
 
         # validate that there is still enough samples to select from
         available_samples_for_selection_count = self.get_selection_count(
@@ -1132,7 +1144,7 @@ class GoldSelector:
             label_key=self.label_key,
             label_value=label_value,
         )
-        if available_samples_for_selection_count < still_to_select:
+        if available_samples_for_selection_count < select_count:
             raise ValueError(
                 "Cannot select more unique data points than available in the dataset."
             )
@@ -1148,8 +1160,8 @@ class GoldSelector:
         else:
             available_query = selection_col == None  # noqa: E711
 
-        current_selected_count = 0
-        while current_selected_count < still_to_select:
+        current_selected_count = already_selected_count if from_already else 0
+        while current_selected_count < select_count:
             loop_start = (
                 current_selected_count  # validate some samples have been selected
             )
@@ -1161,7 +1173,7 @@ class GoldSelector:
                 selection_pool.select(selection_table.idx).distinct().count()
             )
             if still_selectable == 0:
-                if not more_than_already:
+                if from_already:
                     raise ValueError(
                         "No more sample available for selection, but the selection is not complete. "
                         "This might be due to an issue in the selection process or the data."
@@ -1169,7 +1181,7 @@ class GoldSelector:
 
                 break
 
-            loop_select_count = still_to_select - current_selected_count
+            loop_select_count = select_count - current_selected_count
             if loop_select_count == still_selectable:
                 set_value_to_idx_rows(
                     table=selection_table,
@@ -1263,16 +1275,15 @@ class GoldSelector:
                     value=value,
                 )
 
-                current_selected_count = (
-                    self.get_selection_count(
-                        table=selection_table,
-                        value=value,
-                        selection_key=self.selection_key,
-                        label_key=self.label_key,
-                        label_value=label_value,
-                    )
-                    - already_selected_count
+                current_selected_count = self.get_selection_count(
+                    table=selection_table,
+                    value=value,
+                    selection_key=self.selection_key,
+                    label_key=self.label_key,
+                    label_value=label_value,
                 )
+                if not from_already:
+                    current_selected_count -= already_selected_count  # remove the initial selection count to follow the current one
 
             if current_selected_count == loop_start:
                 raise ValueError(
@@ -1326,37 +1337,40 @@ class GoldSelector:
         force_all_labels: bool = True,
     ) -> dict[str, int]:
         assert self.label_key is not None
-        label_col = get_expr_from_column_name(selection_table, self.label_key)
-        selection_col = get_expr_from_column_name(selection_table, self.selection_key)
-
-        # When all labels are required, all the samples with the label that are not yet selected for another
-        # value are included in the count of the label (even if they are not selectable for the current value)
+        # When all labels are required, all the not selected samples and the selected samples for the current
+        # value are included in the count of the label.
         # This allows to maximize the idempotence of the selection process
-        value_and_count = {
-            label: (
-                selection_table.where(
-                    (label_col == label) & selection_col.isin([value, None])
-                )
-                .select(selection_table.idx)
-                .distinct()
-                .count()
-                if force_all_labels
-                else self.get_selection_count(
-                    selection_table,
-                    None,
-                    self.selection_key,
-                    self.label_key,
-                    label,
-                )
+        label_counts = {}
+        for label in labels:
+            count = self.get_selection_count(
+                table=selection_table,
+                value=None,
+                selection_key=self.selection_key,
+                label_key=self.label_key,
+                label_value=label,
             )
-            for label in labels
-        }
+            if force_all_labels:
+                count += self.get_selection_count(
+                    table=selection_table,
+                    value=value,
+                    selection_key=self.selection_key,
+                    label_key=self.label_key,
+                    label_value=label,
+                )
+
+            if count > 0:
+                label_counts[label] = count
+            elif force_all_labels:
+                raise ValueError(
+                    f"Label '{label}' has no more selectable sample for value '{value}', but force_all_labels is True. "
+                    f"This might be due to an issue in the selection process or the data."
+                )
 
         label_ratios = {
             value: ratio
             for value, ratio in zip(
-                value_and_count.keys(),
-                get_ratios_for_counts(list(value_and_count.values())),
+                label_counts.keys(),
+                get_ratios_for_counts(list(label_counts.values())),
             )
         }
 

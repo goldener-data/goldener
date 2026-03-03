@@ -125,7 +125,15 @@ def get_random_chunk_assignment(
     Returns:
         A list of chunks, where each chunk is a list of indices
         from `to_chunk` randomly assigned.
+
+    Raises:
+        ValueError: If `to_chunk` is empty or if `max_chunk_size` is not a positive integer or None.
     """
+    if not to_chunk:
+        raise ValueError("to_chunk must be a non-empty list of indices.")
+
+    if max_chunk_size is not None and max_chunk_size <= 0:
+        raise ValueError("max_chunk_size must be a positive integer or None.")
 
     to_chunk_size = len(to_chunk)
     if max_chunk_size is None or max_chunk_size >= to_chunk_size:

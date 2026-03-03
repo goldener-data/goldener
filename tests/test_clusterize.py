@@ -124,6 +124,20 @@ class TestGetRandomChunkAssignment:
 
         assert chunks1 == chunks2
 
+    def test_with_0_max(self):
+        with pytest.raises(
+            ValueError, match="max_chunk_size must be a positive integer"
+        ):
+            get_random_chunk_assignment(
+                list(range(15)), max_chunk_size=0, random_state=0
+            )
+
+    def test_with_empty(self):
+        with pytest.raises(
+            ValueError, match="to_chunk must be a non-empty list of indices"
+        ):
+            get_random_chunk_assignment([], max_chunk_size=10, random_state=0)
+
 
 class TestGoldSKLearnClusteringTool:
     def test_init_raises_when_tool_has_no_predict(self):
