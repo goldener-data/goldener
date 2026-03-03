@@ -8,6 +8,7 @@ from goldener.clusterize import (
     GoldRandomClusteringTool,
     GoldClusterizer,
     GoldSKLearnClusteringTool,
+    get_random_chunk_assignment,
 )
 from goldener.reduce import GoldSKLearnReductionTool
 from goldener.pxt_utils import GoldPxtTorchDataset
@@ -69,6 +70,73 @@ class TestGoldRandomClusteringTool:
             ValueError, match="GoldClusteringTool only accepts 2D tensors"
         ):
             tool.fit(torch.randn(10, 5, 3), n_clusters=2)
+
+
+class TestGetRandomChunkAssignment:
+    def test_returns_single_chunk_when_max_chunk_size_is_none(self):
+        to_chunk = list(range(10))
+
+        chunks = get_random_chunk_assignment(
+            to_chunk, max_chunk_size=None, random_state=0
+        )
+
+        assert isinstance(chunks, list)
+        assert len(chunks) == 1
+        assert chunks[0] is to_chunk
+        assert chunks[0] == to_chunk
+
+    def test_returns_single_chunk_when_max_chunk_size_ge_length(self):
+        to_chunk = list(range(7))
+
+        chunks = get_random_chunk_assignment(
+            to_chunk, max_chunk_size=10, random_state=0
+        )
+
+        assert len(chunks) == 1
+        assert chunks[0] is to_chunk
+        assert chunks[0] == to_chunk
+
+    def test_chunks_cover_all_indices_without_duplicates(self):
+        to_chunk = list(range(20))
+        max_chunk_size = 6
+
+        chunks = get_random_chunk_assignment(
+            to_chunk, max_chunk_size=max_chunk_size, random_state=123
+        )
+
+        flattened = [idx for ch in chunks for idx in ch]
+        assert sorted(flattened) == sorted(to_chunk)
+        assert len(flattened) == len(set(flattened))
+
+        for ch in chunks:
+            assert 0 < len(ch) <= max_chunk_size
+
+    def test_random_state_makes_assignment_deterministic(self):
+        to_chunk = list(range(15))
+        max_chunk_size = 4
+
+        chunks1 = get_random_chunk_assignment(
+            to_chunk, max_chunk_size=max_chunk_size, random_state=0
+        )
+        chunks2 = get_random_chunk_assignment(
+            to_chunk, max_chunk_size=max_chunk_size, random_state=0
+        )
+
+        assert chunks1 == chunks2
+
+    def test_with_0_max(self):
+        with pytest.raises(
+            ValueError, match="max_chunk_size must be a positive integer"
+        ):
+            get_random_chunk_assignment(
+                list(range(15)), max_chunk_size=0, random_state=0
+            )
+
+    def test_with_empty(self):
+        with pytest.raises(
+            ValueError, match="to_chunk must be a non-empty list of indices"
+        ):
+            get_random_chunk_assignment([], max_chunk_size=10, random_state=0)
 
 
 class TestGoldSKLearnClusteringTool:

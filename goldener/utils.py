@@ -1,5 +1,5 @@
 import math
-from typing import Iterable, Any
+from typing import Iterable, Any, TypeVar
 
 import torch
 
@@ -100,6 +100,13 @@ def split_sampling_among_chunks(to_split: int, chunk_sizes: list[int]) -> list[i
 
     Returns:
         A list of integers representing the number of samples to draw from each chunk, summing up to to_split.
+
+    Raises:
+        ValueError: If the input parameters are invalid. See the conditions below for details.
+    Conditions:
+        - At least one chunk size must be provided.
+        - If only one chunk size is provided, to_split must not be greater than that chunk size.
+        - The total size of the chunks must be greater than 0.
     """
     if len(chunk_sizes) == 0:
         raise ValueError("At least one chunk size is required to split the sampling")
@@ -116,19 +123,16 @@ def split_sampling_among_chunks(to_split: int, chunk_sizes: list[int]) -> list[i
         raise ValueError("Total size of chunks must be greater than 0.")
 
     ratios = get_ratios_for_counts(chunk_sizes)
-    first_split_counts = [math.floor(ratio * to_split) for ratio in ratios[:-1]]
+    counts = get_sampling_count_from_ratios(
+        ratios={
+            i: ratio for i, ratio in enumerate(ratios)
+        },  # add dummy keys for the ratios
+        sampling_size=to_split,
+        force_non_zero=False,
+    )
+    counts = dict(sorted(counts.items()))  # reorder in the chunk order
 
-    split_counts = first_split_counts + [
-        to_split - sum(first_split_counts)
-    ]  # ensure the last count is adjusted to sum to to_split
-
-    for split_count, chunk_size in zip(split_counts, chunk_sizes):
-        if split_count > chunk_size:
-            raise ValueError(
-                f"Split count {split_count} cannot be greater than chunk size {chunk_size}"
-            )
-
-    return split_counts
+    return list(counts.values())
 
 
 def filter_batch_from_indices(
@@ -403,3 +407,71 @@ def transform_batch_from_multiple_to_binarized_targets(
         new_batch[label_key] = list(target_per_label.keys())
 
     return new_batch
+
+
+T = TypeVar("T")
+
+
+def get_sampling_count_from_ratios(
+    ratios: dict[T, float], sampling_size: int, force_non_zero: bool = False
+) -> dict[T, int]:
+    """Get the sampling count for each key from the ratios.
+
+    Args:
+        ratios: A dictionary mapping keys to their corresponding ratios (values between 0 and 1).
+            the initial counts are computed by multiplying the sampling size by the ratios
+            and taking the floor of the result. If the sum of the initial counts is less than
+            the sampling size, the remaining samples are distributed one by one starting from the
+            most represented key until the total count matches the sampling size.
+        sampling_size: The total number of samples to draw.
+        force_non_zero: Whether to force a non-zero sampling count for each key (default: False).
+            If activated, the least represented keys will have at least 1 sample,
+            and the most represented keys will have their count reduced accordingly to maintain the total sampling size.
+    Returns:
+        A dictionary mapping keys to their corresponding sampling counts (integers).
+            The dictionary is sorted by count in ascending order.
+    """
+    if not math.isclose(sum(ratios.values()), 1.0, rel_tol=1e-9, abs_tol=0.0):
+        raise ValueError("Ratios must sum to 1.0")
+
+    # compute the count per key and make sure they sum to the sampling size by
+    # adjusting each count starting from the most represented key until the total count matches the sampling size
+    counts = {key: math.floor(sampling_size * ratio) for key, ratio in ratios.items()}
+
+    count_total = sum(counts.values())
+    if count_total < sampling_size:
+        counts = dict(sorted(counts.items(), key=lambda x: x[1], reverse=True))
+        to_distribute = sampling_size - count_total
+        loop_count = math.ceil(to_distribute / len(counts))
+        for _ in range(loop_count):
+            for key in counts.keys():
+                counts[key] += 1
+                to_distribute -= 1
+                if to_distribute == 0:
+                    break
+
+    assert sum(counts.values()) == sampling_size
+
+    if not force_non_zero:
+        return dict(sorted(counts.items(), key=lambda x: x[1]))
+
+    # If force_non_zero is activated, adjust counts to ensure no key has a count of zero
+    # first, the zero counts are identified and incremented by 1, while keeping track of how many were incremented
+    added = 0
+    for key, count in counts.items():
+        if count == 0:
+            added += 1
+            counts[key] += 1
+
+    # then, for each added count, the counts are sorted in descending order
+    # and the highest count is decremented by 1 to maintain the total sampling size
+    for _ in range(added):
+        counts = dict(sorted(counts.items(), key=lambda x: x[1], reverse=True))
+        highest_count_key = next(iter(counts.keys()))
+        counts[highest_count_key] -= 1
+        if counts[highest_count_key] == 0:
+            raise ValueError(
+                f"While trying to adjust counts, the count for key '{highest_count_key}' became zero."
+            )
+
+    return dict(sorted(counts.items(), key=lambda x: x[1]))

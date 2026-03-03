@@ -318,8 +318,13 @@ class TestGoldSelector:
 
         dataset = DummyDataset(
             [
-                {"vectorized": torch.rand(5), "idx": idx, "label": str(idx % 2)}
-                for idx in range(100)
+                {
+                    "vectorized": torch.rand(5),
+                    "idx": idx % 200,
+                    "label": str(idx % 2),
+                    "idx_vector": idx,
+                }
+                for idx in range(1000)
             ]
         )
 
@@ -333,11 +338,11 @@ class TestGoldSelector:
 
         selection_table = selector.select_in_table(
             dataset,
-            select_size=10,
+            select_size=100,
             value="train",
         )
 
-        assert selection_table.count() == 100
+        assert selection_table.count() == 1000
         assert (
             len(
                 selector.get_selection_indices(
@@ -348,7 +353,7 @@ class TestGoldSelector:
                     label_value="0",
                 )
             )
-            == 5
+            == 50
         )
         assert (
             len(
@@ -360,7 +365,7 @@ class TestGoldSelector:
                     label_value="1",
                 )
             )
-            == 5
+            == 50
         )
 
         pxt.drop_dir("unit_test", force=True)
@@ -655,6 +660,34 @@ class TestGoldSelector:
 
         pxt.drop_dir("unit_test", force=True)
 
+    def test_select_in_table_from_dataset_with_already_selected(self):
+        pxt.drop_dir("unit_test", force=True)
+
+        table_path = "unit_test.test_select_from_dataset"
+
+        dataset = DummyDataset(
+            [
+                {
+                    "vectorized": torch.rand(5),
+                    "idx": idx,
+                    "selected": "train" if idx % 10 else "val",
+                }
+                for idx in range(100)
+            ]
+        )
+
+        selector = GoldSelector(
+            table_path=table_path, allow_existing=False, batch_size=10, max_batches=2
+        )
+
+        with pytest.raises(
+            ValueError,
+            match=" selected samples for train, which is more than the requested",
+        ):
+            selector.select_in_table(dataset, select_size=15, value="train")
+
+        pxt.drop_dir("unit_test", force=True)
+
     def test_select_in_dataset_with_drop_table(self):
         pxt.drop_dir("unit_test", force=True)
 
@@ -711,6 +744,9 @@ class TestGoldSelector:
         )
 
         assert sample_indices == set(range(50))
+        assert len(sample_indices) == GoldSelector.get_selection_count(
+            table=src_table, value="train", selection_key="selected"
+        )
 
         sample_indices = GoldSelector.get_selection_indices(
             table=src_table,
