@@ -1,5 +1,5 @@
 import math
-from typing import Iterable, Any
+from typing import Iterable, Any, TypeVar
 
 import torch
 
@@ -130,8 +130,9 @@ def split_sampling_among_chunks(to_split: int, chunk_sizes: list[int]) -> list[i
         sampling_size=to_split,
         force_non_zero=False,
     )
+    counts = dict(sorted(counts.items()))  # reorder in the chunk order
 
-    return [count for count in counts.values()]
+    return list(counts.values())
 
 
 def filter_batch_from_indices(
@@ -408,9 +409,12 @@ def transform_batch_from_multiple_to_binarized_targets(
     return new_batch
 
 
+T = TypeVar("T")
+
+
 def get_sampling_count_from_ratios(
-    ratios: dict[Any, float], sampling_size: int, force_non_zero: bool = False
-) -> dict[str, int]:
+    ratios: dict[T, float], sampling_size: int, force_non_zero: bool = False
+) -> dict[T, int]:
     """Get the sampling count for each key from the ratios.
 
     Args:

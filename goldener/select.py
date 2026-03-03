@@ -1074,7 +1074,11 @@ class GoldSelector:
                     self._select_label(
                         select_from,
                         selection_table,
-                        label_count - label_count_status,
+                        (
+                            label_count
+                            if force_all_labels
+                            else label_count - label_count_status
+                        ),
                         value,
                         label_value=label_value,
                         from_already=force_all_labels,
@@ -1137,6 +1141,7 @@ class GoldSelector:
         )
 
         # validate that there is still enough samples to select from
+        current_selected_count = already_selected_count if from_already else 0
         available_samples_for_selection_count = self.get_selection_count(
             table=selection_table,
             value=None,
@@ -1144,7 +1149,9 @@ class GoldSelector:
             label_key=self.label_key,
             label_value=label_value,
         )
-        if available_samples_for_selection_count < select_count:
+        if available_samples_for_selection_count < (
+            select_count - current_selected_count
+        ):
             raise ValueError(
                 "Cannot select more unique data points than available in the dataset."
             )
@@ -1159,8 +1166,6 @@ class GoldSelector:
             available_query = (selection_col == None) & (label_col == label_value)  # noqa: E712 E711
         else:
             available_query = selection_col == None  # noqa: E711
-
-        current_selected_count = already_selected_count if from_already else 0
         while current_selected_count < select_count:
             loop_start = (
                 current_selected_count  # validate some samples have been selected
