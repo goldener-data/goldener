@@ -426,7 +426,7 @@ class TestGoldSelector:
 
         pxt.drop_dir("unit_test", force=True)
 
-    def test_select_in_table_with_reducer_and_include_reduced_in_table(self):
+    def test_select_in_table_with_reducer_and_reduced_key(self):
         pxt.drop_dir("unit_test", force=True)
 
         table_path = "unit_test.test_select_reducer_reduced"
@@ -439,7 +439,7 @@ class TestGoldSelector:
             table_path=table_path,
             allow_existing=True,
             reducer=GoldSKLearnReductionTool(PCA(n_components=3)),
-            include_reduced_in_table=True,
+            reduced_key="reduced",
             batch_size=10,
         )
 
@@ -460,7 +460,7 @@ class TestGoldSelector:
 
         pxt.drop_dir("unit_test", force=True)
 
-    def test_select_in_table_without_reducer_include_reduced_in_table_has_no_effect(
+    def test_select_in_table_without_reducer_reduced_key_has_no_effect(
         self,
     ):
         pxt.drop_dir("unit_test", force=True)
@@ -474,7 +474,7 @@ class TestGoldSelector:
         selector = GoldSelector(
             table_path=table_path,
             allow_existing=True,
-            include_reduced_in_table=True,
+            reduced_key="reduced",
             batch_size=10,
         )
 

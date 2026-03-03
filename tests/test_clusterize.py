@@ -487,7 +487,7 @@ class TestGoldClusterizer:
         ]
         assert set(distinct_clusters).issubset(set(range(3)))
 
-    def test_cluster_in_table_with_reducer_and_include_reduced_in_table(self):
+    def test_cluster_in_table_with_reducer_and_reduced_key(self):
         table_path = "unit_test.test_cluster_reducer_reduced"
 
         dataset = DummyDataset(
@@ -504,7 +504,7 @@ class TestGoldClusterizer:
             allow_existing=True,
             batch_size=10,
             reducer=reducer,
-            include_reduced_in_table=True,
+            reduced_key="reduced",
         )
 
         cluster_table = clusterizer.cluster_in_table(dataset, n_clusters=3)
@@ -514,7 +514,7 @@ class TestGoldClusterizer:
         for row in cluster_table.collect():
             assert row[clusterizer.reduced_key].shape == (4,)
 
-    def test_cluster_in_table_without_reducer_include_reduced_in_table_has_no_effect(
+    def test_cluster_in_table_without_reducer_reduced_key_has_no_effect(
         self,
     ):
         table_path = "unit_test.test_cluster_no_reducer_reduced"
@@ -528,7 +528,7 @@ class TestGoldClusterizer:
             clustering_tool=GoldRandomClusteringTool(random_state=0),
             allow_existing=True,
             batch_size=10,
-            include_reduced_in_table=True,
+            reduced_key="reduced",
         )
 
         cluster_table = clusterizer.cluster_in_table(dataset, n_clusters=3)
