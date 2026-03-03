@@ -11,6 +11,7 @@ from goldener.utils import (
     get_sampling_count_from_size,
     split_sampling_among_chunks,
     transform_batch_from_multiple_to_binarized_targets,
+    get_sampling_count_from_ratios,
 )
 
 
@@ -396,7 +397,7 @@ class TestSplitSamplingAmongChunks:
 
     def test_split_count_exceeds_chunk_size_raises(self) -> None:
         to_split = 5
-        chunk_sizes = [1, 1, 1]
+        chunk_sizes = [3]
         with pytest.raises(
             ValueError, match="Split count .* cannot be greater than chunk size"
         ):
@@ -405,16 +406,14 @@ class TestSplitSamplingAmongChunks:
 
 class TestTransformBatchFromMultipleToBinarizedTargets:
     def test_simple_usage(self):
-        target = torch.zeros(2, 1)
+        target = torch.zeros(2, 2)
         target[0, 0] = 25
         data = torch.arange(6).reshape(2, 3)
         batch = {
             "data": data,
             "target": target,
             "label": [
-                {
-                    "A",
-                },
+                {"A", "B"},
                 {
                     "B",
                 },
@@ -422,8 +421,8 @@ class TestTransformBatchFromMultipleToBinarizedTargets:
         }
 
         target_to_label = {
-            (0,): "A",
-            (25,): "B",
+            (0, 0): "A",
+            (25, 0): "B",
         }
 
         out = transform_batch_from_multiple_to_binarized_targets(
@@ -438,7 +437,7 @@ class TestTransformBatchFromMultipleToBinarizedTargets:
         new_target[1, 0] = 1
         new_target[2, 0] = 1
         assert (out["target"] == new_target).all()
-        assert set(out["label"]) == {"A", "B"}
+        assert out["label"] == ["A", "A", "B", "B"]
 
     def test_with_exclude_zero(self):
         target = torch.zeros(2, 1)
@@ -477,6 +476,42 @@ class TestTransformBatchFromMultipleToBinarizedTargets:
         assert set(out["label"]) == {
             "B",
         }
+
+    def test_with_exclude_labels(self):
+        target = torch.zeros(2, 1)
+        target[0, 0] = 25
+        data = torch.arange(6).reshape(2, 3)
+        batch = {
+            "data": data,
+            "target": target,
+            "label": [
+                {
+                    "A",
+                },
+                {
+                    "B",
+                },
+            ],
+        }
+
+        target_to_label = {
+            (0,): "A",
+            (25,): "B",
+        }
+
+        out = transform_batch_from_multiple_to_binarized_targets(
+            batch=batch,
+            target_key="target",
+            label_key="label",
+            target_to_label=target_to_label,
+            exclude_labels={"A"},
+        )
+
+        assert (out["data"] == torch.cat([data], dim=0)).all()
+        new_target = torch.zeros(2, 1)
+        new_target[0, 0] = 1
+        assert (out["target"] == new_target).all()
+        assert set(out["label"]) == {"B"}
 
     def test_with_target_to_label_missing_failure(self):
         target = torch.zeros(2, 1)
@@ -539,4 +574,50 @@ class TestTransformBatchFromMultipleToBinarizedTargets:
                 label_key="label",
                 target_to_label=target_to_label,
                 exclude_full_zero=True,
+            )
+
+
+class TestGetSamplingCountFromRatios:
+    def test_simple_usage(self) -> None:
+        ratios = {"a": 0.5, "b": 0.3, "c": 0.2}
+        sampling_size = 10
+
+        counts = get_sampling_count_from_ratios(ratios, sampling_size)
+
+        assert counts == {"a": 5, "b": 3, "c": 2}
+
+    def test_with_distribution(self) -> None:
+        ratios = {"a": 0.5, "b": 0.45, "c": 0.05}
+        sampling_size = 11
+
+        counts = get_sampling_count_from_ratios(ratios, sampling_size)
+
+        assert counts == {"a": 6, "b": 5, "c": 0}
+
+    def test_with_force_non_zero(self) -> None:
+        ratios = {"a": 0.5, "b": 0.4, "c": 0.1}
+        sampling_size = 5
+
+        counts = get_sampling_count_from_ratios(ratios, sampling_size, True)
+
+        assert counts == {"a": 2, "b": 2, "c": 1}
+
+    def test_with_force_non_zero_with_highest_0_failure(self) -> None:
+        ratios = {"a": 0.2, "b": 0.2, "c": 0.2, "d": 0.2, "e": 0.199, "f": 0.001}
+        sampling_size = 5
+
+        with pytest.raises(ValueError, match="While trying to adjust counts"):
+            get_sampling_count_from_ratios(ratios, sampling_size, True)
+
+    def test_ratios_sum_not_one_failure(self) -> None:
+        ratios = {
+            "k1": 0.5,
+            "k2": 0.49,
+        }
+        sampling_size = 3
+
+        with pytest.raises(ValueError, match="Ratios must sum to 1.0"):
+            get_sampling_count_from_ratios(
+                ratios,
+                sampling_size,
             )

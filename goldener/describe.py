@@ -61,6 +61,7 @@ class GoldDescriptor:
         target_to_label: Optional mapping from target values to label strings. Default is None.
         exclude_full_zero_target: Whether to exclude samples with a target tensor containing
             only zeros (in case of multi target). Default is False.
+        exclude_labels: Optional set of label strings to exclude from vectorization. Default is None.
         description_key: Column name to store the extracted features in the PixelTable table. Default is "features".
         to_keep_schema: Optional dictionary defining additional columns to keep from the original dataset/table
             into the description table. The keys are the column names and the values are the PixelTable types.
@@ -91,6 +92,7 @@ class GoldDescriptor:
         label_key: str | None = None,
         target_to_label: dict[tuple[int, ...], str] | None = None,
         exclude_full_zero_target: bool = False,
+        exclude_labels: set[str] | None = None,
         description_key: str = "features",
         to_keep_schema: dict[str, type] | None = None,
         min_pxt_insert_size: int = 100,
@@ -116,6 +118,7 @@ class GoldDescriptor:
             target_to_label: Optional mapping from target values to label strings. Default is None.
             exclude_full_zero_target: Whether to exclude samples with a target tensor containing
                 only zeros (in case of multi target). Default is False.
+            exclude_labels: Optional set of label strings to exclude from vectorization. Default is None.
             description_key: Key for storing extracted features. Defaults to "features".
             to_keep_schema: Optional schema for additional columns to preserve.
             min_pxt_insert_size: Minimum number of rows to accumulate before inserting into PixelTable. Defaults to 100.
@@ -137,6 +140,7 @@ class GoldDescriptor:
         self.label_key = label_key
         self.target_to_label = target_to_label
         self.exclude_full_zero_target = exclude_full_zero_target
+        self.exclude_labels = exclude_labels
         self.description_key = description_key
         self.to_keep_schema = to_keep_schema
         self.min_pxt_insert_size = min_pxt_insert_size
@@ -322,11 +326,6 @@ class GoldDescriptor:
                 description = (
                     self.vectorizer.vectorize(
                         torch.from_numpy(description).unsqueeze(0),
-                        (
-                            sample[self.target_key]
-                            if self.target_key in sample
-                            else None
-                        ),
                     )
                     .vectors[0]
                     .detach()
@@ -380,15 +379,9 @@ class GoldDescriptor:
                 .numpy()
             )
             if self.vectorizer is not None:
-                target = sample.get(self.target_key, None)
-                if target is not None and self.collate_fn is None:
-                    assert isinstance(target, torch.Tensor)
-                    target = target.unsqueeze(0)
-
                 description = (
                     self.vectorizer.vectorize(
                         torch.from_numpy(description).unsqueeze(0),
-                        target,
                     )
                     .vectors[0]
                     .detach()
@@ -576,7 +569,11 @@ class GoldDescriptor:
                     label_key=self.label_key,
                     target_to_label=self.target_to_label,
                     exclude_full_zero_target=self.exclude_full_zero_target,
+                    exclude_labels=self.exclude_labels,
                 )
+
+                if not batch:
+                    continue
 
                 start_idx = max(batch["idx_vector"]) + 1
 
