@@ -397,7 +397,7 @@ class TestSplitSamplingAmongChunks:
 
     def test_split_count_exceeds_chunk_size_raises(self) -> None:
         to_split = 5
-        chunk_sizes = [1, 1, 1]
+        chunk_sizes = [3]
         with pytest.raises(
             ValueError, match="Split count .* cannot be greater than chunk size"
         ):

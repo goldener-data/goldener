@@ -100,6 +100,13 @@ def split_sampling_among_chunks(to_split: int, chunk_sizes: list[int]) -> list[i
 
     Returns:
         A list of integers representing the number of samples to draw from each chunk, summing up to to_split.
+
+    Raises:
+        ValueError: If the input parameters are invalid. See the conditions below for details.
+    Conditions:
+        - At least one chunk size must be provided.
+        - If only one chunk size is provided, to_split must not be greater than that chunk size.
+        - The total size of the chunks must be greater than 0.
     """
     if len(chunk_sizes) == 0:
         raise ValueError("At least one chunk size is required to split the sampling")
