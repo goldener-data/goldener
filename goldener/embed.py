@@ -298,7 +298,7 @@ class GoldTorchEmbeddingTool(GoldEmbeddingTool):
             raise ValueError(f"Layers not found in the model: {not_found}")
 
 
-class MultiModalTorchGoldEmbeddingTool(GoldEmbeddingTool):
+class GoldMultiModalTorchEmbeddingTool(GoldEmbeddingTool):
     """Embedding tool for multimodal data using PyTorch.
 
     Each modality has its own GoldTorchEmbeddingTool defined by its own configuration.

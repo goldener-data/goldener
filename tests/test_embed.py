@@ -7,7 +7,7 @@ from goldener.embed import (
     EmbeddingFusionStrategy,
     GoldTorchEmbeddingTool,
     GoldTorchEmbeddingToolConfig,
-    MultiModalTorchGoldEmbeddingTool,
+    GoldMultiModalTorchEmbeddingTool,
 )
 
 
@@ -113,7 +113,7 @@ class TestEmbeddingFusion:
             assert fused.shape[2:] == shape[2:]
 
 
-class TestTorchEmbeddingTool:
+class TestGoldTorchEmbeddingTool:
     def test_embed(self):
         model = DummyModel()
         layers = ["conv1", "conv2"]
@@ -146,13 +146,13 @@ class TestTorchEmbeddingTool:
             GoldTorchEmbeddingTool(config)
 
 
-class TestMultiModalTorchEmbeddingTool:
+class TestGoldMultiModalTorchEmbeddingTool:
     def test_embed(self):
         model1 = DummyModel()
         model2 = DummyModel()
         config1 = GoldTorchEmbeddingToolConfig(model=model1, layers=["conv1"])
         config2 = GoldTorchEmbeddingToolConfig(model=model2, layers=["conv2"])
-        tool = MultiModalTorchGoldEmbeddingTool({"img": config1, "aux": config2})
+        tool = GoldMultiModalTorchEmbeddingTool({"img": config1, "aux": config2})
         data = {
             "img": torch.randn(2, 3, 8, 8),
             "aux": torch.randn(2, 3, 8, 8),
@@ -167,7 +167,7 @@ class TestMultiModalTorchEmbeddingTool:
         model2 = DummyModel()
         config1 = GoldTorchEmbeddingToolConfig(model=model1, layers=["conv1"])
         config2 = GoldTorchEmbeddingToolConfig(model=model2, layers=["conv2"])
-        tool = MultiModalTorchGoldEmbeddingTool(
+        tool = GoldMultiModalTorchEmbeddingTool(
             {"img": config1, "aux": config2},
             strategy=EmbeddingFusionStrategy.CONCAT,
         )
