@@ -31,7 +31,7 @@ from goldener.reduce import GoldReductionTool, GoldReductionToolWithFit
 from goldener.torch_utils import get_dataset_sample_dict
 from goldener.utils import (
     filter_batch_from_indices,
-    get_indices_with_excluded_labels,
+    get_indices_with_labels,
     split_sampling_among_chunks,
     get_sampling_count_from_ratios,
     get_ratios_for_counts,
@@ -839,7 +839,7 @@ class GoldSelector:
             if self.exclude_labels is not None and self.label_key in batch:
                 assert self.label_key is not None
                 to_exclude_from_batch.update(
-                    get_indices_with_excluded_labels(
+                    get_indices_with_labels(
                         batch,
                         self.label_key,
                         self.exclude_labels,
