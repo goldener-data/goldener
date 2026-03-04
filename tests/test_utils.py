@@ -6,6 +6,7 @@ from goldener.utils import (
     get_ratio_list_sum,
     get_ratios_for_counts,
     filter_batch_from_indices,
+    get_indices_with_excluded_labels,
     check_sampling_size,
     check_all_same_type,
     get_sampling_count_from_size,
@@ -360,6 +361,50 @@ class TestFilterBatchFromIndices:
         to_remove = {0, 1}
         result = filter_batch_from_indices(batch, to_remove)
         assert result == {}
+
+
+class TestGetIndicesWithExcludedLabels:
+    def test_returns_indices_for_excluded_labels(self):
+        batch = {
+            "idx": [0, 1, 2, 3, 4],
+            "label": ["cat", "dog", "cat", "bird", "dog"],
+        }
+        result = get_indices_with_excluded_labels(batch, "label", {"cat", "dog"})
+        assert result == {0, 1, 2, 4}
+
+    def test_returns_empty_set_when_no_match(self):
+        batch = {
+            "idx": [0, 1, 2],
+            "label": ["cat", "cat", "cat"],
+        }
+        result = get_indices_with_excluded_labels(batch, "label", {"dog"})
+        assert result == set()
+
+    def test_returns_all_indices_when_all_excluded(self):
+        batch = {
+            "idx": [10, 20, 30],
+            "label": ["a", "b", "a"],
+        }
+        result = get_indices_with_excluded_labels(batch, "label", {"a", "b"})
+        assert result == {10, 20, 30}
+
+    def test_with_torch_tensor_indices(self):
+        batch = {
+            "idx": torch.tensor([5, 6, 7, 8]),
+            "label": ["keep", "exclude", "keep", "exclude"],
+        }
+        result = get_indices_with_excluded_labels(batch, "label", {"exclude"})
+        assert result == {6, 8}
+
+    def test_custom_index_key(self):
+        batch = {
+            "idx_vector": [100, 200, 300],
+            "label": ["a", "b", "a"],
+        }
+        result = get_indices_with_excluded_labels(
+            batch, "label", {"a"}, index_key="idx_vector"
+        )
+        assert result == {100, 300}
 
 
 class TestSplitSamplingAmongChunks:

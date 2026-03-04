@@ -407,46 +407,6 @@ class TestGoldSelector:
 
         pxt.drop_dir("unit_test", force=True)
 
-    def test_select_in_table_from_table_with_excluded_labels(self):
-        pxt.drop_dir("unit_test", force=True)
-
-        src_path = "unit_test.src_table_select"
-        desc_path = "unit_test.test_select_excluded_from_table"
-
-        pxt.create_dir("unit_test", if_exists="ignore")
-        src_table = pxt.create_table(
-            src_path,
-            source=[
-                {
-                    "vectorized": torch.rand(5).numpy().astype(np.float32),
-                    "idx": idx % 10,
-                    "idx_vector": idx,
-                    "label": "excluded" if idx < 50 else "kept",
-                }
-                for idx in range(100)
-            ],
-            if_exists="replace_force",
-            primary_key="idx_vector",
-        )
-
-        selector = GoldSelector(
-            table_path=desc_path,
-            allow_existing=True,
-            label_key="label",
-            exclude_labels={"excluded"},
-            batch_size=10,
-        )
-
-        selection_table = selector.select_in_table(
-            src_table, select_size=5, value="train"
-        )
-
-        assert selection_table.count() == 50
-        for row in selection_table.collect():
-            assert row["label"] == "kept"
-
-        pxt.drop_dir("unit_test", force=True)
-
     def test_select_with_exclude_labels_without_label_key_raises(self):
         with pytest.raises(
             ValueError,

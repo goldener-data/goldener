@@ -179,7 +179,7 @@ def filter_batch_from_indices(
     }
 
 
-def _get_indices_with_excluded_labels(
+def get_indices_with_excluded_labels(
     batch: dict[str, Any],
     label_key: str,
     exclude_labels: set[str],
@@ -202,28 +202,6 @@ def _get_indices_with_excluded_labels(
         if label_value in exclude_labels
     }
 
-
-def filter_batch_from_labels(
-    batch: dict[str, Any],
-    label_key: str,
-    exclude_labels: set[str],
-    index_key: str = "idx",
-) -> dict[str, Any]:
-    """Filter a batch dictionary to exclude items with specified labels.
-
-    Args:
-        batch: A dictionary representing a batch of data (each key corresponds to stacked information).
-        label_key: The key in the batch dictionary that contains the labels.
-        exclude_labels: A set of label strings to exclude from the batch.
-        index_key: The key in the batch dictionary that contains the indices.
-
-    Returns:
-        A filtered batch dictionary without items whose label is in exclude_labels.
-    """
-    to_remove = _get_indices_with_excluded_labels(
-        batch, label_key, exclude_labels, index_key
-    )
-    return filter_batch_from_indices(batch, to_remove, index_key)
 
 def get_size_and_sampling_count_per_chunk(
     total_size: int, sampling_size: int, max_chunk_size: int

@@ -31,7 +31,7 @@ from goldener.reduce import GoldReductionTool, GoldReductionToolWithFit
 from goldener.torch_utils import get_dataset_sample_dict
 from goldener.utils import (
     filter_batch_from_indices,
-    filter_batch_from_labels,
+    get_indices_with_excluded_labels,
     split_sampling_among_chunks,
     get_sampling_count_from_ratios,
     get_ratios_for_counts,
@@ -837,7 +837,24 @@ class GoldSelector:
                 batch["idx"] = batch["idx_vector"]
 
             # Keep only not yet included samples in the batch
-            if not_empty:
+            if not_empty or (
+                self.exclude_labels is not None
+                and self.label_key is not None
+                and self.label_key in batch
+            ):
+                if (
+                    self.exclude_labels is not None
+                    and self.label_key is not None
+                    and self.label_key in batch
+                ):
+                    already_in_selection.update(
+                        get_indices_with_excluded_labels(
+                            batch,
+                            self.label_key,
+                            self.exclude_labels,
+                            index_key="idx_vector",
+                        )
+                    )
                 batch = filter_batch_from_indices(
                     batch,
                     already_in_selection,
@@ -846,19 +863,6 @@ class GoldSelector:
 
                 if len(batch) == 0:
                     continue  # all samples already described
-
-            # Filter out samples with excluded labels
-            if (
-                self.exclude_labels is not None
-                and self.label_key is not None
-                and self.label_key in batch
-            ):
-                batch = filter_batch_from_labels(
-                    batch, self.label_key, self.exclude_labels, index_key="idx_vector"
-                )
-
-                if len(batch) == 0:
-                    continue
 
             if self.selection_key not in batch:
                 batch[self.selection_key] = [
