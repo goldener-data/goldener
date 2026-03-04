@@ -9,36 +9,36 @@ import torch
 
 
 class GoldEmbeddingTool(ABC):
-    """Abstract base class for feature extraction from models.
+    """Abstract base class for embedding extraction from models.
 
-    This class defines the interface for feature extractors that can extract and optionally
-    fuse features from models. Implementations should provide specific mechanisms for
-    extracting features from different types of models (e.g., PyTorch, multimodal).
+    This class defines the interface for embedding tools that can extract and optionally
+    fuse embeddings from models. Implementations should provide specific mechanisms for
+    extracting embeddings from different types of models (e.g., PyTorch, multimodal).
     """
 
     @abstractmethod
     def extract(self, *args: Any, **kwargs: Any) -> dict[str, torch.Tensor]:
-        """Extract features from the model for the given input data.
+        """Extract embeddings from the model for the given input data.
 
-        Returns: Dictionary mapping layer names to their extracted feature tensors.
+        Returns: Dictionary mapping layer names to their extracted embedding tensors.
         """
 
     @abstractmethod
     def extract_and_fuse(self, *args: Any, **kwargs: Any) -> torch.Tensor:
-        """Extract and fuse features from the model for the given input data.
+        """Extract and fuse embeddings from the model for the given input data.
 
-        Returns: Fused feature tensor.
+        Returns: Fused embedding tensor.
         """
 
 
 class EmbeddingFusionStrategy(Enum):
-    """Strategies to fuse features from multiple layers.
+    """Strategies to fuse embeddings from multiple layers.
 
-    CONCAT: Concatenate features along the channel dimension.
-    ADD: Element-wise addition of features.
-    AVERAGE: Element-wise average of features.
-    MAX: Element-wise maximum of features.
-    NO_FUSION: No fusion, return features as is (only valid for single layer).
+    CONCAT: Concatenate embeddings along the channel dimension.
+    ADD: Element-wise addition of embeddings.
+    AVERAGE: Element-wise average of embeddings.
+    MAX: Element-wise maximum of embeddings.
+    NO_FUSION: No fusion, return embeddings as is (only valid for single layer).
     """
 
     CONCAT = "concat"
@@ -52,11 +52,11 @@ class TorchGoldEmbeddingToolConfig:
     """Configuration for the TorchGoldEmbeddingTool.
 
     Attributes:
-        model: The PyTorch model from which to extract features.
+        model: The PyTorch model from which to extract embeddings.
         layers: List of layer names or a dictionary mapping group names to lists of layer names.
             If None, the last layer of the model is used.
-        layer_fusion: Strategy to fuse features from multiple layers within the same group.
-        group_fusion: Strategy to fuse features from different groups.
+        layer_fusion: Strategy to fuse embeddings from multiple layers within the same group.
+        group_fusion: Strategy to fuse embeddings from different groups.
     """
 
     model: torch.nn.Module
@@ -66,11 +66,11 @@ class TorchGoldEmbeddingToolConfig:
 
 
 class GoldEmbeddingFusionTool:
-    """Feature fusion from multiple layers and groups.
+    """Embedding fusion from multiple layers and groups.
 
     Attributes:
-        layer_fusion: Strategy to fuse features from multiple layers within the same group.
-        group_fusion: Strategy to fuse features from different groups.
+        layer_fusion: Strategy to fuse embeddings from multiple layers within the same group.
+        group_fusion: Strategy to fuse embeddings from different groups.
     """
 
     def __init__(
@@ -81,9 +81,9 @@ class GoldEmbeddingFusionTool:
         """Initialize the GoldEmbeddingFusionTool.
 
         Args:
-            layer_fusion: Strategy to fuse features from multiple layers within the same group.
+            layer_fusion: Strategy to fuse embeddings from multiple layers within the same group.
                 Defaults to CONCAT.
-            group_fusion: Strategy to fuse features from different groups. Defaults to CONCAT.
+            group_fusion: Strategy to fuse embeddings from different groups. Defaults to CONCAT.
         """
         self.layer_fusion = layer_fusion
         self.group_fusion = group_fusion
@@ -109,7 +109,7 @@ class GoldEmbeddingFusionTool:
         """
         ndims = set(f.ndim for f in tensors)
         if len(ndims) != 1:
-            raise ValueError("All features must have the same number of dimensions.")
+            raise ValueError("All embeddings must have the same number of dimensions.")
 
         ndim = list(ndims)[0]
         if ndim > 2:
@@ -121,14 +121,14 @@ class GoldEmbeddingFusionTool:
             tensors = [
                 (
                     torch.nn.functional.interpolate(
-                        feature,
+                        embedding,
                         size=max_size,
                         mode=mode,
                     )
-                    if feature.shape[2:] != max_size
-                    else feature
+                    if embedding.shape[2:] != max_size
+                    else embedding
                 )
-                for feature in tensors
+                for embedding in tensors
             ]
 
         if strategy is EmbeddingFusionStrategy.CONCAT:
@@ -142,18 +142,18 @@ class GoldEmbeddingFusionTool:
         else:
             assert_never(strategy)
 
-    def fuse_features(
+    def fuse_embeddings(
         self,
         x: dict[str, torch.Tensor],
         layers: list[str] | dict[str, list[str]],
     ) -> torch.Tensor:
-        """Fuse features from multiple layers and groups.
+        """Fuse embeddings from multiple layers and groups.
 
         Args:
-            x: Dictionary mapping layer names to feature tensors.
+            x: Dictionary mapping layer names to embedding tensors.
             layers: List of layer names or a dictionary mapping group names to lists of layer names.
 
-        Returns: Fused feature tensor.
+        Returns: Fused embedding tensor.
         """
         # list of layers are fused by layer_fusion strategy
         if isinstance(layers, list):
@@ -177,18 +177,18 @@ class GoldEmbeddingFusionTool:
 class TorchGoldEmbeddingTool(GoldEmbeddingTool):
     """Embedding tool for PyTorch models.
 
-    Once initialized, the extractor registers forward hooks on the specified layers of the model.
+    Once initialized, the tool registers forward hooks on the specified layers of the model.
     When the model processes input data, the hooks capture the outputs of these layers.
-    The extracted features can then be fused according to the specified strategies.
+    The extracted embeddings can then be fused according to the specified strategies.
 
-    The model and layers cannot be changed after initialization. The feature fusion can be changed.
+    The model and layers cannot be changed after initialization. The embedding fusion can be changed.
 
     Attributes:
-        _model: The PyTorch model from which to extract features.
-        fusion: FeatureFusion instance to handle feature fusion.
+        _model: The PyTorch model from which to extract embeddings.
+        fusion: GoldEmbeddingFusionTool instance to handle embedding fusion.
         _layers: List of layer names or a dictionary mapping group names to lists of layer names.
         _hooks: Dictionary mapping layer names to their corresponding forward hook handles.
-        _features: Dictionary to store extracted features.
+        _embeddings: Dictionary to store extracted embeddings.
     """
 
     def __init__(
@@ -208,45 +208,45 @@ class TorchGoldEmbeddingTool(GoldEmbeddingTool):
 
         self._layers: list[str] | dict[str, list[str]]
         self._hooks: dict[str, torch.utils.hooks.RemovableHandle]
-        self._features: dict[str, torch.Tensor]
+        self._embeddings: dict[str, torch.Tensor]
 
         self._register_layers(config.layers)
 
     @property
     def model(self) -> torch.nn.Module:
-        """The PyTorch model from which to extract features."""
+        """The PyTorch model from which to extract embeddings."""
         return self._model
 
     @property
     def layers(self) -> list[str] | dict[str, list[str]]:
-        """The layers from which to extract features.
+        """The layers from which to extract embeddings.
 
         It also indicates the grouping of layers for fusion.
         """
         return self._layers
 
     def extract(self, x: torch.Tensor) -> dict[str, torch.Tensor]:
-        """Extract features from the model for the given input data.
+        """Extract embeddings from the model for the given input data.
 
         Args:
             x: Input data tensor to be processed by the model.
 
-        Returns: Dictionary mapping layer names to their extracted feature tensors.
+        Returns: Dictionary mapping layer names to their extracted embedding tensors.
         """
-        self._features = {}
+        self._embeddings = {}
         self._model(x)
-        return self._features
+        return self._embeddings
 
     def extract_and_fuse(self, x: torch.Tensor) -> torch.Tensor:
-        """Extract and fuse features from the model for the given input data.
+        """Extract and fuse embeddings from the model for the given input data.
 
         Args:
             x: Input data tensor to be processed by the model.
 
-        Returns: Fused feature tensor.
+        Returns: Fused embedding tensor.
         """
-        features = self.extract(x)
-        return self.fusion.fuse_features(features, self._layers)
+        embeddings = self.extract(x)
+        return self.fusion.fuse_embeddings(embeddings, self._layers)
 
     def __del__(self):
         """Remove all registered hooks when the extractor is deleted."""
@@ -274,7 +274,7 @@ class TorchGoldEmbeddingTool(GoldEmbeddingTool):
 
         self._layers = layers
 
-        self._features = {}
+        self._embeddings = {}
 
         def _get_hook(
             name: str,
@@ -284,7 +284,7 @@ class TorchGoldEmbeddingTool(GoldEmbeddingTool):
                 input: torch.Tensor,
                 output: torch.Tensor,
             ) -> None:
-                self._features[name] = output.detach()
+                self._embeddings[name] = output.detach()
 
             return hook
 
@@ -304,11 +304,11 @@ class MultiModalTorchGoldEmbeddingTool(GoldEmbeddingTool):
 
     Each modality has its own TorchGoldEmbeddingTool defined by its own configuration.
     This allows for processing different types of input data (e.g., images, text, audio)
-    with different models and then fusing their features.
+    with different models and then fusing their embeddings.
 
     Attributes:
         extractors: Dictionary mapping modality names to their TorchGoldEmbeddingTool instances.
-        strategy: Strategy for fusing features from different modalities.
+        strategy: Strategy for fusing embeddings from different modalities.
     """
 
     def __init__(
@@ -316,11 +316,11 @@ class MultiModalTorchGoldEmbeddingTool(GoldEmbeddingTool):
         configs: Dict[str, TorchGoldEmbeddingToolConfig],
         strategy: EmbeddingFusionStrategy = EmbeddingFusionStrategy.CONCAT,
     ) -> None:
-        """Initialize the multimodal feature extractor.
+        """Initialize the multimodal embedding tool.
 
         Args:
             configs: Dictionary mapping modality names to their TorchGoldEmbeddingToolConfig.
-            strategy: Strategy to use for fusing features from different modalities. Defaults to CONCAT.
+            strategy: Strategy to use for fusing embeddings from different modalities. Defaults to CONCAT.
         """
         self.extractors = {
             modality: TorchGoldEmbeddingTool(config)
@@ -329,13 +329,13 @@ class MultiModalTorchGoldEmbeddingTool(GoldEmbeddingTool):
         self.strategy = strategy
 
     def extract_and_fuse(self, x: Dict[str, torch.Tensor]) -> torch.Tensor:
-        """Extract and fuse features from multimodal input data.
+        """Extract and fuse embeddings from multimodal input data.
 
         Args:
             x: Dictionary mapping modality names to their input tensors.
 
         Returns:
-            Fused feature tensor combining all modalities.
+            Fused embedding tensor combining all modalities.
         """
         return GoldEmbeddingFusionTool.fuse_tensors(
             [
@@ -346,13 +346,13 @@ class MultiModalTorchGoldEmbeddingTool(GoldEmbeddingTool):
         )
 
     def extract(self, x: Dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
-        """Extract features from multimodal input data without fusing.
+        """Extract embeddings from multimodal input data without fusing.
 
         Args:
             x: Dictionary mapping modality names to their input tensors.
 
         Returns:
-            Dictionary mapping "{modality}.{layer}" to their extracted feature tensors.
+            Dictionary mapping "{modality}.{layer}" to their extracted embedding tensors.
         """
         per_modality = {
             modality: extractor.extract(x[modality])
@@ -360,7 +360,7 @@ class MultiModalTorchGoldEmbeddingTool(GoldEmbeddingTool):
         }
 
         return {
-            f"{modality}.{layer}": feature
-            for modality, features in per_modality.items()
-            for layer, feature in features.items()
+            f"{modality}.{layer}": embedding
+            for modality, embeddings in per_modality.items()
+            for layer, embedding in embeddings.items()
         }
