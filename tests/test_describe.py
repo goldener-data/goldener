@@ -4,7 +4,7 @@ import torch
 import pixeltable as pxt
 
 from goldener.describe import GoldDescriptor
-from goldener.extract import TorchGoldFeatureExtractorConfig, TorchGoldFeatureExtractor
+from goldener.extract import TorchGoldEmbeddingToolConfig, TorchGoldEmbeddingTool
 from goldener.vectorize import TensorVectorizer
 
 
@@ -23,8 +23,8 @@ class DummyModel(torch.nn.Module):
 @pytest.fixture
 def extractor():
     model = DummyModel()
-    config = TorchGoldFeatureExtractorConfig(model=model, layers=None)
-    return TorchGoldFeatureExtractor(config)
+    config = TorchGoldEmbeddingToolConfig(model=model, layers=None)
+    return TorchGoldEmbeddingTool(config)
 
 
 @pytest.fixture

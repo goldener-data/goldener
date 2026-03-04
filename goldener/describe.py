@@ -9,7 +9,7 @@ from pixeltable.catalog import Table
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 
-from goldener.extract import GoldFeatureExtractor
+from goldener.extract import GoldEmbeddingTool
 from goldener.pxt_utils import (
     GoldPxtTorchDataset,
     get_expr_from_column_name,
@@ -31,7 +31,7 @@ class GoldDescriptor:
     """Extract features from dataset samples using a pretrained model.
 
     The GoldDescriptor processes a dataset or PixelTable table to extract features using a
-    `GoldFeatureExtractor`. The computed features are stored in a local PixelTable table
+    `GoldEmbeddingTool`. The computed features are stored in a local PixelTable table
     (specified by `table_path`) so that the description process is idempotent: calling the
     same operation multiple times will not duplicate or recompute features that are already
     present in the table.
@@ -46,7 +46,7 @@ class GoldDescriptor:
 
     Attributes:
         table_path: Path to the PixelTable table where descriptions will be saved locally.
-        extractor: GoldFeatureExtractor instance for extracting features from the data.
+        extractor: GoldEmbeddingTool instance for extracting features from the data.
         vectorizer: Optional TensorVectorizer to further vectorize the extracted features
             before storing them in the table.
         transform: Optional transformation to apply to the data before feature extraction if not already
@@ -83,7 +83,7 @@ class GoldDescriptor:
     def __init__(
         self,
         table_path: str,
-        extractor: GoldFeatureExtractor,
+        extractor: GoldEmbeddingTool,
         vectorizer: TensorVectorizer | None = None,
         transform: Callable | None = None,
         collate_fn: Callable | None = None,

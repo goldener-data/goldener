@@ -68,15 +68,15 @@ from embeddings extracted with pre-trained models. Then, it leverages this knowl
 from goldener import (
     GoldSelector,
     GoldDescriptor,
-    TorchGoldFeatureExtractor,
-    TorchGoldFeatureExtractorConfig,
+    TorchGoldEmbeddingTool,
+    TorchGoldEmbeddingToolConfig,
     TensorVectorizer,
 )
 
 gd = GoldDescriptor(
     table_path="my_table_for_description",
-    extractor=TorchGoldFeatureExtractor(
-        TorchGoldFeatureExtractorConfig(
+    extractor=TorchGoldEmbeddingTool(
+        TorchGoldEmbeddingToolConfig(
             model=my_model,
             layers=my_layers,
         )
@@ -136,8 +136,8 @@ from goldener import (
     GoldClusterizer,
     GoldSKLearnClusteringTool,
     GoldDescriptor,
-    TorchGoldFeatureExtractor,
-    TorchGoldFeatureExtractorConfig,
+    TorchGoldEmbeddingTool,
+    TorchGoldEmbeddingToolConfig,
     TensorVectorizer,
 )
 from sklearn.cluster import KMeans

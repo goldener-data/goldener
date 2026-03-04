@@ -7,7 +7,7 @@ from torch.utils.data import Dataset
 
 from goldener.clusterize import GoldClusterizer, GoldRandomClusteringTool
 from goldener.describe import GoldDescriptor
-from goldener.extract import TorchGoldFeatureExtractorConfig, TorchGoldFeatureExtractor
+from goldener.extract import TorchGoldEmbeddingToolConfig, TorchGoldEmbeddingTool
 from goldener.pxt_utils import pxt_torch_dataset_collate_fn
 from goldener.split import GoldSplitter, GoldSet, check_sets_validity
 from goldener.vectorize import TensorVectorizer, GoldVectorizer
@@ -29,8 +29,8 @@ class DummyModel(torch.nn.Module):
 @pytest.fixture(scope="function")
 def extractor():
     model = DummyModel()
-    config = TorchGoldFeatureExtractorConfig(model=model, layers=None)
-    return TorchGoldFeatureExtractor(config)
+    config = TorchGoldEmbeddingToolConfig(model=model, layers=None)
+    return TorchGoldEmbeddingTool(config)
 
 
 class DummyDataset(Dataset):

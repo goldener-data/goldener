@@ -10,10 +10,10 @@ from goldener.describe import (
 from goldener.extract import (
     FeatureFusionStrategy,
     GoldFeatureFusion,
-    GoldFeatureExtractor,
-    TorchGoldFeatureExtractor,
-    TorchGoldFeatureExtractorConfig,
-    MultiModalTorchGoldFeatureExtractor,
+    GoldEmbeddingTool,
+    TorchGoldEmbeddingTool,
+    TorchGoldEmbeddingToolConfig,
+    MultiModalTorchGoldEmbeddingTool,
 )
 from goldener.pxt_utils import GoldPxtTorchDataset
 from goldener.reduce import (
@@ -48,10 +48,10 @@ __all__ = (
     "GoldDescriptor",
     "FeatureFusionStrategy",
     "GoldFeatureFusion",
-    "GoldFeatureExtractor",
-    "TorchGoldFeatureExtractor",
-    "TorchGoldFeatureExtractorConfig",
-    "MultiModalTorchGoldFeatureExtractor",
+    "GoldEmbeddingTool",
+    "TorchGoldEmbeddingTool",
+    "TorchGoldEmbeddingToolConfig",
+    "MultiModalTorchGoldEmbeddingTool",
     "GoldPxtTorchDataset",
     "GoldReductionTool",
     "GoldReductionToolWithFit",

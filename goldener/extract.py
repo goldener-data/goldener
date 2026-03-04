@@ -8,7 +8,7 @@ from enum import Enum
 import torch
 
 
-class GoldFeatureExtractor:
+class GoldEmbeddingTool:
     """Abstract base class for feature extraction from models.
 
     This class defines the interface for feature extractors that can extract and optionally
@@ -48,8 +48,8 @@ class FeatureFusionStrategy(Enum):
 
 
 @dataclass
-class TorchGoldFeatureExtractorConfig:
-    """Configuration for the TorchFeatureExtractor.
+class TorchGoldEmbeddingToolConfig:
+    """Configuration for the TorchGoldEmbeddingTool.
 
     Attributes:
         model: The PyTorch model from which to extract features.
@@ -174,8 +174,8 @@ class GoldFeatureFusion:
         return self.fuse_tensors(fused_groups, self.group_fusion)
 
 
-class TorchGoldFeatureExtractor(GoldFeatureExtractor):
-    """Feature extractor for PyTorch models.
+class TorchGoldEmbeddingTool(GoldEmbeddingTool):
+    """Embedding tool for PyTorch models.
 
     Once initialized, the extractor registers forward hooks on the specified layers of the model.
     When the model processes input data, the hooks capture the outputs of these layers.
@@ -193,9 +193,9 @@ class TorchGoldFeatureExtractor(GoldFeatureExtractor):
 
     def __init__(
         self,
-        config: TorchGoldFeatureExtractorConfig,
+        config: TorchGoldEmbeddingToolConfig,
     ) -> None:
-        """Initialize the TorchGoldFeatureExtractor.
+        """Initialize the TorchGoldEmbeddingTool.
 
         Args:
             config: Configuration object containing the model, layers, and fusion strategies.
@@ -299,31 +299,31 @@ class TorchGoldFeatureExtractor(GoldFeatureExtractor):
             raise ValueError(f"Layers not found in the model: {not_found}")
 
 
-class MultiModalTorchGoldFeatureExtractor(GoldFeatureExtractor):
-    """Feature extractor for multimodal data using PyTorch.
+class MultiModalTorchGoldEmbeddingTool(GoldEmbeddingTool):
+    """Embedding tool for multimodal data using PyTorch.
 
-    Each modality has its own TorchFeatureExtractor defined by its own configuration.
+    Each modality has its own TorchGoldEmbeddingTool defined by its own configuration.
     This allows for processing different types of input data (e.g., images, text, audio)
     with different models and then fusing their features.
 
     Attributes:
-        extractors: Dictionary mapping modality names to their TorchGoldFeatureExtractor instances.
+        extractors: Dictionary mapping modality names to their TorchGoldEmbeddingTool instances.
         strategy: Strategy for fusing features from different modalities.
     """
 
     def __init__(
         self,
-        configs: Dict[str, TorchGoldFeatureExtractorConfig],
+        configs: Dict[str, TorchGoldEmbeddingToolConfig],
         strategy: FeatureFusionStrategy = FeatureFusionStrategy.CONCAT,
     ) -> None:
         """Initialize the multimodal feature extractor.
 
         Args:
-            configs: Dictionary mapping modality names to their TorchGoldFeatureExtractorConfig.
+            configs: Dictionary mapping modality names to their TorchGoldEmbeddingToolConfig.
             strategy: Strategy to use for fusing features from different modalities. Defaults to CONCAT.
         """
         self.extractors = {
-            modality: TorchGoldFeatureExtractor(config)
+            modality: TorchGoldEmbeddingTool(config)
             for modality, config in configs.items()
         }
         self.strategy = strategy
