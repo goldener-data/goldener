@@ -182,6 +182,56 @@ class TestGoldSplitter:
 
         pxt.drop_dir("unit_test", if_not_exists="ignore", force=True)
 
+    def test_split_with_excluded_labels(self, descriptor, vectorizer, embedder):
+        pxt.drop_dir("unit_test", force=True)
+
+        sets = [
+            GoldSet(name="train", size=0.5),
+            GoldSet(name="val", size=0.5),
+        ]
+        selector = GoldSelector(
+            table_path="unit_test.selector_split",
+            to_keep_schema={"label": pxt.String},
+            vectorized_key="vectorized",
+            batch_size=2,
+            label_key="label",
+            exclude_labels={"excluded"},
+        )
+        splitter = GoldSplitter(
+            sets=sets,
+            descriptor=descriptor,
+            selector=selector,
+            vectorizer=vectorizer,
+        )
+
+        split_table = splitter.split_in_table(
+            to_split=DummyDataset(
+                [
+                    {
+                        "data": torch.rand(3, 8, 8),
+                        "idx": idx,
+                        "label": "excluded" if idx < 4 else str(idx % 2),
+                    }
+                    for idx in range(10)
+                ]
+            )
+        )
+
+        for row in split_table.collect():
+            assert row["label"] != "excluded"
+
+        splitted = splitter.get_split_indices(
+            split_table,
+            selection_key=splitter.selector.selection_key,
+            idx_key="idx",
+        )
+
+        assert set(splitted.keys()) == {"train", "val"}
+        # Only 6 samples (idx 4-9) remain after excluding idx 0-3
+        assert len(splitted["train"]) + len(splitted["val"]) == 6
+
+        pxt.drop_dir("unit_test", if_not_exists="ignore", force=True)
+
     def test_duplicated_set_names(self, descriptor, selector, vectorizer):
         pxt.drop_dir("unit_test", force=True)
 

@@ -31,6 +31,7 @@ from goldener.reduce import GoldReductionTool, GoldReductionToolWithFit
 from goldener.torch_utils import get_dataset_sample_dict
 from goldener.utils import (
     filter_batch_from_indices,
+    filter_batch_from_labels,
     split_sampling_among_chunks,
     get_sampling_count_from_ratios,
     get_ratios_for_counts,
@@ -331,6 +332,7 @@ class GoldSelector:
         It is only applied if the cluster table is created from a Table (it is forced anyway for Dataset).
         selection_key: Column name to store the selection value in the PixelTable table. Default is "selected".
         label_key: Optional key for label-based stratified selection.
+        exclude_labels: Optional set of label strings to exclude from selection. Default is None.
         to_keep_schema: Optional dictionary defining additional columns to keep from the original dataset/table
             into the selection table. The keys are the column names and the values are the PixelTable types.
         min_pxt_insert_size: Minimum number of rows to accumulate before inserting into PixelTable. Default is 100.
@@ -362,6 +364,7 @@ class GoldSelector:
         include_vectorized_in_table: bool = False,
         selection_key: str = "selected",
         label_key: str | None = None,
+        exclude_labels: set[str] | None = None,
         to_keep_schema: dict[str, type] | None = None,
         min_pxt_insert_size: int = 100,
         batch_size: int = 1,
@@ -385,6 +388,7 @@ class GoldSelector:
                 It is only applied if the selection table is created from a Table (it is forced anyway for Dataset).
             selection_key: Key for storing selection values. Defaults to "selected".
             label_key: Optional key for label stratification.
+            exclude_labels: Optional set of label strings to exclude from selection. Default is None.
             to_keep_schema: Optional schema for additional columns to preserve.
             min_pxt_insert_size: Minimum number of rows to accumulate before inserting into PixelTable. Default is 100.
             batch_size: Batch size used when iterating over the data.
@@ -403,7 +407,12 @@ class GoldSelector:
         self.vectorized_key = vectorized_key
         self.include_vectorized_in_table = include_vectorized_in_table
         self.selection_key = selection_key
+        if exclude_labels is not None and label_key is None:
+            raise ValueError(
+                "If exclude_labels is provided, label_key must also be provided."
+            )
         self.label_key = label_key
+        self.exclude_labels = exclude_labels
         self.to_keep_schema = to_keep_schema
         self.min_pxt_insert_size = min_pxt_insert_size
         self.batch_size = batch_size
@@ -837,6 +846,19 @@ class GoldSelector:
 
                 if len(batch) == 0:
                     continue  # all samples already described
+
+            # Filter out samples with excluded labels
+            if (
+                self.exclude_labels is not None
+                and self.label_key is not None
+                and self.label_key in batch
+            ):
+                batch = filter_batch_from_labels(
+                    batch, self.label_key, self.exclude_labels
+                )
+
+                if len(batch) == 0:
+                    continue
 
             if self.selection_key not in batch:
                 batch[self.selection_key] = [

@@ -135,6 +135,39 @@ def split_sampling_among_chunks(to_split: int, chunk_sizes: list[int]) -> list[i
     return list(counts.values())
 
 
+def _filter_batch_by_positions(
+    batch: dict[str, Any],
+    keep_in_batch: list[int],
+) -> dict[str, Any]:
+    """Filter a batch dictionary to only include items at specified positions.
+
+    Args:
+        batch: A dictionary representing a batch of data.
+        keep_in_batch: A list of positions to keep in the batch.
+
+    Returns:
+        A filtered batch dictionary containing only the items at the specified positions.
+    """
+    def filter_batched_values(
+        batched_value: list | torch.Tensor,
+    ) -> list | torch.Tensor:
+        """Inner function to keep only the specified positions in the batch."""
+        filtered = [
+            value
+            for idx_value, value in enumerate(batched_value)
+            if idx_value in keep_in_batch
+        ]
+        if isinstance(batched_value, torch.Tensor):
+            return torch.stack(filtered, dim=0)
+        else:
+            return filtered
+
+    return {
+        key: filter_batched_values(batched_value)
+        for key, batched_value in batch.items()
+    }
+
+
 def filter_batch_from_indices(
     batch: dict[str, Any],
     to_remove: set[int],
@@ -159,25 +192,33 @@ def filter_batch_from_indices(
     if not keep_in_batch:
         return {}  # all samples already described
 
-    def filter_batched_values(
-        batched_value: list | torch.Tensor,
-    ) -> list | torch.Tensor:
-        """Inner function to remove already described samples from the batch."""
-        filtered = [
-            value
-            for idx_value, value in enumerate(batched_value)
-            if idx_value in keep_in_batch
-        ]
-        if isinstance(batched_value, torch.Tensor):
-            return torch.stack(filtered, dim=0)
-        else:
-            return filtered
+    return _filter_batch_by_positions(batch, keep_in_batch)
 
-    return {
-        key: filter_batched_values(batched_value)
-        for key, batched_value in batch.items()
-    }
 
+def filter_batch_from_labels(
+    batch: dict[str, Any],
+    label_key: str,
+    exclude_labels: set[str],
+) -> dict[str, Any]:
+    """Filter a batch dictionary to exclude items with specified labels.
+
+    Args:
+        batch: A dictionary representing a batch of data (each key corresponds to stacked information).
+        label_key: The key in the batch dictionary that contains the labels.
+        exclude_labels: A set of label strings to exclude from the batch.
+
+    Returns:
+        A filtered batch dictionary without items whose label is in exclude_labels.
+    """
+    keep_in_batch = [
+        idx_position
+        for idx_position, label_value in enumerate(batch[label_key])
+        if label_value not in exclude_labels
+    ]
+    if not keep_in_batch:
+        return {}
+
+    return _filter_batch_by_positions(batch, keep_in_batch)
 
 def get_size_and_sampling_count_per_chunk(
     total_size: int, sampling_size: int, max_chunk_size: int
