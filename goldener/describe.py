@@ -46,7 +46,7 @@ class GoldDescriptor:
 
     Attributes:
         table_path: Path to the PixelTable table where descriptions will be saved locally.
-        extractor: GoldEmbeddingTool instance for extracting features from the data.
+        embedder: GoldEmbeddingTool instance for embedding the data.
         vectorizer: Optional TensorVectorizer to further vectorize the extracted features
             before storing them in the table.
         transform: Optional transformation to apply to the data before feature extraction if not already
@@ -54,7 +54,7 @@ class GoldDescriptor:
         collate_fn: Optional function to collate dataset samples into batches composed of
             dictionaries with at least the key specified by `data_key` returning a PyTorch Tensor.
             If None, the dataset is expected to directly provide such batches. It should format
-            the value at `data_key` in the format expected by the feature extractor.
+            the value at `data_key` in the format expected by the embedder.
         data_key: Key in the batch dictionary that contains the data to extract features from. Default is "data".
         target_key: Key in the batch dictionary that contains the target/label information. Default is "target".
         label_key: Optional key for labels in the batch dictionary. Default is None.
@@ -83,7 +83,7 @@ class GoldDescriptor:
     def __init__(
         self,
         table_path: str,
-        extractor: GoldEmbeddingTool,
+        embedder: GoldEmbeddingTool,
         vectorizer: TensorVectorizer | None = None,
         transform: Callable | None = None,
         collate_fn: Callable | None = None,
@@ -108,7 +108,7 @@ class GoldDescriptor:
 
         Args:
             table_path: Path to the PixelTable table where descriptions will be saved.
-            extractor: FeatureExtractor instance for extracting features.
+            embedder: GoldEmbeddingTool instance for embedding data.
             vectorizer: Optional TensorVectorizer to further vectorize the extracted features.
             transform: Optional transformation to apply before feature extraction.
             collate_fn: Optional function to collate dataset samples into batches.
@@ -131,7 +131,7 @@ class GoldDescriptor:
             max_batches: Optional maximum number of batches to process.
         """
         self.table_path = table_path
-        self.extractor = extractor
+        self.embedder = embedder
         self.vectorizer = vectorizer
         self.transform = transform
         self.collate_fn = collate_fn
@@ -161,7 +161,7 @@ class GoldDescriptor:
     ) -> GoldPxtTorchDataset:
         """Extract features from samples and return results as a GoldPxtTorchDataset.
 
-        The description process extracts features from the data using the provided feature extractor
+        The description process extracts features from the data using the provided embedder
         and stores them in a PixelTable table specified by `table_path`. The extracted features
         will be stored in the column specified by `description_key`.
 
@@ -196,7 +196,7 @@ class GoldDescriptor:
     ) -> Table:
         """Extract features from samples and store results in a PixelTable table.
 
-        The description process extracts features from the data using the provided feature extractor
+        The description process extracts features from the data using the provided embedder
         and stores them in a PixelTable table specified by `table_path`. The extracted features
         will be stored in the column specified by `description_key`.
 
@@ -293,7 +293,7 @@ class GoldDescriptor:
         """Create or validate the description table schema from a PixelTable table.
 
         This private method sets up the table structure and adds the description column
-        with the appropriate array type based on the extractor's output shape.
+        with the appropriate array type based on the embedder's output shape.
 
         Args:
             to_describe: The source PixelTable table to describe.
@@ -316,7 +316,7 @@ class GoldDescriptor:
                 sample_data = self.transform(sample_data)
 
             description = (
-                self.extractor.embed_and_fuse(sample_data.to(device=self.device))
+                self.embedder.embed_and_fuse(sample_data.to(device=self.device))
                 .squeeze(0)
                 .detach()
                 .cpu()
@@ -348,7 +348,7 @@ class GoldDescriptor:
         """Create or validate the description table schema from a PyTorch Dataset.
 
         This private method sets up the table structure and adds the description column
-        with the appropriate array type based on the extractor's output shape.
+        with the appropriate array type based on the embedder's output shape.
 
         Args:
             to_describe: The source PyTorch Dataset to describe.
@@ -372,7 +372,7 @@ class GoldDescriptor:
                 sample_data = self.transform(sample_data)
 
             description = (
-                self.extractor.embed_and_fuse(sample_data.to(device=self.device))
+                self.embedder.embed_and_fuse(sample_data.to(device=self.device))
                 .squeeze(0)
                 .detach()
                 .cpu()
@@ -442,7 +442,7 @@ class GoldDescriptor:
         """Run sequential (single-process) description process.
 
         This method processes the dataset in batches, extracts features using the
-        feature extractor, and stores them in the description table. It is idempotent
+        embedder, and stores them in the description table. It is idempotent
         and will skip samples that have already been described.
 
         Args:
@@ -539,7 +539,7 @@ class GoldDescriptor:
                 batch_data = self.transform(batch_data)
 
             # describe data
-            batch[self.description_key] = self.extractor.embed_and_fuse(
+            batch[self.description_key] = self.embedder.embed_and_fuse(
                 batch_data.to(device=self.device)
             )
 

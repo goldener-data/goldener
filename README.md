@@ -75,7 +75,7 @@ from goldener import (
 
 gd = GoldDescriptor(
     table_path="my_table_for_description",
-    extractor=TorchGoldEmbeddingTool(
+    embedder=TorchGoldEmbeddingTool(
         TorchGoldEmbeddingToolConfig(
             model=my_model,
             layers=my_layers,

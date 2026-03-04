@@ -248,7 +248,7 @@ class TorchGoldEmbeddingTool(GoldEmbeddingTool):
         return self.fusion.fuse_embeddings(embeddings, self._layers)
 
     def __del__(self):
-        """Remove all registered hooks when the extractor is deleted."""
+        """Remove all registered hooks when the embedder is deleted."""
         for handle in self._hooks.values():
             handle.remove()
 
@@ -306,7 +306,7 @@ class MultiModalTorchGoldEmbeddingTool(GoldEmbeddingTool):
     with different models and then fusing their embeddings.
 
     Attributes:
-        extractors: Dictionary mapping modality names to their TorchGoldEmbeddingTool instances.
+        embedders: Dictionary mapping modality names to their TorchGoldEmbeddingTool instances.
         strategy: Strategy for fusing embeddings from different modalities.
     """
 
@@ -321,7 +321,7 @@ class MultiModalTorchGoldEmbeddingTool(GoldEmbeddingTool):
             configs: Dictionary mapping modality names to their TorchGoldEmbeddingToolConfig.
             strategy: Strategy to use for fusing embeddings from different modalities. Defaults to CONCAT.
         """
-        self.extractors = {
+        self.embedders = {
             modality: TorchGoldEmbeddingTool(config)
             for modality, config in configs.items()
         }
@@ -339,7 +339,7 @@ class MultiModalTorchGoldEmbeddingTool(GoldEmbeddingTool):
         return GoldEmbeddingFusionTool.fuse_tensors(
             [
                 tool.embed_and_fuse(x[modality])
-                for modality, tool in self.extractors.items()
+                for modality, tool in self.embedders.items()
             ],
             self.strategy,
         )
@@ -355,7 +355,7 @@ class MultiModalTorchGoldEmbeddingTool(GoldEmbeddingTool):
         """
         per_modality = {
             modality: tool.embed(x[modality])
-            for modality, tool in self.extractors.items()
+            for modality, tool in self.embedders.items()
         }
 
         return {
