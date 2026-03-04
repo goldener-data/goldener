@@ -2,6 +2,7 @@ from logging import getLogger
 from typing import Callable, Any
 
 import torch
+import torch.nn.functional as F
 
 import pixeltable as pxt
 from pixeltable import Error
@@ -63,6 +64,11 @@ class GoldDescriptor:
             only zeros (in case of multi target). Default is False.
         exclude_labels: Optional set of label strings to exclude from vectorization. Default is None.
         description_key: Column name to store the extracted features in the PixelTable table. Default is "features".
+        description_sizes: Optional list of input sizes to resize the data to before feature extraction.
+            When None, no resizing is applied and features are stored under `description_key`.
+            When a list of sizes is provided, features are extracted at each size and stored under
+            columns named `{description_key}_{size}` (e.g., "features_224" or "features_224x448").
+            Each size can be an int (square resize) or a tuple (H, W). Default is None.
         to_keep_schema: Optional dictionary defining additional columns to keep from the original dataset/table
             into the description table. The keys are the column names and the values are the PixelTable types.
         min_pxt_insert_size: Minimum number of rows to accumulate before inserting into PixelTable. Default is 100.
@@ -94,6 +100,7 @@ class GoldDescriptor:
         exclude_full_zero_target: bool = False,
         exclude_labels: set[str] | None = None,
         description_key: str = "features",
+        description_sizes: list[int | tuple[int, int]] | None = None,
         to_keep_schema: dict[str, type] | None = None,
         min_pxt_insert_size: int = 100,
         batch_size: int = 1,
@@ -120,6 +127,9 @@ class GoldDescriptor:
                 only zeros (in case of multi target). Default is False.
             exclude_labels: Optional set of label strings to exclude from vectorization. Default is None.
             description_key: Key for storing extracted features. Defaults to "features".
+            description_sizes: Optional list of input sizes for multi-scale feature extraction.
+                When None, no resizing is applied. When a list, features are extracted at each size
+                and stored in columns named `{description_key}_{size}`. Defaults to None.
             to_keep_schema: Optional schema for additional columns to preserve.
             min_pxt_insert_size: Minimum number of rows to accumulate before inserting into PixelTable. Defaults to 100.
             batch_size: Batch size used when iterating over the data.
@@ -142,6 +152,7 @@ class GoldDescriptor:
         self.exclude_full_zero_target = exclude_full_zero_target
         self.exclude_labels = exclude_labels
         self.description_key = description_key
+        self.description_sizes = description_sizes
         self.to_keep_schema = to_keep_schema
         self.min_pxt_insert_size = min_pxt_insert_size
         self.batch_size = batch_size
@@ -151,9 +162,74 @@ class GoldDescriptor:
         self.drop_table = drop_table
         self.max_batches = max_batches
 
+        if vectorizer is not None and description_sizes is not None and len(description_sizes) > 1:
+            raise ValueError(
+                "Using a vectorizer with multiple description_sizes is not supported. "
+                "A vectorizer produces a variable number of vectors per sample that depends "
+                "on the spatial dimensions, making it impossible to align vectors from "
+                "different sizes in the same table. Use at most one size with a vectorizer."
+            )
+
         if device is None:
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.device = device
+
+    @staticmethod
+    def _size_to_str(size: int | tuple[int, int]) -> str:
+        """Convert a size value to a string for use as a column name suffix.
+
+        Args:
+            size: An integer (square size) or a (H, W) tuple.
+
+        Returns:
+            A string representation: "224" for int, "224x448" for tuple.
+        """
+        if isinstance(size, int):
+            return str(size)
+        return f"{size[0]}x{size[1]}"
+
+    @property
+    def _active_description_keys(self) -> list[tuple[str, int | tuple[int, int] | None]]:
+        """Return the list of (column_name, size) pairs for all active description keys.
+
+        When `description_sizes` is None, returns a single entry with the base
+        `description_key` and size None (no resizing). When `description_sizes` is a
+        list, returns one entry per size with column names suffixed by the size.
+
+        Returns:
+            A list of (column_name, size) pairs.
+        """
+        if self.description_sizes is None:
+            return [(self.description_key, None)]
+        return [
+            (f"{self.description_key}_{self._size_to_str(size)}", size)
+            for size in self.description_sizes
+        ]
+
+    @staticmethod
+    def _resize_input(
+        data: torch.Tensor, size: int | tuple[int, int]
+    ) -> torch.Tensor:
+        """Resize input batch tensor to the given spatial size using bilinear interpolation.
+
+        Handles both batched (N, C, H, W) and unbatched (C, H, W) input tensors.
+
+        Args:
+            data: Input tensor of shape (B, C, H, W) or (C, H, W).
+            size: Target size as an int (square) or (H, W) tuple.
+
+        Returns:
+            Resized tensor with the same number of dimensions as the input.
+        """
+        if isinstance(size, int):
+            size = (size, size)
+        unbatched = data.ndim == 3
+        if unbatched:
+            data = data.unsqueeze(0)
+        result = F.interpolate(
+            data.float(), size=size, mode="bilinear", align_corners=False
+        )
+        return result.squeeze(0) if unbatched else result
 
     def describe_in_dataset(
         self,
@@ -292,7 +368,7 @@ class GoldDescriptor:
     ) -> Table:
         """Create or validate the description table schema from a PixelTable table.
 
-        This private method sets up the table structure and adds the description column
+        This private method sets up the table structure and adds the description column(s)
         with the appropriate array type based on the extractor's output shape.
 
         Args:
@@ -304,8 +380,14 @@ class GoldDescriptor:
         """
         description_table = self._get_description_valid_table(old_description_table)
 
-        if self.description_key not in description_table.columns():
-            logger.info(f"Add the description column in {self.table_path}")
+        active_keys = self._active_description_keys
+        missing_keys = [
+            (key, size)
+            for key, size in active_keys
+            if key not in description_table.columns()
+        ]
+        if missing_keys:
+            logger.info(f"Add the description column(s) in {self.table_path}")
             sample = get_sample_row_from_idx(
                 to_describe,
                 collate_fn=pxt_torch_dataset_collate_fn,
@@ -315,30 +397,34 @@ class GoldDescriptor:
             if self.transform is not None:
                 sample_data = self.transform(sample_data)
 
-            description = (
-                self.extractor.extract_and_fuse(sample_data.to(device=self.device))
-                .squeeze(0)
-                .detach()
-                .cpu()
-                .numpy()
-            )
-            if self.vectorizer is not None:
+            for key, size in missing_keys:
+                resized = (
+                    self._resize_input(sample_data, size) if size is not None else sample_data
+                )
                 description = (
-                    self.vectorizer.vectorize(
-                        torch.from_numpy(description).unsqueeze(0),
-                    )
-                    .vectors[0]
+                    self.extractor.extract_and_fuse(resized.to(device=self.device))
+                    .squeeze(0)
                     .detach()
                     .cpu()
                     .numpy()
                 )
-            description_table.add_column(
-                **{
-                    self.description_key: pxt.Array[  # type: ignore[misc]
-                        description.shape, pxt.Float
-                    ]
-                }
-            )
+                if self.vectorizer is not None:
+                    description = (
+                        self.vectorizer.vectorize(
+                            torch.from_numpy(description).unsqueeze(0),
+                        )
+                        .vectors[0]
+                        .detach()
+                        .cpu()
+                        .numpy()
+                    )
+                description_table.add_column(
+                    **{
+                        key: pxt.Array[  # type: ignore[misc]
+                            description.shape, pxt.Float
+                        ]
+                    }
+                )
 
         return description_table
 
@@ -347,7 +433,7 @@ class GoldDescriptor:
     ) -> Table:
         """Create or validate the description table schema from a PyTorch Dataset.
 
-        This private method sets up the table structure and adds the description column
+        This private method sets up the table structure and adds the description column(s)
         with the appropriate array type based on the extractor's output shape.
 
         Args:
@@ -359,42 +445,52 @@ class GoldDescriptor:
         """
         description_table = self._get_description_valid_table(old_description_table)
 
-        if self.description_key not in description_table.columns():
-            logger.info(f"Add the description column in {self.table_path}")
+        active_keys = self._active_description_keys
+        missing_keys = [
+            (key, size)
+            for key, size in active_keys
+            if key not in description_table.columns()
+        ]
+        if missing_keys:
+            logger.info(f"Add the description column(s) in {self.table_path}")
             sample = get_dataset_sample_dict(
                 to_describe,
                 collate_fn=self.collate_fn,
                 expected=[self.data_key],
-                excluded=[self.description_key],
+                excluded=[key for key, _ in active_keys],
             )
             sample_data = sample[self.data_key]
             if self.transform is not None:
                 sample_data = self.transform(sample_data)
 
-            description = (
-                self.extractor.extract_and_fuse(sample_data.to(device=self.device))
-                .squeeze(0)
-                .detach()
-                .cpu()
-                .numpy()
-            )
-            if self.vectorizer is not None:
+            for key, size in missing_keys:
+                resized = (
+                    self._resize_input(sample_data, size) if size is not None else sample_data
+                )
                 description = (
-                    self.vectorizer.vectorize(
-                        torch.from_numpy(description).unsqueeze(0),
-                    )
-                    .vectors[0]
+                    self.extractor.extract_and_fuse(resized.to(device=self.device))
+                    .squeeze(0)
                     .detach()
                     .cpu()
                     .numpy()
                 )
-            description_table.add_column(
-                **{
-                    self.description_key: pxt.Array[  # type: ignore[misc]
-                        description.shape, pxt.Float
-                    ]
-                }
-            )
+                if self.vectorizer is not None:
+                    description = (
+                        self.vectorizer.vectorize(
+                            torch.from_numpy(description).unsqueeze(0),
+                        )
+                        .vectors[0]
+                        .detach()
+                        .cpu()
+                        .numpy()
+                    )
+                description_table.add_column(
+                    **{
+                        key: pxt.Array[  # type: ignore[misc]
+                            description.shape, pxt.Float
+                        ]
+                    }
+                )
 
         return description_table
 
@@ -459,8 +555,13 @@ class GoldDescriptor:
             description_table.count() > 0
         )  # allow to filter out already described samples
 
+        # Cache the active description keys to avoid repeated computation
+        active_keys = self._active_description_keys
+
+        # Use the first active description key to determine already-described samples
+        first_desc_key = active_keys[0][0]
         description_col = get_expr_from_column_name(
-            description_table, self.description_key
+            description_table, first_desc_key
         )
         already_described = set(
             [
@@ -538,10 +639,14 @@ class GoldDescriptor:
             if self.transform is not None:
                 batch_data = self.transform(batch_data)
 
-            # describe data
-            batch[self.description_key] = self.extractor.extract_and_fuse(
-                batch_data.to(device=self.device)
-            )
+            # describe data at each active size
+            for key, size in active_keys:
+                resized = (
+                    self._resize_input(batch_data, size) if size is not None else batch_data
+                )
+                batch[key] = self.extractor.extract_and_fuse(
+                    resized.to(device=self.device)
+                )
 
             # insert description in the table
             to_keep_keys = (
@@ -550,7 +655,7 @@ class GoldDescriptor:
                 else []
             )
             if self.vectorizer is None:
-                to_insert_keys = [self.description_key] + to_keep_keys
+                to_insert_keys = [key for key, _ in active_keys] + to_keep_keys
 
                 batch_as_list = make_batch_ready_for_table(
                     batch,
@@ -561,8 +666,8 @@ class GoldDescriptor:
                 batch = vectorize_and_unwrap_in_batch(
                     batch=batch,
                     vectorizer=self.vectorizer,
-                    data_key=self.description_key,
-                    vectorized_key=self.description_key,
+                    data_key=first_desc_key,
+                    vectorized_key=first_desc_key,
                     target_key=self.target_key,
                     to_keep=to_keep_keys,
                     starts=start_idx,
@@ -577,7 +682,7 @@ class GoldDescriptor:
 
                 start_idx = max(batch["idx_vector"]) + 1
 
-                to_insert_keys = [self.description_key, "idx"] + to_keep_keys
+                to_insert_keys = [first_desc_key, "idx"] + to_keep_keys
                 batch_as_list = make_batch_ready_for_table(
                     batch,
                     to_insert_keys,
