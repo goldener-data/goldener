@@ -68,15 +68,15 @@ subset of data to annotate. This subset of data can be annotated in order to tra
 from goldener import (
     GoldSelector,
     GoldDescriptor,
-    TorchGoldEmbeddingTool,
-    TorchGoldEmbeddingToolConfig,
+    GoldTorchEmbeddingTool,
+    GoldTorchEmbeddingToolConfig,
     TensorVectorizer,
 )
 
 gd = GoldDescriptor(
     table_path="my_table_for_description",
-    embedder=TorchGoldEmbeddingTool(
-        TorchGoldEmbeddingToolConfig(
+    embedder=GoldTorchEmbeddingTool(
+        GoldTorchEmbeddingToolConfig(
             model=my_model,
             layers=my_layers,
         )
@@ -136,8 +136,8 @@ from goldener import (
     GoldClusterizer,
     GoldSKLearnClusteringTool,
     GoldDescriptor,
-    TorchGoldEmbeddingTool,
-    TorchGoldEmbeddingToolConfig,
+    GoldTorchEmbeddingTool,
+    GoldTorchEmbeddingToolConfig,
     TensorVectorizer,
 )
 from sklearn.cluster import KMeans

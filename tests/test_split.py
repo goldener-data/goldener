@@ -7,7 +7,7 @@ from torch.utils.data import Dataset
 
 from goldener.clusterize import GoldClusterizer, GoldRandomClusteringTool
 from goldener.describe import GoldDescriptor
-from goldener.embed import TorchGoldEmbeddingToolConfig, TorchGoldEmbeddingTool
+from goldener.embed import GoldTorchEmbeddingToolConfig, GoldTorchEmbeddingTool
 from goldener.pxt_utils import pxt_torch_dataset_collate_fn
 from goldener.split import GoldSplitter, GoldSet, check_sets_validity
 from goldener.vectorize import TensorVectorizer, GoldVectorizer
@@ -29,8 +29,8 @@ class DummyModel(torch.nn.Module):
 @pytest.fixture(scope="function")
 def embedder():
     model = DummyModel()
-    config = TorchGoldEmbeddingToolConfig(model=model, layers=None)
-    return TorchGoldEmbeddingTool(config)
+    config = GoldTorchEmbeddingToolConfig(model=model, layers=None)
+    return GoldTorchEmbeddingTool(config)
 
 
 class DummyDataset(Dataset):

@@ -47,8 +47,8 @@ class EmbeddingFusionStrategy(Enum):
 
 
 @dataclass
-class TorchGoldEmbeddingToolConfig:
-    """Configuration for the TorchGoldEmbeddingTool.
+class GoldTorchEmbeddingToolConfig:
+    """Configuration for the GoldTorchEmbeddingTool.
 
     Attributes:
         model: The PyTorch model from which to extract embeddings.
@@ -173,7 +173,7 @@ class GoldEmbeddingFusionTool:
         return self.fuse_tensors(fused_groups, self.group_fusion)
 
 
-class TorchGoldEmbeddingTool(GoldEmbeddingTool):
+class GoldTorchEmbeddingTool(GoldEmbeddingTool):
     """Embedding tool for PyTorch models.
 
     Once initialized, the tool registers forward hooks on the specified layers of the model.
@@ -192,9 +192,9 @@ class TorchGoldEmbeddingTool(GoldEmbeddingTool):
 
     def __init__(
         self,
-        config: TorchGoldEmbeddingToolConfig,
+        config: GoldTorchEmbeddingToolConfig,
     ) -> None:
-        """Initialize the TorchGoldEmbeddingTool.
+        """Initialize the GoldTorchEmbeddingTool.
 
         Args:
             config: Configuration object containing the model, layers, and fusion strategies.
@@ -301,28 +301,28 @@ class TorchGoldEmbeddingTool(GoldEmbeddingTool):
 class MultiModalTorchGoldEmbeddingTool(GoldEmbeddingTool):
     """Embedding tool for multimodal data using PyTorch.
 
-    Each modality has its own TorchGoldEmbeddingTool defined by its own configuration.
+    Each modality has its own GoldTorchEmbeddingTool defined by its own configuration.
     This allows for processing different types of input data (e.g., images, text, audio)
     with different models and then fusing their embeddings.
 
     Attributes:
-        embedders: Dictionary mapping modality names to their TorchGoldEmbeddingTool instances.
+        embedders: Dictionary mapping modality names to their GoldTorchEmbeddingTool instances.
         strategy: Strategy for fusing embeddings from different modalities.
     """
 
     def __init__(
         self,
-        configs: Dict[str, TorchGoldEmbeddingToolConfig],
+        configs: Dict[str, GoldTorchEmbeddingToolConfig],
         strategy: EmbeddingFusionStrategy = EmbeddingFusionStrategy.CONCAT,
     ) -> None:
         """Initialize the multimodal embedding tool.
 
         Args:
-            configs: Dictionary mapping modality names to their TorchGoldEmbeddingToolConfig.
+            configs: Dictionary mapping modality names to their GoldTorchEmbeddingToolConfig.
             strategy: Strategy to use for fusing embeddings from different modalities. Defaults to CONCAT.
         """
         self.embedders = {
-            modality: TorchGoldEmbeddingTool(config)
+            modality: GoldTorchEmbeddingTool(config)
             for modality, config in configs.items()
         }
         self.strategy = strategy
