@@ -11,7 +11,7 @@ import torch
 class GoldEmbeddingTool(ABC):
     """Abstract base class for embedding extraction from models.
 
-    This class defines the interface for embedding tools that can extract and optionally
+    This class defines the interface for embedding tools that can embed and optionally
     fuse embeddings from models. Implementations should provide specific mechanisms for
     extracting embeddings from different types of models (e.g., PyTorch, multimodal).
     """
