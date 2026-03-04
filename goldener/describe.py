@@ -64,7 +64,7 @@ class GoldDescriptor:
         exclude_labels: Optional set of label strings to exclude from vectorization. Default is None.
         description_key: Column name to store the extracted features in the PixelTable table. Default is "features".
         force_fix_description: When True (default), the shape and dtype of the description are fixed in the
-            column schema. When False, the spatial dimensions of the description
+            column schema. When False, the spatial dimensions and type of the description
             can be different between rows.
         to_keep_schema: Optional dictionary defining additional columns to keep from the original dataset/table
             into the description table. The keys are the column names and the values are the PixelTable types.
@@ -125,7 +125,7 @@ class GoldDescriptor:
             exclude_labels: Optional set of label strings to exclude from vectorization. Default is None.
             description_key: Key for storing extracted features. Defaults to "features".
             force_fix_description: When True (default), the shape and dtype of the description are fixed in
-                the column schema. When False, the spatial dimensions can differ between rows. Defaults to True.
+                the column schema. When False, the spatial dimensions and type can differ between rows. Defaults to True.
             to_keep_schema: Optional schema for additional columns to preserve.
             min_pxt_insert_size: Minimum number of rows to accumulate before inserting into PixelTable. Defaults to 100.
             batch_size: Batch size used when iterating over the data.
@@ -463,9 +463,8 @@ class GoldDescriptor:
             description_table.count() > 0
         )  # allow to filter out already described samples
 
-        desc_key = self.description_key
         description_col = get_expr_from_column_name(
-            description_table, desc_key
+            description_table, self.description_key
         )
         already_described = set(
             [
@@ -544,7 +543,7 @@ class GoldDescriptor:
                 batch_data = self.transform(batch_data)
 
             # describe data
-            batch[desc_key] = self.extractor.extract_and_fuse(
+            batch[self.description_key] = self.extractor.extract_and_fuse(
                 batch_data.to(device=self.device)
             )
 
@@ -555,7 +554,7 @@ class GoldDescriptor:
                 else []
             )
             if self.vectorizer is None:
-                to_insert_keys = [desc_key] + to_keep_keys
+                to_insert_keys = [self.description_key] + to_keep_keys
 
                 batch_as_list = make_batch_ready_for_table(
                     batch,
@@ -566,8 +565,8 @@ class GoldDescriptor:
                 batch = vectorize_and_unwrap_in_batch(
                     batch=batch,
                     vectorizer=self.vectorizer,
-                    data_key=desc_key,
-                    vectorized_key=desc_key,
+                    data_key=self.description_key,
+                    vectorized_key=self.description_key,
                     target_key=self.target_key,
                     to_keep=to_keep_keys,
                     starts=start_idx,
@@ -582,7 +581,7 @@ class GoldDescriptor:
 
                 start_idx = max(batch["idx_vector"]) + 1
 
-                to_insert_keys = [desc_key, "idx"] + to_keep_keys
+                to_insert_keys = [self.description_key, "idx"] + to_keep_keys
                 batch_as_list = make_batch_ready_for_table(
                     batch,
                     to_insert_keys,

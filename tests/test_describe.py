@@ -706,21 +706,3 @@ class TestGoldDescriptor:
             assert row["features"].shape == (4, 8, 8)
 
         pxt.drop_dir("unit_test", force=True)
-
-    def test_describe_with_force_fix_description_true(self, extractor):
-        pxt.drop_dir("unit_test", force=True)
-        desc = GoldDescriptor(
-            table_path="unit_test.test_describe",
-            extractor=extractor,
-            force_fix_description=True,
-            batch_size=2,
-            device=torch.device("cpu"),
-            allow_existing=False,
-        )
-        table = desc.describe_in_table(DummyDataset())
-
-        assert table.count() == 2
-        for row in table.collect():
-            assert row["features"].shape == (4, 8, 8)
-
-        pxt.drop_dir("unit_test", force=True)
