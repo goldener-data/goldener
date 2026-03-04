@@ -764,7 +764,7 @@ wheels = [
 
 [[package]]
 name = "goldener"
-version = "4.4.1"
+version = "5.0.0"
 source = { virtual = "." }
 dependencies = [
     { name = "coreax" },
