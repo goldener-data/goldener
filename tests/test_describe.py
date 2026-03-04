@@ -412,9 +412,7 @@ class TestGoldDescriptor:
 
         pxt.drop_dir("unit_test", force=True)
 
-    def test_describe_in_dataset_from_table_with_vectorizer(
-        self, embedder, vectorizer
-    ):
+    def test_describe_in_dataset_from_table_with_vectorizer(self, embedder, vectorizer):
         pxt.drop_dir("unit_test", force=True)
 
         src_path = "unit_test.src_table_input"
