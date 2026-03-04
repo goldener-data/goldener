@@ -74,7 +74,7 @@ class GoldSelectionTool(ABC):
         """
 
 
-class GoldGreedyKernelPointsTool(GoldSelectionTool):
+class GoldGreedyKernelPointsSelectionTool(GoldSelectionTool):
     """Coresubset selection using Coreax's GreedyKernelPoints solver.
 
     The solver is created at each request depending on the specified k points to select.
@@ -352,7 +352,7 @@ class GoldSelector:
     def __init__(
         self,
         table_path: str,
-        selection_tool: GoldSelectionTool = GoldGreedyKernelPointsTool(
+        selection_tool: GoldSelectionTool = GoldGreedyKernelPointsSelectionTool(
             feature_kernel=LinearKernel(output_scale=1, constant=0)
         ),
         reducer: GoldReductionTool | None = None,

@@ -28,7 +28,7 @@ from goldener.select import (
     GoldGreedyClosestPointSelectionTool,
     GoldGreedyFarthestPointSelectionTool,
     GoldGreedyKCenterSelectionTool,
-    GoldGreedyKernelPointsTool,
+    GoldGreedyKernelPointsSelectionTool,
 )
 from goldener.split import GoldSet, GoldSplitter
 from goldener.torch_utils import ResetableTorchIterableDataset
@@ -62,7 +62,7 @@ __all__ = (
     "GoldGreedyClosestPointSelectionTool",
     "GoldGreedyFarthestPointSelectionTool",
     "GoldGreedyKCenterSelectionTool",
-    "GoldGreedyKernelPointsTool",
+    "GoldGreedyKernelPointsSelectionTool",
     "GoldSet",
     "GoldSplitter",
     "ResetableTorchIterableDataset",
