@@ -12,7 +12,7 @@ from goldener.vectorize import (
 )
 
 
-class TestTensorsVectorizer:
+class TestTensorVectorizer:
     def make_tensor(self, shape=(2, 5, 2)):
         return torch.randint(0, 100, shape)
 

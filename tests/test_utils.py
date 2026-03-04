@@ -122,7 +122,7 @@ class TestGetSizeAndSamplingCountPerChunk:
         assert samplings == [0, 0, 2]
 
 
-class TestCheckSamplingSizes:
+class TestCheckSamplingSize:
     def test_valid_integer_sampling(self):
         total_size = 10
         check_sampling_size(5, total_size)

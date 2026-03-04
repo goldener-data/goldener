@@ -39,9 +39,9 @@ shapes_2d_3d_4d = [
 ]
 
 
-class TestEmbeddingFusion:
+class TestGoldEmbeddingFusionTool:
     @pytest.mark.parametrize("shape", shapes_2d_3d_4d)
-    def test_concat(self, shape):
+    def test_fuse_tensors_concat(self, shape):
         t1 = make_tensor(shape)
         t2 = make_tensor(shape)
         fused = GoldEmbeddingFusionTool.fuse_tensors(
@@ -51,7 +51,7 @@ class TestEmbeddingFusion:
         assert fused.shape[:2] == (shape[0], shape[1] * 2)[:2]
 
     @pytest.mark.parametrize("shape", shapes_2d_3d_4d)
-    def test_add(self, shape):
+    def test_fuse_tensors_add(self, shape):
         t1 = make_tensor(shape, 1.0)
         t2 = make_tensor(shape, 1.0)
         fused = GoldEmbeddingFusionTool.fuse_tensors(
@@ -60,7 +60,7 @@ class TestEmbeddingFusion:
         assert torch.allclose(fused, torch.full_like(fused, 2.0))
 
     @pytest.mark.parametrize("shape", shapes_2d_3d_4d)
-    def test_average(self, shape):
+    def test_fuse_tensors_average(self, shape):
         t1 = make_tensor(shape, 1.0)
         t2 = make_tensor(shape, 3.0)
         fused = GoldEmbeddingFusionTool.fuse_tensors(
@@ -69,7 +69,7 @@ class TestEmbeddingFusion:
         assert torch.allclose(fused, torch.full_like(fused, 2.0))
 
     @pytest.mark.parametrize("shape", shapes_2d_3d_4d)
-    def test_with_different_shapes(self, shape):
+    def test_fuse_tensors_with_different_shapes(self, shape):
         # Only test for 3D and 4D shapes (spatial dims)
         if len(shape) < 3:
             return
@@ -113,7 +113,7 @@ class TestEmbeddingFusion:
             assert fused.shape[2:] == shape[2:]
 
 
-class TestTorchEmbeddingTool:
+class TestTorchGoldEmbeddingTool:
     def test_embed(self):
         model = DummyModel()
         layers = ["conv1", "conv2"]
@@ -146,7 +146,7 @@ class TestTorchEmbeddingTool:
             TorchGoldEmbeddingTool(config)
 
 
-class TestMultiModalTorchEmbeddingTool:
+class TestMultiModalTorchGoldEmbeddingTool:
     def test_embed(self):
         model1 = DummyModel()
         model2 = DummyModel()

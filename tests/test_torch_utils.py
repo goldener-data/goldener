@@ -11,7 +11,7 @@ from goldener.torch_utils import (
 )
 
 
-class TestTensorToNumpyVectors:
+class TestTorchTensorToNumpyVectors:
     def test_torch_tensor_to_numpy_vectors_0d(self):
         t = torch.tensor(3)
         arr = torch_tensor_to_numpy_vectors(t)
@@ -39,7 +39,7 @@ class TestTensorToNumpyVectors:
         )
 
 
-class TestNumpyVectorToTensor:
+class TestNumpyVectorsToTorchTensor:
     def test_numpy_vectors_to_torch_tensor_0d(self):
         arr = np.array(3)
         shape = (1, 1)
@@ -92,7 +92,7 @@ class TestNumpyVectorToTensor:
             numpy_vectors_to_torch_tensor(arr, (3,), torch.float32, torch.device("cpu"))
 
 
-class TestNpTranformFromTorch:
+class TestNpTransformFromTorch:
     def test_np_transform_from_torch(self):
         def dummy_transform(x: np.ndarray) -> np.ndarray:
             return x + 1
