@@ -3,8 +3,8 @@ import pytest
 import torch
 
 from goldener.extract import (
-    GoldFeatureFusion,
-    FeatureFusionStrategy,
+    GoldEmbeddingFusionTool,
+    EmbeddingFusionStrategy,
     TorchGoldEmbeddingTool,
     TorchGoldEmbeddingToolConfig,
     MultiModalTorchGoldEmbeddingTool,
@@ -44,7 +44,7 @@ class TestFeatureFusion:
     def test_concat(self, shape):
         t1 = make_tensor(shape)
         t2 = make_tensor(shape)
-        fused = GoldFeatureFusion.fuse_tensors([t1, t2], FeatureFusionStrategy.CONCAT)
+        fused = GoldEmbeddingFusionTool.fuse_tensors([t1, t2], EmbeddingFusionStrategy.CONCAT)
         assert fused.shape[1] == shape[1] * 2
         assert fused.shape[:2] == (shape[0], shape[1] * 2)[:2]
 
@@ -52,14 +52,14 @@ class TestFeatureFusion:
     def test_add(self, shape):
         t1 = make_tensor(shape, 1.0)
         t2 = make_tensor(shape, 1.0)
-        fused = GoldFeatureFusion.fuse_tensors([t1, t2], FeatureFusionStrategy.ADD)
+        fused = GoldEmbeddingFusionTool.fuse_tensors([t1, t2], EmbeddingFusionStrategy.ADD)
         assert torch.allclose(fused, torch.full_like(fused, 2.0))
 
     @pytest.mark.parametrize("shape", shapes_2d_3d_4d)
     def test_average(self, shape):
         t1 = make_tensor(shape, 1.0)
         t2 = make_tensor(shape, 3.0)
-        fused = GoldFeatureFusion.fuse_tensors([t1, t2], FeatureFusionStrategy.AVERAGE)
+        fused = GoldEmbeddingFusionTool.fuse_tensors([t1, t2], EmbeddingFusionStrategy.AVERAGE)
         assert torch.allclose(fused, torch.full_like(fused, 2.0))
 
     @pytest.mark.parametrize("shape", shapes_2d_3d_4d)
@@ -70,7 +70,7 @@ class TestFeatureFusion:
         t1 = make_tensor(shape)
         smaller_shape = (shape[0], shape[1]) + tuple(max(1, s // 2) for s in shape[2:])
         t2 = make_tensor(smaller_shape)
-        fused = GoldFeatureFusion.fuse_tensors([t1, t2], FeatureFusionStrategy.ADD)
+        fused = GoldEmbeddingFusionTool.fuse_tensors([t1, t2], EmbeddingFusionStrategy.ADD)
         assert fused.shape == shape
 
     @pytest.mark.parametrize("shape", shapes_2d_3d_4d)
@@ -78,9 +78,9 @@ class TestFeatureFusion:
         t1 = make_tensor(shape)
         t2 = make_tensor(shape)
         features = {"mod1": t1, "mod2": t2}
-        fusion = GoldFeatureFusion(
-            layer_fusion=FeatureFusionStrategy.ADD,
-            group_fusion=FeatureFusionStrategy.ADD,
+        fusion = GoldEmbeddingFusionTool(
+            layer_fusion=EmbeddingFusionStrategy.ADD,
+            group_fusion=EmbeddingFusionStrategy.ADD,
         )
         fused = fusion.fuse_features(features, ["mod1", "mod2"])
         assert fused.shape == shape
@@ -91,9 +91,9 @@ class TestFeatureFusion:
         t2 = make_tensor(shape)
         t3 = make_tensor(shape)
         features = {"layer1": t1, "layer2": t2, "layer3": t3}
-        fusion = GoldFeatureFusion(
-            layer_fusion=FeatureFusionStrategy.ADD,
-            group_fusion=FeatureFusionStrategy.CONCAT,
+        fusion = GoldEmbeddingFusionTool(
+            layer_fusion=EmbeddingFusionStrategy.ADD,
+            group_fusion=EmbeddingFusionStrategy.CONCAT,
         )
         fused = fusion.fuse_features(
             features, {"m1": ["layer1", "layer2"], "m2": ["layer3"]}
@@ -123,7 +123,7 @@ class TestTorchFeatureExtractor:
         config = TorchGoldEmbeddingToolConfig(
             model=model,
             layers=layers,
-            layer_fusion=FeatureFusionStrategy.CONCAT,
+            layer_fusion=EmbeddingFusionStrategy.CONCAT,
         )
         extractor = TorchGoldEmbeddingTool(config)
         data = torch.randn(2, 3, 8, 8)
@@ -163,7 +163,7 @@ class TestMultiModalTorchFeatureExtractor:
         config2 = TorchGoldEmbeddingToolConfig(model=model2, layers=["conv2"])
         extractor = MultiModalTorchGoldEmbeddingTool(
             {"img": config1, "aux": config2},
-            strategy=FeatureFusionStrategy.CONCAT,
+            strategy=EmbeddingFusionStrategy.CONCAT,
         )
         data = {
             "img": torch.randn(2, 3, 8, 8),

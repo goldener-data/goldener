@@ -31,7 +31,7 @@ class GoldEmbeddingTool:
         """
 
 
-class FeatureFusionStrategy(Enum):
+class EmbeddingFusionStrategy(Enum):
     """Strategies to fuse features from multiple layers.
 
     CONCAT: Concatenate features along the channel dimension.
@@ -61,11 +61,11 @@ class TorchGoldEmbeddingToolConfig:
 
     model: torch.nn.Module
     layers: list[str] | dict[str, list[str]] | None = None
-    layer_fusion: FeatureFusionStrategy = FeatureFusionStrategy.CONCAT
-    group_fusion: FeatureFusionStrategy = FeatureFusionStrategy.CONCAT
+    layer_fusion: EmbeddingFusionStrategy = EmbeddingFusionStrategy.CONCAT
+    group_fusion: EmbeddingFusionStrategy = EmbeddingFusionStrategy.CONCAT
 
 
-class GoldFeatureFusion:
+class GoldEmbeddingFusionTool:
     """Feature fusion from multiple layers and groups.
 
     Attributes:
@@ -75,10 +75,10 @@ class GoldFeatureFusion:
 
     def __init__(
         self,
-        layer_fusion: FeatureFusionStrategy = FeatureFusionStrategy.CONCAT,
-        group_fusion: FeatureFusionStrategy = FeatureFusionStrategy.CONCAT,
+        layer_fusion: EmbeddingFusionStrategy = EmbeddingFusionStrategy.CONCAT,
+        group_fusion: EmbeddingFusionStrategy = EmbeddingFusionStrategy.CONCAT,
     ) -> None:
-        """Initialize the GoldFeatureFusion.
+        """Initialize the GoldEmbeddingFusionTool.
 
         Args:
             layer_fusion: Strategy to fuse features from multiple layers within the same group.
@@ -91,7 +91,7 @@ class GoldFeatureFusion:
     @staticmethod
     def fuse_tensors(
         tensors: List[torch.Tensor],
-        strategy: FeatureFusionStrategy,
+        strategy: EmbeddingFusionStrategy,
     ) -> torch.Tensor:
         """Fuse a list of tensors.
 
@@ -131,13 +131,13 @@ class GoldFeatureFusion:
                 for feature in tensors
             ]
 
-        if strategy is FeatureFusionStrategy.CONCAT:
+        if strategy is EmbeddingFusionStrategy.CONCAT:
             return torch.cat(tensors, dim=1)
-        elif strategy is FeatureFusionStrategy.ADD:
+        elif strategy is EmbeddingFusionStrategy.ADD:
             return torch.stack(tensors, dim=0).sum(dim=0)
-        elif strategy is FeatureFusionStrategy.AVERAGE:
+        elif strategy is EmbeddingFusionStrategy.AVERAGE:
             return torch.stack(tensors, dim=0).mean(dim=0)
-        elif strategy is FeatureFusionStrategy.MAX:
+        elif strategy is EmbeddingFusionStrategy.MAX:
             return torch.stack(tensors, dim=0).max(dim=0).values
         else:
             assert_never(strategy)
@@ -201,7 +201,7 @@ class TorchGoldEmbeddingTool(GoldEmbeddingTool):
             config: Configuration object containing the model, layers, and fusion strategies.
         """
         self._model = config.model
-        self.fusion = GoldFeatureFusion(
+        self.fusion = GoldEmbeddingFusionTool(
             layer_fusion=config.layer_fusion,
             group_fusion=config.group_fusion,
         )
@@ -314,7 +314,7 @@ class MultiModalTorchGoldEmbeddingTool(GoldEmbeddingTool):
     def __init__(
         self,
         configs: Dict[str, TorchGoldEmbeddingToolConfig],
-        strategy: FeatureFusionStrategy = FeatureFusionStrategy.CONCAT,
+        strategy: EmbeddingFusionStrategy = EmbeddingFusionStrategy.CONCAT,
     ) -> None:
         """Initialize the multimodal feature extractor.
 
@@ -337,7 +337,7 @@ class MultiModalTorchGoldEmbeddingTool(GoldEmbeddingTool):
         Returns:
             Fused feature tensor combining all modalities.
         """
-        return GoldFeatureFusion.fuse_tensors(
+        return GoldEmbeddingFusionTool.fuse_tensors(
             [
                 extractor.extract_and_fuse(x[modality])
                 for modality, extractor in self.extractors.items()

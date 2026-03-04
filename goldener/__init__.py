@@ -8,8 +8,8 @@ from goldener.describe import (
     GoldDescriptor,
 )
 from goldener.extract import (
-    FeatureFusionStrategy,
-    GoldFeatureFusion,
+    EmbeddingFusionStrategy,
+    GoldEmbeddingFusionTool,
     GoldEmbeddingTool,
     TorchGoldEmbeddingTool,
     TorchGoldEmbeddingToolConfig,
@@ -46,8 +46,8 @@ __all__ = (
     "GoldRandomClusteringTool",
     "GoldClusterizer",
     "GoldDescriptor",
-    "FeatureFusionStrategy",
-    "GoldFeatureFusion",
+    "EmbeddingFusionStrategy",
+    "GoldEmbeddingFusionTool",
     "GoldEmbeddingTool",
     "TorchGoldEmbeddingTool",
     "TorchGoldEmbeddingToolConfig",
