@@ -66,7 +66,7 @@ class TestGoldDescriptor:
         assert table.count() == 2
         for i, row in enumerate(table.collect()):
             assert row["idx"] == i
-            assert row["features"].shape == (4, 8, 8)
+            assert row["embeddings"].shape == (4, 8, 8)
             assert row["label"] == "dummy"
 
         pxt.drop_dir("unit_test", force=True)
@@ -93,7 +93,7 @@ class TestGoldDescriptor:
         assert table.count() == 10
         for i, row in enumerate(table.collect()):
             assert row["idx"] == i
-            assert row["features"].shape == (4, 8, 8)
+            assert row["embeddings"].shape == (4, 8, 8)
 
         pxt.drop_dir("unit_test", force=True)
 
@@ -153,12 +153,12 @@ class TestGoldDescriptor:
         assert table.count() == 2
         for i, row in enumerate(table.collect()):
             assert row["idx"] == i
-            assert row["features"].shape == (4, 8, 8)
+            assert row["embeddings"].shape == (4, 8, 8)
 
         desc_table = pxt.get_table(desc.table_path)
         column_schema = desc_table.get_metadata()["columns"]
         for col_name, col_dict in column_schema.items():
-            if col_name == "features":
+            if col_name == "embeddings":
                 assert col_dict["type_"] == "Array[(4, 8, 8), float32]"
             elif col_name == "idx":
                 assert col_dict["type_"] == "Required[Int]"
@@ -218,7 +218,7 @@ class TestGoldDescriptor:
 
         for i, row in enumerate(description_table.collect()):
             assert row["idx"] == i
-            assert row["features"].shape == (4, 8, 8)
+            assert row["embeddings"].shape == (4, 8, 8)
             assert row["label"] == "dummy"
 
         pxt.drop_dir("unit_test", force=True)
@@ -247,7 +247,7 @@ class TestGoldDescriptor:
         assert description_table.count() == 10
         for i, row in enumerate(description_table.collect()):
             assert row["idx"] == i
-            assert row["features"].shape == (4, 8, 8)
+            assert row["embeddings"].shape == (4, 8, 8)
 
         pxt.drop_dir("unit_test", force=True)
 
@@ -290,7 +290,7 @@ class TestGoldDescriptor:
 
         for i, sample in enumerate(iter(dataset)):
             assert sample["idx"] == i
-            assert sample["features"].shape == (4, 8, 8)
+            assert sample["embeddings"].shape == (4, 8, 8)
 
         dataset.keep_cache = False
 
@@ -325,7 +325,7 @@ class TestGoldDescriptor:
 
         for i, sample in enumerate(iter(dataset)):
             assert sample["idx"] == i
-            assert sample["features"].shape == (4, 8, 8)
+            assert sample["embeddings"].shape == (4, 8, 8)
 
         dataset.keep_cache = False
 
@@ -351,7 +351,7 @@ class TestGoldDescriptor:
         assert table.count() == 128
         for i, row in enumerate(table.collect()):
             assert row["idx_vector"] == i
-            assert row["features"].shape == (4,)
+            assert row["embeddings"].shape == (4,)
             assert row["label"] == "dummy"
 
         pxt.drop_dir("unit_test", force=True)
@@ -383,7 +383,7 @@ class TestGoldDescriptor:
         assert table.count() == 128
         for i, row in enumerate(table.collect()):
             assert row["idx_vector"] == i
-            assert row["features"].shape == (4,)
+            assert row["embeddings"].shape == (4,)
             assert row["label"] == "dummy"
 
         pxt.drop_dir("unit_test", force=True)
@@ -405,7 +405,7 @@ class TestGoldDescriptor:
         assert table.count() == 128
         for i, row in enumerate(table.collect()):
             assert row["idx_vector"] == i
-            assert row["features"].shape == (4,)
+            assert row["embeddings"].shape == (4,)
             assert row["label"] == "dummy"
 
         assert set([row["idx"] for row in table.collect()]) == {0, 1}
@@ -444,7 +444,7 @@ class TestGoldDescriptor:
 
         for i, sample in enumerate(iter(dataset)):
             assert sample["idx_vector"] == i
-            assert sample["features"].shape == (4,)
+            assert sample["embeddings"].shape == (4,)
 
         dataset.keep_cache = False
 
@@ -492,7 +492,7 @@ class TestGoldDescriptor:
 
         for i, sample in enumerate(iter(dataset)):
             assert sample["idx_vector"] == i
-            assert sample["features"].shape == (4,)
+            assert sample["embeddings"].shape == (4,)
 
         dataset.keep_cache = False
 
@@ -600,7 +600,7 @@ class TestGoldDescriptor:
         assert description.count() == 128
         for row in description.collect():
             assert row["idx"] in (0, 1)
-            assert row["features"].shape == (4,)
+            assert row["embeddings"].shape == (4,)
 
         pxt.drop_dir("unit_test", force=True)
 
@@ -656,7 +656,7 @@ class TestGoldDescriptor:
         assert description.count() == 2
         for row in description.collect():
             assert row["idx"] in (0, 1)
-            assert row["features"].shape == (4,)
+            assert row["embeddings"].shape == (4,)
 
         pxt.drop_dir("unit_test", force=True)
 
@@ -685,6 +685,6 @@ class TestGoldDescriptor:
         assert description_table.count() == 10 * 8 * 8
         for i, row in enumerate(description_table.collect()):
             assert row["idx_vector"] == i
-            assert row["features"].shape == (4,)
+            assert row["embeddings"].shape == (4,)
 
         pxt.drop_dir("unit_test", force=True)

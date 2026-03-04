@@ -656,7 +656,7 @@ class TestGoldSplitter:
         split_table = basic_splitter.split_in_table(
             to_split=DummyDataset(
                 [
-                    {"features": torch.rand(4, 8, 8), "idx": idx, "label": "dummy"}
+                    {"embeddings": torch.rand(4, 8, 8), "idx": idx, "label": "dummy"}
                     for idx in range(10)
                 ]
             )
