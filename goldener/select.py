@@ -854,7 +854,7 @@ class GoldSelector:
                 and self.label_key in batch
             ):
                 batch = filter_batch_from_labels(
-                    batch, self.label_key, self.exclude_labels
+                    batch, self.label_key, self.exclude_labels, index_key="idx_vector"
                 )
 
                 if len(batch) == 0:
