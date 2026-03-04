@@ -316,7 +316,7 @@ class GoldDescriptor:
                 sample_data = self.transform(sample_data)
 
             description = (
-                self.extractor.extract_and_fuse(sample_data.to(device=self.device))
+                self.extractor.embed_and_fuse(sample_data.to(device=self.device))
                 .squeeze(0)
                 .detach()
                 .cpu()
@@ -372,7 +372,7 @@ class GoldDescriptor:
                 sample_data = self.transform(sample_data)
 
             description = (
-                self.extractor.extract_and_fuse(sample_data.to(device=self.device))
+                self.extractor.embed_and_fuse(sample_data.to(device=self.device))
                 .squeeze(0)
                 .detach()
                 .cpu()
@@ -539,7 +539,7 @@ class GoldDescriptor:
                 batch_data = self.transform(batch_data)
 
             # describe data
-            batch[self.description_key] = self.extractor.extract_and_fuse(
+            batch[self.description_key] = self.extractor.embed_and_fuse(
                 batch_data.to(device=self.device)
             )
 

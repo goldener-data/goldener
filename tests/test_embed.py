@@ -114,18 +114,18 @@ class TestEmbeddingFusion:
 
 
 class TestTorchEmbeddingTool:
-    def test_extract(self):
+    def test_embed(self):
         model = DummyModel()
         layers = ["conv1", "conv2"]
         config = TorchGoldEmbeddingToolConfig(model=model, layers=layers)
-        extractor = TorchGoldEmbeddingTool(config)
+        tool = TorchGoldEmbeddingTool(config)
         data = torch.randn(2, 3, 8, 8)
-        embeddings = extractor.extract(data)
+        embeddings = tool.embed(data)
         assert len(embeddings) == len(layers)
         assert embeddings["conv1"].shape == (2, 4, 8, 8)
         assert embeddings["conv2"].shape == (2, 8, 8, 8)
 
-    def test_extract_and_fuse(self):
+    def test_embed_and_fuse(self):
         model = DummyModel()
         layers = ["conv1", "conv2"]
         config = TorchGoldEmbeddingToolConfig(
@@ -133,9 +133,9 @@ class TestTorchEmbeddingTool:
             layers=layers,
             layer_fusion=EmbeddingFusionStrategy.CONCAT,
         )
-        extractor = TorchGoldEmbeddingTool(config)
+        tool = TorchGoldEmbeddingTool(config)
         data = torch.randn(2, 3, 8, 8)
-        fused = extractor.extract_and_fuse(data)
+        fused = tool.embed_and_fuse(data)
         # Should add embeddings from conv1 and conv2
         assert fused.shape == (2, 12, 8, 8)
 
@@ -147,27 +147,27 @@ class TestTorchEmbeddingTool:
 
 
 class TestMultiModalTorchEmbeddingTool:
-    def test_extract(self):
+    def test_embed(self):
         model1 = DummyModel()
         model2 = DummyModel()
         config1 = TorchGoldEmbeddingToolConfig(model=model1, layers=["conv1"])
         config2 = TorchGoldEmbeddingToolConfig(model=model2, layers=["conv2"])
-        extractor = MultiModalTorchGoldEmbeddingTool({"img": config1, "aux": config2})
+        tool = MultiModalTorchGoldEmbeddingTool({"img": config1, "aux": config2})
         data = {
             "img": torch.randn(2, 3, 8, 8),
             "aux": torch.randn(2, 3, 8, 8),
         }
-        embeddings = extractor.extract(data)
+        embeddings = tool.embed(data)
         assert len(embeddings) == 2
         assert embeddings["img.conv1"].shape == (2, 4, 8, 8)
         assert embeddings["aux.conv2"].shape == (2, 8, 8, 8)
 
-    def test_extract_and_fuse(self):
+    def test_embed_and_fuse(self):
         model1 = DummyModel()
         model2 = DummyModel()
         config1 = TorchGoldEmbeddingToolConfig(model=model1, layers=["conv1"])
         config2 = TorchGoldEmbeddingToolConfig(model=model2, layers=["conv2"])
-        extractor = MultiModalTorchGoldEmbeddingTool(
+        tool = MultiModalTorchGoldEmbeddingTool(
             {"img": config1, "aux": config2},
             strategy=EmbeddingFusionStrategy.CONCAT,
         )
@@ -175,7 +175,7 @@ class TestMultiModalTorchEmbeddingTool:
             "img": torch.randn(2, 3, 8, 8),
             "aux": torch.randn(2, 3, 8, 8),
         }
-        fused = extractor.extract_and_fuse(data)
+        fused = tool.embed_and_fuse(data)
         # Should concatenate embeddings from both modalities
         assert fused.shape[0] == 2
         assert fused.shape[2:] == (8, 8)

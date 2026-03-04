@@ -17,15 +17,15 @@ class GoldEmbeddingTool(ABC):
     """
 
     @abstractmethod
-    def extract(self, *args: Any, **kwargs: Any) -> dict[str, torch.Tensor]:
-        """Extract embeddings from the model for the given input data.
+    def embed(self, *args: Any, **kwargs: Any) -> dict[str, torch.Tensor]:
+        """Embed the input data using the model.
 
-        Returns: Dictionary mapping layer names to their extracted embedding tensors.
+        Returns: Dictionary mapping layer names to their embedding tensors.
         """
 
     @abstractmethod
-    def extract_and_fuse(self, *args: Any, **kwargs: Any) -> torch.Tensor:
-        """Extract and fuse embeddings from the model for the given input data.
+    def embed_and_fuse(self, *args: Any, **kwargs: Any) -> torch.Tensor:
+        """Embed and fuse the input data using the model.
 
         Returns: Fused embedding tensor.
         """
@@ -224,27 +224,27 @@ class TorchGoldEmbeddingTool(GoldEmbeddingTool):
         """
         return self._layers
 
-    def extract(self, x: torch.Tensor) -> dict[str, torch.Tensor]:
-        """Extract embeddings from the model for the given input data.
+    def embed(self, x: torch.Tensor) -> dict[str, torch.Tensor]:
+        """Embed the input data using the model.
 
         Args:
             x: Input data tensor to be processed by the model.
 
-        Returns: Dictionary mapping layer names to their extracted embedding tensors.
+        Returns: Dictionary mapping layer names to their embedding tensors.
         """
         self._embeddings = {}
         self._model(x)
         return self._embeddings
 
-    def extract_and_fuse(self, x: torch.Tensor) -> torch.Tensor:
-        """Extract and fuse embeddings from the model for the given input data.
+    def embed_and_fuse(self, x: torch.Tensor) -> torch.Tensor:
+        """Embed and fuse the input data using the model.
 
         Args:
             x: Input data tensor to be processed by the model.
 
         Returns: Fused embedding tensor.
         """
-        embeddings = self.extract(x)
+        embeddings = self.embed(x)
         return self.fusion.fuse_embeddings(embeddings, self._layers)
 
     def __del__(self):
@@ -327,8 +327,8 @@ class MultiModalTorchGoldEmbeddingTool(GoldEmbeddingTool):
         }
         self.strategy = strategy
 
-    def extract_and_fuse(self, x: Dict[str, torch.Tensor]) -> torch.Tensor:
-        """Extract and fuse embeddings from multimodal input data.
+    def embed_and_fuse(self, x: Dict[str, torch.Tensor]) -> torch.Tensor:
+        """Embed and fuse multimodal input data.
 
         Args:
             x: Dictionary mapping modality names to their input tensors.
@@ -338,24 +338,24 @@ class MultiModalTorchGoldEmbeddingTool(GoldEmbeddingTool):
         """
         return GoldEmbeddingFusionTool.fuse_tensors(
             [
-                extractor.extract_and_fuse(x[modality])
-                for modality, extractor in self.extractors.items()
+                tool.embed_and_fuse(x[modality])
+                for modality, tool in self.extractors.items()
             ],
             self.strategy,
         )
 
-    def extract(self, x: Dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
-        """Extract embeddings from multimodal input data without fusing.
+    def embed(self, x: Dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
+        """Embed multimodal input data without fusing.
 
         Args:
             x: Dictionary mapping modality names to their input tensors.
 
         Returns:
-            Dictionary mapping "{modality}.{layer}" to their extracted embedding tensors.
+            Dictionary mapping "{modality}.{layer}" to their embedding tensors.
         """
         per_modality = {
-            modality: extractor.extract(x[modality])
-            for modality, extractor in self.extractors.items()
+            modality: tool.embed(x[modality])
+            for modality, tool in self.extractors.items()
         }
 
         return {
