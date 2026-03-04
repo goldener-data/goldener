@@ -370,6 +370,53 @@ class TestGoldSelector:
 
         pxt.drop_dir("unit_test", force=True)
 
+    def test_select_in_table_from_dataset_with_excluded_labels(self):
+        pxt.drop_dir("unit_test", force=True)
+
+        table_path = "unit_test.test_select_from_dataset"
+
+        dataset = DummyDataset(
+            [
+                {
+                    "vectorized": torch.rand(5),
+                    "idx": idx,
+                    "label": "excluded" if idx < 50 else "kept",
+                    "idx_vector": idx,
+                }
+                for idx in range(100)
+            ]
+        )
+
+        selector = GoldSelector(
+            table_path=table_path,
+            allow_existing=True,
+            label_key="label",
+            exclude_labels={"excluded"},
+            batch_size=10,
+        )
+
+        selection_table = selector.select_in_table(
+            dataset,
+            select_size=10,
+            value="train",
+        )
+
+        assert selection_table.count() == 50
+        for row in selection_table.collect():
+            assert row["label"] == "kept"
+
+        pxt.drop_dir("unit_test", force=True)
+
+    def test_select_with_exclude_labels_without_label_key_raises(self):
+        with pytest.raises(
+            ValueError,
+            match="If exclude_labels is provided, label_key must also be provided",
+        ):
+            GoldSelector(
+                table_path="unit_test.test_select",
+                exclude_labels={"excluded"},
+            )
+
     def test_select_in_table_with_chunk(self):
         pxt.drop_dir("unit_test", force=True)
 

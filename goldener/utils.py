@@ -179,6 +179,43 @@ def filter_batch_from_indices(
     }
 
 
+def get_indices_with_labels(
+    batch: dict[str, Any],
+    label_key: str,
+    exclude_labels: set[str],
+    index_key: str = "idx",
+) -> set[int]:
+    """Get the set of index values for batch items whose sharing label values with exclude_labels.
+
+    Args:
+        batch: A dictionary representing a batch of data. It must contain the keys specified by label_key and index_key,
+        where the values are lists or tensors of the same length. Label values can be strings or iterables of strings.
+        label_key: The key in the batch dictionary that contains the labels.
+        exclude_labels: A set of label strings to exclude.
+        index_key: The key in the batch dictionary that contains the indices.
+
+    Returns:
+        A set of index values corresponding to items with excluded labels.
+    """
+    indices = set()
+    for idx_value, label_value in zip(batch[index_key], batch[label_key]):
+        labels = (
+            {
+                label_value,
+            }
+            if isinstance(label_value, str)
+            else label_value
+        )
+        if exclude_labels.intersection(labels):
+            indices.add(
+                int(idx_value.item())
+                if isinstance(idx_value, torch.Tensor)
+                else idx_value
+            )
+
+    return indices
+
+
 def get_size_and_sampling_count_per_chunk(
     total_size: int, sampling_size: int, max_chunk_size: int
 ) -> tuple[list[int], list[int]]:
