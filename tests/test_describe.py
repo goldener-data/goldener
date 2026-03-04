@@ -689,12 +689,12 @@ class TestGoldDescriptor:
 
         pxt.drop_dir("unit_test", force=True)
 
-    def test_describe_with_multiple_sizes_int(self, extractor):
+    def test_describe_with_append_size_to_key(self, extractor):
         pxt.drop_dir("unit_test", force=True)
         desc = GoldDescriptor(
             table_path="unit_test.test_describe",
             extractor=extractor,
-            description_sizes=[4, 16],
+            append_size_to_key=True,
             batch_size=2,
             device=torch.device("cpu"),
             allow_existing=False,
@@ -703,55 +703,17 @@ class TestGoldDescriptor:
 
         assert table.count() == 2
         for row in table.collect():
-            assert row["features_4"].shape == (4, 4, 4)
-            assert row["features_16"].shape == (4, 16, 16)
+            assert row["features_8x8"].shape == (4, 8, 8)
             assert "features" not in row
 
         pxt.drop_dir("unit_test", force=True)
 
-    def test_describe_with_multiple_sizes_tuple(self, extractor):
+    def test_describe_without_append_size_to_key(self, extractor):
         pxt.drop_dir("unit_test", force=True)
         desc = GoldDescriptor(
             table_path="unit_test.test_describe",
             extractor=extractor,
-            description_sizes=[(4, 8), (8, 16)],
-            batch_size=2,
-            device=torch.device("cpu"),
-            allow_existing=False,
-        )
-        table = desc.describe_in_table(DummyDataset())
-
-        assert table.count() == 2
-        for row in table.collect():
-            assert row["features_4x8"].shape == (4, 4, 8)
-            assert row["features_8x16"].shape == (4, 8, 16)
-
-        pxt.drop_dir("unit_test", force=True)
-
-    def test_describe_with_single_size(self, extractor):
-        pxt.drop_dir("unit_test", force=True)
-        desc = GoldDescriptor(
-            table_path="unit_test.test_describe",
-            extractor=extractor,
-            description_sizes=[8],
-            batch_size=2,
-            device=torch.device("cpu"),
-            allow_existing=False,
-        )
-        table = desc.describe_in_table(DummyDataset())
-
-        assert table.count() == 2
-        for row in table.collect():
-            assert row["features_8"].shape == (4, 8, 8)
-
-        pxt.drop_dir("unit_test", force=True)
-
-    def test_describe_without_description_sizes_unchanged(self, extractor):
-        pxt.drop_dir("unit_test", force=True)
-        desc = GoldDescriptor(
-            table_path="unit_test.test_describe",
-            extractor=extractor,
-            description_sizes=None,
+            append_size_to_key=False,
             batch_size=2,
             device=torch.device("cpu"),
             allow_existing=False,
@@ -764,12 +726,49 @@ class TestGoldDescriptor:
 
         pxt.drop_dir("unit_test", force=True)
 
-    def test_describe_multiple_sizes_with_vectorizer_raises(self, extractor, vectorizer):
-        with pytest.raises(ValueError, match="vectorizer with multiple description_sizes"):
-            GoldDescriptor(
-                table_path="unit_test.test_describe",
-                extractor=extractor,
-                vectorizer=vectorizer,
-                description_sizes=[4, 16],
-                device=torch.device("cpu"),
-            )
+    def test_describe_multiple_sizes_via_separate_descriptors(self, extractor):
+        pxt.drop_dir("unit_test", force=True)
+
+        def make_transform(size: int):
+            import torch.nn.functional as F
+
+            def transform(data):
+                unbatched = data.ndim == 3
+                if unbatched:
+                    data = data.unsqueeze(0)
+                result = F.interpolate(
+                    data.float(), size=(size, size), mode="bilinear", align_corners=False
+                )
+                return result.squeeze(0) if unbatched else result
+
+            return transform
+
+        desc_small = GoldDescriptor(
+            table_path="unit_test.test_describe",
+            extractor=extractor,
+            transform=make_transform(4),
+            append_size_to_key=True,
+            batch_size=2,
+            device=torch.device("cpu"),
+            allow_existing=False,
+        )
+        table = desc_small.describe_in_table(DummyDataset())
+        assert "features_4x4" in table.columns()
+
+        desc_large = GoldDescriptor(
+            table_path="unit_test.test_describe",
+            extractor=extractor,
+            transform=make_transform(16),
+            append_size_to_key=True,
+            batch_size=2,
+            device=torch.device("cpu"),
+            allow_existing=True,
+        )
+        table = desc_large.describe_in_table(DummyDataset())
+
+        assert table.count() == 2
+        for row in table.collect():
+            assert row["features_4x4"].shape == (4, 4, 4)
+            assert row["features_16x16"].shape == (4, 16, 16)
+
+        pxt.drop_dir("unit_test", force=True)
