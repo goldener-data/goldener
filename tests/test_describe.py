@@ -49,6 +49,18 @@ class DummyDataset:
         return sample | {"target": torch.ones(1, 8, 8)}
 
 
+class DummyMultiSizeDataset:
+    """Dataset that returns items with different spatial sizes."""
+
+    _sizes = [(3, 8, 8), (3, 16, 16)]
+
+    def __len__(self):
+        return len(self._sizes)
+
+    def __getitem__(self, idx):
+        return {"data": torch.zeros(self._sizes[idx]), "idx": idx, "label": "dummy"}
+
+
 class TestGoldDescriptor:
     def test_simple_describe_in_table(self, embedder):
         pxt.drop_dir("unit_test", force=True)
@@ -684,5 +696,23 @@ class TestGoldDescriptor:
         for i, row in enumerate(description_table.collect()):
             assert row["idx_vector"] == i
             assert row["embeddings"].shape == (4,)
+
+        pxt.drop_dir("unit_test", force=True)
+
+    def test_describe_with_force_fix_description_false(self, embedder):
+        pxt.drop_dir("unit_test", force=True)
+        desc = GoldDescriptor(
+            table_path="unit_test.test_describe",
+            embedder=embedder,
+            force_fix_description=False,
+            batch_size=1,
+            device=torch.device("cpu"),
+            allow_existing=False,
+        )
+        table = desc.describe_in_table(DummyMultiSizeDataset())
+
+        assert table.count() == 2
+        rows = table.collect()
+        assert rows[0]["embeddings"].shape != rows[1]["embeddings"].shape
 
         pxt.drop_dir("unit_test", force=True)

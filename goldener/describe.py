@@ -63,6 +63,9 @@ class GoldDescriptor:
             only zeros (in case of multi target). Default is False.
         exclude_labels: Optional set of label strings to exclude from vectorization. Default is None.
         description_key: Column name to store the computed embeddings in the PixelTable table. Default is "embeddings".
+        force_fix_description: When True (default), the shape and dtype of the description are fixed in the
+            column schema. When False, the spatial dimensions and type of the description
+            can be different between rows.
         to_keep_schema: Optional dictionary defining additional columns to keep from the original dataset/table
             into the description table. The keys are the column names and the values are the PixelTable types.
         min_pxt_insert_size: Minimum number of rows to accumulate before inserting into PixelTable. Default is 100.
@@ -94,6 +97,7 @@ class GoldDescriptor:
         exclude_full_zero_target: bool = False,
         exclude_labels: set[str] | None = None,
         description_key: str = "embeddings",
+        force_fix_description: bool = True,
         to_keep_schema: dict[str, type] | None = None,
         min_pxt_insert_size: int = 100,
         batch_size: int = 1,
@@ -120,6 +124,8 @@ class GoldDescriptor:
                 only zeros (in case of multi target). Default is False.
             exclude_labels: Optional set of label strings to exclude from vectorization. Default is None.
             description_key: Key for storing computed embeddings. Defaults to "embeddings".
+            force_fix_description: When True (default), the shape and dtype of the description are fixed in
+                the column schema. When False, the spatial dimensions and type can differ between rows. Defaults to True.
             to_keep_schema: Optional schema for additional columns to preserve.
             min_pxt_insert_size: Minimum number of rows to accumulate before inserting into PixelTable. Defaults to 100.
             batch_size: Batch size used when iterating over the data.
@@ -142,6 +148,7 @@ class GoldDescriptor:
         self.exclude_full_zero_target = exclude_full_zero_target
         self.exclude_labels = exclude_labels
         self.description_key = description_key
+        self.force_fix_description = force_fix_description
         self.to_keep_schema = to_keep_schema
         self.min_pxt_insert_size = min_pxt_insert_size
         self.batch_size = batch_size
@@ -332,13 +339,12 @@ class GoldDescriptor:
                     .cpu()
                     .numpy()
                 )
-            description_table.add_column(
-                **{
-                    self.description_key: pxt.Array[  # type: ignore[misc]
-                        description.shape, pxt.Float
-                    ]
-                }
+            col_type = (
+                pxt.Array[description.shape, pxt.Float]  # type: ignore[misc]
+                if self.force_fix_description
+                else pxt.Array
             )
+            description_table.add_column(**{self.description_key: col_type})  # type: ignore[arg-type]
 
         return description_table
 
@@ -365,7 +371,6 @@ class GoldDescriptor:
                 to_describe,
                 collate_fn=self.collate_fn,
                 expected=[self.data_key],
-                excluded=[self.description_key],
             )
             sample_data = sample[self.data_key]
             if self.transform is not None:
@@ -388,13 +393,12 @@ class GoldDescriptor:
                     .cpu()
                     .numpy()
                 )
-            description_table.add_column(
-                **{
-                    self.description_key: pxt.Array[  # type: ignore[misc]
-                        description.shape, pxt.Float
-                    ]
-                }
+            col_type = (
+                pxt.Array[description.shape, pxt.Float]  # type: ignore[misc]
+                if self.force_fix_description
+                else pxt.Array
             )
+            description_table.add_column(**{self.description_key: col_type})  # type: ignore[arg-type]
 
         return description_table
 
