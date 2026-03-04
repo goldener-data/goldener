@@ -20,7 +20,7 @@ from goldener.select import (
 )
 from goldener.select import (
     GoldGreedyClosestPointSelectionTool,
-    GoldGreedyKernelPointsTool,
+    GoldGreedyKernelPointsSelectionTool,
 )
 
 
@@ -939,9 +939,9 @@ class TestGoldGreedyKCenterSelectionTool:
             tool.select(torch.randn(10, 5, 3), k=2)
 
 
-class TestGoldGreedyKernelPointsTool:
+class TestGoldGreedyKernelPointsSelectionTool:
     def test_simple_usage(self) -> None:
-        tool = GoldGreedyKernelPointsTool(
+        tool = GoldGreedyKernelPointsSelectionTool(
             feature_kernel=LinearKernel(output_scale=1, constant=0)
         )
 
@@ -954,7 +954,7 @@ class TestGoldGreedyKernelPointsTool:
         assert len(set(indices)) == k
 
     def test_select_all_points_with_linear_kernel(self) -> None:
-        tool = GoldGreedyKernelPointsTool(
+        tool = GoldGreedyKernelPointsSelectionTool(
             feature_kernel=LinearKernel(output_scale=1, constant=0)
         )
 
@@ -969,14 +969,14 @@ class TestGoldGreedyKernelPointsTool:
     def test_with_k_greater_than_size(self) -> None:
         x = torch.tensor([[0.0], [1.0]], dtype=torch.float32)
 
-        tool = GoldGreedyKernelPointsTool(
+        tool = GoldGreedyKernelPointsSelectionTool(
             feature_kernel=LinearKernel(output_scale=1, constant=0)
         )
         with pytest.raises(ValueError, match="must be less than"):
             tool.select(x, k=5)
 
     def test_rejects_1d_tensor(self) -> None:
-        tool = GoldGreedyKernelPointsTool(
+        tool = GoldGreedyKernelPointsSelectionTool(
             feature_kernel=LinearKernel(output_scale=1, constant=0)
         )
         with pytest.raises(
@@ -985,7 +985,7 @@ class TestGoldGreedyKernelPointsTool:
             tool.select(torch.randn(10), k=2)
 
     def test_rejects_3d_tensor(self) -> None:
-        tool = GoldGreedyKernelPointsTool(
+        tool = GoldGreedyKernelPointsSelectionTool(
             feature_kernel=LinearKernel(output_scale=1, constant=0)
         )
         with pytest.raises(
