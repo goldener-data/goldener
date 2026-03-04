@@ -424,7 +424,7 @@ class GoldVectorizer:
         collate_fn: Optional function to collate dataset samples into batches composed of
             dictionaries with at least the key specified by `data_key` returning a PyTorch Tensor.
             If None, the dataset is expected to directly provide such batches.
-        data_key: Key in the batch dictionary that contains the data to vectorize. Default is "features".
+        data_key: Key in the batch dictionary that contains the data to vectorize. Default is "embeddings".
         target_key: Optional key in the batch dictionary containing the target used to filter vectors. Default is "target".
         vectorized_key: Column name to store the resulting vectors in the PixelTable table. Default is "vectorized".
         label_key: Optional key for labels in the batch dictionary. Default is None.
@@ -454,7 +454,7 @@ class GoldVectorizer:
         table_path: str,
         vectorizer: TensorVectorizer,
         collate_fn: Callable | None = None,
-        data_key: str = "features",
+        data_key: str = "embeddings",
         target_key: str = "target",
         vectorized_key: str = "vectorized",
         label_key: str | None = None,
@@ -476,7 +476,7 @@ class GoldVectorizer:
             table_path: Path to the PixelTable table for storing vectors.
             vectorizer: TensorVectorizer instance for transforming tensors.
             collate_fn: Optional collate function for preparing batches.
-            data_key: Key for data in the batch dictionary. Defaults to "features".
+            data_key: Key for data in the batch dictionary. Defaults to "embeddings".
             target_key: Key for target in the batch dictionary. Defaults to "target".
             vectorized_key: Column name for storing vectors. Defaults to "vectorized".
             label_key: Optional key for labels in the batch dictionary. Default is None.

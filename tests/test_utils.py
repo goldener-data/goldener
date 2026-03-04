@@ -321,12 +321,14 @@ class TestFilterBatchFromIndices:
     def test_filter_with_torch_tensors(self):
         batch = {
             "idx": torch.tensor([0, 1, 2, 3]),
-            "features": torch.tensor([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0], [7.0, 8.0]]),
+            "embeddings": torch.tensor(
+                [[1.0, 2.0], [3.0, 4.0], [5.0, 6.0], [7.0, 8.0]]
+            ),
         }
         to_remove = {1, 3}
         result = filter_batch_from_indices(batch, to_remove)
         assert torch.equal(result["idx"], torch.tensor([0, 2]))
-        assert torch.equal(result["features"], torch.tensor([[1.0, 2.0], [5.0, 6.0]]))
+        assert torch.equal(result["embeddings"], torch.tensor([[1.0, 2.0], [5.0, 6.0]]))
 
     def test_filter_with_mixed_types(self):
         batch = {

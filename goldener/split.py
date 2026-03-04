@@ -80,10 +80,10 @@ def check_sets_validity(
 
 
 class GoldSplitter:
-    """Split a dataset into multiple sets based on features.
+    """Split a dataset into multiple sets based on embeddings.
 
-    The GoldSplitter leverages a GoldDescriptor to extract features from the dataset,
-    a GoldVectorizer to vectorize these features, a GoldClusterizer to cluster them and a GoldSelector to select samples
+    The GoldSplitter leverages a GoldDescriptor to compute embeddings from the dataset,
+    a GoldVectorizer to vectorize these embeddings, a GoldClusterizer to cluster them and a GoldSelector to select samples
     for each set based on specified ratios.
 
     The splitting can operate in a sequential (single-process) mode or a
@@ -182,7 +182,7 @@ class GoldSplitter:
             clusterizer.include_vectorized_in_table = True
             logger.info(
                 "Clusterizer's include_vectorized_in_table is set to True to keep the "
-                "vectorized features in the table for the selection step. "
+                "vectorized embeddings in the table for the selection step. "
                 "This is necessary to perform cluster-wise selection. "
             )
 
@@ -328,7 +328,7 @@ class GoldSplitter:
     ) -> GoldPxtTorchDataset:
         """Split the dataset into multiple sets in a PixelTable table.
 
-        The dataset is first described using the gold descriptor (extracts features), and then samples are selected
+        The dataset is first described using the gold descriptor (computes embeddings), and then samples are selected
         for each set based on the specified ratios after vectorization.
 
         At least 2 sets are required to split the data. Every sample
@@ -361,7 +361,7 @@ class GoldSplitter:
     def split_in_table(self, to_split: Dataset | Table) -> Table:
         """Split the dataset into multiple sets in a PixelTable table.
 
-        The dataset is first described using the gold descriptor (extracts features), and then samples are selected
+        The dataset is first described using the gold descriptor (computes embeddings), and then samples are selected
         for each set based on the specified ratios after vectorization.
 
         At least 2 sets are required to split the data. Every sample

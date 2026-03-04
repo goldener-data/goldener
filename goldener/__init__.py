@@ -7,13 +7,13 @@ from goldener.clusterize import (
 from goldener.describe import (
     GoldDescriptor,
 )
-from goldener.extract import (
-    FeatureFusionStrategy,
-    GoldFeatureFusion,
-    GoldFeatureExtractor,
-    TorchGoldFeatureExtractor,
-    TorchGoldFeatureExtractorConfig,
-    MultiModalTorchGoldFeatureExtractor,
+from goldener.embed import (
+    EmbeddingFusionStrategy,
+    GoldEmbeddingFusionTool,
+    GoldEmbeddingTool,
+    TorchGoldEmbeddingTool,
+    TorchGoldEmbeddingToolConfig,
+    MultiModalTorchGoldEmbeddingTool,
 )
 from goldener.pxt_utils import GoldPxtTorchDataset
 from goldener.reduce import (
@@ -46,12 +46,12 @@ __all__ = (
     "GoldRandomClusteringTool",
     "GoldClusterizer",
     "GoldDescriptor",
-    "FeatureFusionStrategy",
-    "GoldFeatureFusion",
-    "GoldFeatureExtractor",
-    "TorchGoldFeatureExtractor",
-    "TorchGoldFeatureExtractorConfig",
-    "MultiModalTorchGoldFeatureExtractor",
+    "EmbeddingFusionStrategy",
+    "GoldEmbeddingFusionTool",
+    "GoldEmbeddingTool",
+    "TorchGoldEmbeddingTool",
+    "TorchGoldEmbeddingToolConfig",
+    "MultiModalTorchGoldEmbeddingTool",
     "GoldPxtTorchDataset",
     "GoldReductionTool",
     "GoldReductionToolWithFit",

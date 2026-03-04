@@ -7,7 +7,7 @@ from torch.utils.data import Dataset
 
 from goldener.clusterize import GoldClusterizer, GoldRandomClusteringTool
 from goldener.describe import GoldDescriptor
-from goldener.extract import TorchGoldFeatureExtractorConfig, TorchGoldFeatureExtractor
+from goldener.embed import TorchGoldEmbeddingToolConfig, TorchGoldEmbeddingTool
 from goldener.pxt_utils import pxt_torch_dataset_collate_fn
 from goldener.split import GoldSplitter, GoldSet, check_sets_validity
 from goldener.vectorize import TensorVectorizer, GoldVectorizer
@@ -27,10 +27,10 @@ class DummyModel(torch.nn.Module):
 
 
 @pytest.fixture(scope="function")
-def extractor():
+def embedder():
     model = DummyModel()
-    config = TorchGoldFeatureExtractorConfig(model=model, layers=None)
-    return TorchGoldFeatureExtractor(config)
+    config = TorchGoldEmbeddingToolConfig(model=model, layers=None)
+    return TorchGoldEmbeddingTool(config)
 
 
 class DummyDataset(Dataset):
@@ -45,10 +45,10 @@ class DummyDataset(Dataset):
 
 
 @pytest.fixture(scope="function")
-def descriptor(extractor):
+def descriptor(embedder):
     return GoldDescriptor(
         table_path="unit_test.descriptor_split",
-        extractor=extractor,
+        embedder=embedder,
         to_keep_schema={"label": pxt.String},
         batch_size=2,
         collate_fn=None,
@@ -597,12 +597,12 @@ class TestGoldSplitter:
 
         pxt.drop_dir("unit_test", if_not_exists="ignore", force=True)
 
-    def test_with_descriptor_including_vectorizer(self, extractor):
+    def test_with_descriptor_including_vectorizer(self, embedder):
         pxt.drop_dir("unit_test", force=True)
 
         descriptor = GoldDescriptor(
             table_path="unit_test.descriptor_split",
-            extractor=extractor,
+            embedder=embedder,
             vectorizer=TensorVectorizer(),
             description_key="vectorized",
             batch_size=2,
@@ -656,7 +656,7 @@ class TestGoldSplitter:
         split_table = basic_splitter.split_in_table(
             to_split=DummyDataset(
                 [
-                    {"features": torch.rand(4, 8, 8), "idx": idx, "label": "dummy"}
+                    {"embeddings": torch.rand(4, 8, 8), "idx": idx, "label": "dummy"}
                     for idx in range(10)
                 ]
             )
