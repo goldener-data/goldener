@@ -939,7 +939,7 @@ class TestGoldGreedyKCenterSelectionTool:
             tool.select(torch.randn(10, 5, 3), k=2)
 
 
-class TestGoldGreedyKernelPointsTool:
+class TestGoldGreedyKernelPointsSelectionTool:
     def test_simple_usage(self) -> None:
         tool = GoldGreedyKernelPointsSelectionTool(
             feature_kernel=LinearKernel(output_scale=1, constant=0)
