@@ -349,7 +349,7 @@ class DummyDataset:
         return self.dataset_len
 
     def __getitem__(self, idx):
-        return {"features": torch.zeros(3, 8, 8), "idx": idx, "label": "dummy"}
+        return {"embeddings": torch.zeros(3, 8, 8), "idx": idx, "label": "dummy"}
 
 
 class TestGoldVectorizer:
@@ -365,7 +365,7 @@ class TestGoldVectorizer:
             table_path=table_path,
             vectorizer=TensorVectorizer(),
             collate_fn=None,
-            data_key="features",
+            data_key="embeddings",
             vectorized_key="vectorized",
             to_keep_schema={"label": pxt.String},
             batch_size=1,
@@ -391,8 +391,8 @@ class TestGoldVectorizer:
         desc_path = "unit_test.vectorize_from_table"
 
         source_rows = [
-            {"idx": 0, "features": torch.zeros(4, 3).numpy(), "label": "dummy"},
-            {"idx": 1, "features": torch.zeros(4, 3).numpy(), "label": "dummy"},
+            {"idx": 0, "embeddings": torch.zeros(4, 3).numpy(), "label": "dummy"},
+            {"idx": 1, "embeddings": torch.zeros(4, 3).numpy(), "label": "dummy"},
         ]
 
         pxt.create_dir("unit_test", if_exists="ignore")
@@ -404,7 +404,7 @@ class TestGoldVectorizer:
             table_path=desc_path,
             vectorizer=TensorVectorizer(),
             collate_fn=None,
-            data_key="features",
+            data_key="embeddings",
             vectorized_key="vectorized",
             to_keep_schema={"label": pxt.String},
             batch_size=1,
@@ -430,13 +430,13 @@ class TestGoldVectorizer:
         source_rows = [
             {
                 "idx": 0,
-                "features": torch.zeros(4, 3).numpy(),
+                "embeddings": torch.zeros(4, 3).numpy(),
                 "label": "dummy",
                 "target": torch.ones(1, 3).numpy(),
             },
             {
                 "idx": 1,
-                "features": torch.zeros(4, 3).numpy(),
+                "embeddings": torch.zeros(4, 3).numpy(),
                 "label": "dummy",
                 "target": torch.ones(1, 3).numpy(),
             },
@@ -451,7 +451,7 @@ class TestGoldVectorizer:
             table_path=desc_path,
             vectorizer=TensorVectorizer(),
             collate_fn=None,
-            data_key="features",
+            data_key="embeddings",
             vectorized_key="vectorized",
             to_keep_schema={"label": pxt.String},
             batch_size=1,
@@ -481,13 +481,13 @@ class TestGoldVectorizer:
         source_rows = [
             {
                 "idx": 0,
-                "features": torch.zeros(4, 3).numpy(),
+                "embeddings": torch.zeros(4, 3).numpy(),
                 "label": list({"class_0", "class_1"}),
                 "target": target,
             },
             {
                 "idx": 1,
-                "features": torch.zeros(4, 3).numpy(),
+                "embeddings": torch.zeros(4, 3).numpy(),
                 "label": list({"class_0", "class_1"}),
                 "target": target,
             },
@@ -502,7 +502,7 @@ class TestGoldVectorizer:
             table_path=desc_path,
             vectorizer=TensorVectorizer(),
             collate_fn=None,
-            data_key="features",
+            data_key="embeddings",
             vectorized_key="vectorized",
             to_keep_schema={"label": pxt.String},
             batch_size=1,
@@ -527,8 +527,8 @@ class TestGoldVectorizer:
         src_path = "unit_test.src_table_vectorize"
         desc_path = "unit_test.vectorize_from_table"
 
-        features = torch.zeros(4, 3).numpy()
-        features[:, 0] = torch.ones((4,))
+        embeddings = torch.zeros(4, 3).numpy()
+        embeddings[:, 0] = torch.ones((4,))
 
         target = torch.zeros(2, 3).numpy()
         target[:, 0] = torch.tensor([25, 25])
@@ -536,13 +536,13 @@ class TestGoldVectorizer:
         source_rows = [
             {
                 "idx": 0,
-                "features": features,
+                "embeddings": embeddings,
                 "label": list({"class_0", "class_1"}),
                 "target": target,
             },
             {
                 "idx": 1,
-                "features": features,
+                "embeddings": embeddings,
                 "label": list({"class_0", "class_1"}),
                 "target": target,
             },
@@ -557,7 +557,7 @@ class TestGoldVectorizer:
             table_path=desc_path,
             vectorizer=TensorVectorizer(),
             collate_fn=None,
-            data_key="features",
+            data_key="embeddings",
             vectorized_key="vectorized",
             to_keep_schema={"label": pxt.String},
             batch_size=1,
@@ -582,8 +582,8 @@ class TestGoldVectorizer:
         src_path = "unit_test.src_table_vectorize"
         desc_path = "unit_test.vectorize_from_table"
 
-        features = torch.zeros(4, 3).numpy()
-        features[:, 0] = torch.ones((4,))
+        embeddings = torch.zeros(4, 3).numpy()
+        embeddings[:, 0] = torch.ones((4,))
 
         target = torch.zeros(2, 3).numpy()
         target[:, 0] = torch.tensor([25, 25])
@@ -591,13 +591,13 @@ class TestGoldVectorizer:
         source_rows = [
             {
                 "idx": 0,
-                "features": features,
+                "embeddings": embeddings,
                 "label": list({"class_0", "class_1"}),
                 "target": target,
             },
             {
                 "idx": 1,
-                "features": features,
+                "embeddings": embeddings,
                 "label": list({"class_0", "class_1"}),
                 "target": target,
             },
@@ -612,7 +612,7 @@ class TestGoldVectorizer:
             table_path=desc_path,
             vectorizer=TensorVectorizer(),
             collate_fn=None,
-            data_key="features",
+            data_key="embeddings",
             vectorized_key="vectorized",
             to_keep_schema={"label": pxt.String},
             batch_size=1,
@@ -637,14 +637,14 @@ class TestGoldVectorizer:
         pxt.drop_dir("unit_test", force=True)
 
         def collate_fn(batch):
-            data = torch.stack([b["features"] for b in batch], dim=0)
-            return {"features": data}
+            data = torch.stack([b["embeddings"] for b in batch], dim=0)
+            return {"embeddings": data}
 
         gv = GoldVectorizer(
             table_path="unit_test.vectorize",
             vectorizer=TensorVectorizer(),
             collate_fn=collate_fn,
-            data_key="features",
+            data_key="embeddings",
             vectorized_key="vectorized",
             batch_size=1,
             num_workers=0,
@@ -674,8 +674,8 @@ class TestGoldVectorizer:
         gv = GoldVectorizer(
             table_path="unit_test.vectorize",
             vectorizer=TensorVectorizer(),
-            collate_fn=lambda x: [d["features"] for d in x],
-            data_key="features",
+            collate_fn=lambda x: [d["embeddings"] for d in x],
+            data_key="embeddings",
             vectorized_key="vectorized",
             batch_size=1,
             num_workers=0,
@@ -715,7 +715,7 @@ class TestGoldVectorizer:
             table_path="unit_test.vectorize",
             vectorizer=TensorVectorizer(),
             collate_fn=None,
-            data_key="features",
+            data_key="embeddings",
             vectorized_key="vectorized",
             batch_size=1,
             num_workers=0,
@@ -744,7 +744,7 @@ class TestGoldVectorizer:
             table_path=table_path,
             vectorizer=TensorVectorizer(),
             collate_fn=None,
-            data_key="features",
+            data_key="embeddings",
             vectorized_key="vectorized",
             batch_size=1,
             num_workers=0,
@@ -770,8 +770,8 @@ class TestGoldVectorizer:
         desc_path = "unit_test.vectorize_from_table"
 
         source_rows = [
-            {"idx": 0, "features": torch.zeros(3, 8, 8).numpy()},
-            {"idx": 1, "features": torch.zeros(3, 8, 8).numpy()},
+            {"idx": 0, "embeddings": torch.zeros(3, 8, 8).numpy()},
+            {"idx": 1, "embeddings": torch.zeros(3, 8, 8).numpy()},
         ]
         pxt.create_dir("unit_test", if_exists="ignore")
         src_table = pxt.create_table(
@@ -782,7 +782,7 @@ class TestGoldVectorizer:
             table_path=desc_path,
             vectorizer=TensorVectorizer(),
             collate_fn=None,
-            data_key="features",
+            data_key="embeddings",
             vectorized_key="vectorized",
             batch_size=1,
             num_workers=0,
@@ -810,7 +810,7 @@ class TestGoldVectorizer:
             table_path="unit_test.vectorize",
             vectorizer=TensorVectorizer(),
             collate_fn=None,
-            data_key="features",
+            data_key="embeddings",
             vectorized_key="vectorized",
             batch_size=1,
             num_workers=0,
@@ -843,7 +843,7 @@ class TestGoldVectorizer:
             table_path="unit_test.vectorize",
             vectorizer=TensorVectorizer(),
             collate_fn=None,
-            data_key="features",
+            data_key="embeddings",
             vectorized_key="vectorized",
             batch_size=1,
             num_workers=0,

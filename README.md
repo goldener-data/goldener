@@ -61,22 +61,22 @@ They are stored and available whenever a new request is made.
 ## Sampling among not annotated data
 
 Goldener can find the most representative data subset to annotate. It can extract and store semantic knowledge of the data
-from embeddings extracted with pre-trained models. Then, it leverages this knowledge to find the most representative subset of data to annotate.
+from embeddings extracted with pre-trained models. Then, it leverages this knowledge to find the most representative
+subset of data to annotate. This subset of data can be annotated in order to train or monitor a model.
 
 ```python
-
 from goldener import (
     GoldSelector,
     GoldDescriptor,
-    TorchGoldFeatureExtractor,
-    TorchGoldFeatureExtractorConfig,
+    TorchGoldEmbeddingTool,
+    TorchGoldEmbeddingToolConfig,
     TensorVectorizer,
 )
 
 gd = GoldDescriptor(
     table_path="my_table_for_description",
-    extractor=TorchGoldFeatureExtractor(
-        TorchGoldFeatureExtractorConfig(
+    embedder=TorchGoldEmbeddingTool(
+        TorchGoldEmbeddingToolConfig(
             model=my_model,
             layers=my_layers,
         )
@@ -136,8 +136,8 @@ from goldener import (
     GoldClusterizer,
     GoldSKLearnClusteringTool,
     GoldDescriptor,
-    TorchGoldFeatureExtractor,
-    TorchGoldFeatureExtractorConfig,
+    TorchGoldEmbeddingTool,
+    TorchGoldEmbeddingToolConfig,
     TensorVectorizer,
 )
 from sklearn.cluster import KMeans
@@ -158,7 +158,6 @@ for cluster_id in range(10):
     # sample few samples and use them to define annotation guidelines for this cluster
 
 ```
-
 
 # Installation
 

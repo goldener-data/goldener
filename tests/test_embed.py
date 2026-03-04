@@ -2,12 +2,12 @@ import pytest
 
 import torch
 
-from goldener.extract import (
-    GoldFeatureFusion,
-    FeatureFusionStrategy,
-    TorchGoldFeatureExtractor,
-    TorchGoldFeatureExtractorConfig,
-    MultiModalTorchGoldFeatureExtractor,
+from goldener.embed import (
+    GoldEmbeddingFusionTool,
+    EmbeddingFusionStrategy,
+    TorchGoldEmbeddingTool,
+    TorchGoldEmbeddingToolConfig,
+    MultiModalTorchGoldEmbeddingTool,
 )
 
 
@@ -39,12 +39,14 @@ shapes_2d_3d_4d = [
 ]
 
 
-class TestFeatureFusion:
+class TestEmbeddingFusion:
     @pytest.mark.parametrize("shape", shapes_2d_3d_4d)
     def test_concat(self, shape):
         t1 = make_tensor(shape)
         t2 = make_tensor(shape)
-        fused = GoldFeatureFusion.fuse_tensors([t1, t2], FeatureFusionStrategy.CONCAT)
+        fused = GoldEmbeddingFusionTool.fuse_tensors(
+            [t1, t2], EmbeddingFusionStrategy.CONCAT
+        )
         assert fused.shape[1] == shape[1] * 2
         assert fused.shape[:2] == (shape[0], shape[1] * 2)[:2]
 
@@ -52,14 +54,18 @@ class TestFeatureFusion:
     def test_add(self, shape):
         t1 = make_tensor(shape, 1.0)
         t2 = make_tensor(shape, 1.0)
-        fused = GoldFeatureFusion.fuse_tensors([t1, t2], FeatureFusionStrategy.ADD)
+        fused = GoldEmbeddingFusionTool.fuse_tensors(
+            [t1, t2], EmbeddingFusionStrategy.ADD
+        )
         assert torch.allclose(fused, torch.full_like(fused, 2.0))
 
     @pytest.mark.parametrize("shape", shapes_2d_3d_4d)
     def test_average(self, shape):
         t1 = make_tensor(shape, 1.0)
         t2 = make_tensor(shape, 3.0)
-        fused = GoldFeatureFusion.fuse_tensors([t1, t2], FeatureFusionStrategy.AVERAGE)
+        fused = GoldEmbeddingFusionTool.fuse_tensors(
+            [t1, t2], EmbeddingFusionStrategy.AVERAGE
+        )
         assert torch.allclose(fused, torch.full_like(fused, 2.0))
 
     @pytest.mark.parametrize("shape", shapes_2d_3d_4d)
@@ -70,33 +76,35 @@ class TestFeatureFusion:
         t1 = make_tensor(shape)
         smaller_shape = (shape[0], shape[1]) + tuple(max(1, s // 2) for s in shape[2:])
         t2 = make_tensor(smaller_shape)
-        fused = GoldFeatureFusion.fuse_tensors([t1, t2], FeatureFusionStrategy.ADD)
+        fused = GoldEmbeddingFusionTool.fuse_tensors(
+            [t1, t2], EmbeddingFusionStrategy.ADD
+        )
         assert fused.shape == shape
 
     @pytest.mark.parametrize("shape", shapes_2d_3d_4d)
-    def test_fuse_features(self, shape):
+    def test_fuse_embeddings(self, shape):
         t1 = make_tensor(shape)
         t2 = make_tensor(shape)
-        features = {"mod1": t1, "mod2": t2}
-        fusion = GoldFeatureFusion(
-            layer_fusion=FeatureFusionStrategy.ADD,
-            group_fusion=FeatureFusionStrategy.ADD,
+        embeddings = {"mod1": t1, "mod2": t2}
+        fusion = GoldEmbeddingFusionTool(
+            layer_fusion=EmbeddingFusionStrategy.ADD,
+            group_fusion=EmbeddingFusionStrategy.ADD,
         )
-        fused = fusion.fuse_features(features, ["mod1", "mod2"])
+        fused = fusion.fuse_embeddings(embeddings, ["mod1", "mod2"])
         assert fused.shape == shape
 
     @pytest.mark.parametrize("shape", shapes_2d_3d_4d)
-    def test_fuse_features_with_groups(self, shape):
+    def test_fuse_embeddings_with_groups(self, shape):
         t1 = make_tensor(shape)
         t2 = make_tensor(shape)
         t3 = make_tensor(shape)
-        features = {"layer1": t1, "layer2": t2, "layer3": t3}
-        fusion = GoldFeatureFusion(
-            layer_fusion=FeatureFusionStrategy.ADD,
-            group_fusion=FeatureFusionStrategy.CONCAT,
+        embeddings = {"layer1": t1, "layer2": t2, "layer3": t3}
+        fusion = GoldEmbeddingFusionTool(
+            layer_fusion=EmbeddingFusionStrategy.ADD,
+            group_fusion=EmbeddingFusionStrategy.CONCAT,
         )
-        fused = fusion.fuse_features(
-            features, {"m1": ["layer1", "layer2"], "m2": ["layer3"]}
+        fused = fusion.fuse_embeddings(
+            embeddings, {"m1": ["layer1", "layer2"], "m2": ["layer3"]}
         )
         # Should concatenate along channel dim
         assert fused.shape[1] == shape[1] * 2
@@ -105,71 +113,69 @@ class TestFeatureFusion:
             assert fused.shape[2:] == shape[2:]
 
 
-class TestTorchFeatureExtractor:
-    def test_extract(self):
+class TestTorchEmbeddingTool:
+    def test_embed(self):
         model = DummyModel()
         layers = ["conv1", "conv2"]
-        config = TorchGoldFeatureExtractorConfig(model=model, layers=layers)
-        extractor = TorchGoldFeatureExtractor(config)
+        config = TorchGoldEmbeddingToolConfig(model=model, layers=layers)
+        tool = TorchGoldEmbeddingTool(config)
         data = torch.randn(2, 3, 8, 8)
-        features = extractor.extract(data)
-        assert len(features) == len(layers)
-        assert features["conv1"].shape == (2, 4, 8, 8)
-        assert features["conv2"].shape == (2, 8, 8, 8)
+        embeddings = tool.embed(data)
+        assert len(embeddings) == len(layers)
+        assert embeddings["conv1"].shape == (2, 4, 8, 8)
+        assert embeddings["conv2"].shape == (2, 8, 8, 8)
 
-    def test_extract_and_fuse(self):
+    def test_embed_and_fuse(self):
         model = DummyModel()
         layers = ["conv1", "conv2"]
-        config = TorchGoldFeatureExtractorConfig(
+        config = TorchGoldEmbeddingToolConfig(
             model=model,
             layers=layers,
-            layer_fusion=FeatureFusionStrategy.CONCAT,
+            layer_fusion=EmbeddingFusionStrategy.CONCAT,
         )
-        extractor = TorchGoldFeatureExtractor(config)
+        tool = TorchGoldEmbeddingTool(config)
         data = torch.randn(2, 3, 8, 8)
-        fused = extractor.extract_and_fuse(data)
-        # Should add features from conv1 and conv2
+        fused = tool.embed_and_fuse(data)
+        # Should add embeddings from conv1 and conv2
         assert fused.shape == (2, 12, 8, 8)
 
     def test_invalid_layer(self):
         model = DummyModel()
-        config = TorchGoldFeatureExtractorConfig(model=model, layers=["invalid_layer"])
+        config = TorchGoldEmbeddingToolConfig(model=model, layers=["invalid_layer"])
         with pytest.raises(ValueError):
-            TorchGoldFeatureExtractor(config)
+            TorchGoldEmbeddingTool(config)
 
 
-class TestMultiModalTorchFeatureExtractor:
-    def test_extract(self):
+class TestMultiModalTorchEmbeddingTool:
+    def test_embed(self):
         model1 = DummyModel()
         model2 = DummyModel()
-        config1 = TorchGoldFeatureExtractorConfig(model=model1, layers=["conv1"])
-        config2 = TorchGoldFeatureExtractorConfig(model=model2, layers=["conv2"])
-        extractor = MultiModalTorchGoldFeatureExtractor(
-            {"img": config1, "aux": config2}
-        )
+        config1 = TorchGoldEmbeddingToolConfig(model=model1, layers=["conv1"])
+        config2 = TorchGoldEmbeddingToolConfig(model=model2, layers=["conv2"])
+        tool = MultiModalTorchGoldEmbeddingTool({"img": config1, "aux": config2})
         data = {
             "img": torch.randn(2, 3, 8, 8),
             "aux": torch.randn(2, 3, 8, 8),
         }
-        features = extractor.extract(data)
-        assert len(features) == 2
-        assert features["img.conv1"].shape == (2, 4, 8, 8)
-        assert features["aux.conv2"].shape == (2, 8, 8, 8)
+        embeddings = tool.embed(data)
+        assert len(embeddings) == 2
+        assert embeddings["img.conv1"].shape == (2, 4, 8, 8)
+        assert embeddings["aux.conv2"].shape == (2, 8, 8, 8)
 
-    def test_extract_and_fuse(self):
+    def test_embed_and_fuse(self):
         model1 = DummyModel()
         model2 = DummyModel()
-        config1 = TorchGoldFeatureExtractorConfig(model=model1, layers=["conv1"])
-        config2 = TorchGoldFeatureExtractorConfig(model=model2, layers=["conv2"])
-        extractor = MultiModalTorchGoldFeatureExtractor(
+        config1 = TorchGoldEmbeddingToolConfig(model=model1, layers=["conv1"])
+        config2 = TorchGoldEmbeddingToolConfig(model=model2, layers=["conv2"])
+        tool = MultiModalTorchGoldEmbeddingTool(
             {"img": config1, "aux": config2},
-            strategy=FeatureFusionStrategy.CONCAT,
+            strategy=EmbeddingFusionStrategy.CONCAT,
         )
         data = {
             "img": torch.randn(2, 3, 8, 8),
             "aux": torch.randn(2, 3, 8, 8),
         }
-        fused = extractor.extract_and_fuse(data)
-        # Should concatenate features from both modalities
+        fused = tool.embed_and_fuse(data)
+        # Should concatenate embeddings from both modalities
         assert fused.shape[0] == 2
         assert fused.shape[2:] == (8, 8)

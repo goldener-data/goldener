@@ -7,13 +7,13 @@ from goldener.clusterize import (
 from goldener.describe import (
     GoldDescriptor,
 )
-from goldener.extract import (
-    FeatureFusionStrategy,
-    GoldFeatureFusion,
-    GoldFeatureExtractor,
-    TorchGoldFeatureExtractor,
-    TorchGoldFeatureExtractorConfig,
-    MultiModalTorchGoldFeatureExtractor,
+from goldener.embed import (
+    EmbeddingFusionStrategy,
+    GoldEmbeddingFusionTool,
+    GoldEmbeddingTool,
+    TorchGoldEmbeddingTool,
+    TorchGoldEmbeddingToolConfig,
+    MultiModalTorchGoldEmbeddingTool,
 )
 from goldener.pxt_utils import GoldPxtTorchDataset
 from goldener.reduce import (
@@ -25,10 +25,10 @@ from goldener.reduce import (
 from goldener.select import (
     GoldSelectionTool,
     GoldSelector,
-    GoldGreedyClosestPointSelection,
-    GoldGreedyFarthestPointSelection,
-    GoldGreedyKCenterSelection,
-    GoldGreedyKernelPoints,
+    GoldGreedyClosestPointSelectionTool,
+    GoldGreedyFarthestPointSelectionTool,
+    GoldGreedyKCenterSelectionTool,
+    GoldGreedyKernelPointsSelectionTool,
 )
 from goldener.split import GoldSet, GoldSplitter
 from goldener.torch_utils import ResetableTorchIterableDataset
@@ -46,12 +46,12 @@ __all__ = (
     "GoldRandomClusteringTool",
     "GoldClusterizer",
     "GoldDescriptor",
-    "FeatureFusionStrategy",
-    "GoldFeatureFusion",
-    "GoldFeatureExtractor",
-    "TorchGoldFeatureExtractor",
-    "TorchGoldFeatureExtractorConfig",
-    "MultiModalTorchGoldFeatureExtractor",
+    "EmbeddingFusionStrategy",
+    "GoldEmbeddingFusionTool",
+    "GoldEmbeddingTool",
+    "TorchGoldEmbeddingTool",
+    "TorchGoldEmbeddingToolConfig",
+    "MultiModalTorchGoldEmbeddingTool",
     "GoldPxtTorchDataset",
     "GoldReductionTool",
     "GoldReductionToolWithFit",
@@ -59,10 +59,10 @@ __all__ = (
     "GoldTorchModuleReductionTool",
     "GoldSelectionTool",
     "GoldSelector",
-    "GoldGreedyClosestPointSelection",
-    "GoldGreedyFarthestPointSelection",
-    "GoldGreedyKCenterSelection",
-    "GoldGreedyKernelPoints",
+    "GoldGreedyClosestPointSelectionTool",
+    "GoldGreedyFarthestPointSelectionTool",
+    "GoldGreedyKCenterSelectionTool",
+    "GoldGreedyKernelPointsSelectionTool",
     "GoldSet",
     "GoldSplitter",
     "ResetableTorchIterableDataset",

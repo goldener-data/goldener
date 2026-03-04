@@ -74,7 +74,7 @@ class GoldSelectionTool(ABC):
         """
 
 
-class GoldGreedyKernelPoints(GoldSelectionTool):
+class GoldGreedyKernelPointsSelectionTool(GoldSelectionTool):
     """Coresubset selection using Coreax's GreedyKernelPoints solver.
 
     The solver is created at each request depending on the specified k points to select.
@@ -120,7 +120,7 @@ class GoldGreedyKernelPoints(GoldSelectionTool):
         return coreset.unweighted_indices.tolist()
 
 
-class GoldGreedyKCenterSelection(GoldSelectionTool):
+class GoldGreedyKCenterSelectionTool(GoldSelectionTool):
     """Create a coresubset from selecting with the K Center greedy algorithm.
 
     This is a greedy algorithm that selects iteratively the farthest to the already selected points
@@ -179,7 +179,7 @@ class GoldGreedyKCenterSelection(GoldSelectionTool):
         return selected_indices
 
 
-class GoldGreedyClosestPointSelection(GoldSelectionTool):
+class GoldGreedyClosestPointSelectionTool(GoldSelectionTool):
     """Create a coresubset from selecting the closest points iteratively.
 
     This is a greedy algorithm that selects iteratively the point with the closest nearest neighbors
@@ -240,7 +240,7 @@ class GoldGreedyClosestPointSelection(GoldSelectionTool):
         return selected_indices
 
 
-class GoldGreedyFarthestPointSelection(GoldSelectionTool):
+class GoldGreedyFarthestPointSelectionTool(GoldSelectionTool):
     """Create a coresubset from selecting the farthest points iteratively.
 
     This is a greedy algorithm that selects iteratively the point with the farthest nearest neighbors
@@ -352,7 +352,7 @@ class GoldSelector:
     def __init__(
         self,
         table_path: str,
-        selection_tool: GoldSelectionTool = GoldGreedyKernelPoints(
+        selection_tool: GoldSelectionTool = GoldGreedyKernelPointsSelectionTool(
             feature_kernel=LinearKernel(output_scale=1, constant=0)
         ),
         reducer: GoldReductionTool | None = None,
