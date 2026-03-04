@@ -38,7 +38,6 @@ class EmbeddingFusionStrategy(Enum):
     ADD: Element-wise addition of embeddings.
     AVERAGE: Element-wise average of embeddings.
     MAX: Element-wise maximum of embeddings.
-    NO_FUSION: No fusion, return embeddings as is (only valid for single layer).
     """
 
     CONCAT = "concat"
