@@ -7,7 +7,7 @@ from goldener.clusterize import (
 from goldener.describe import (
     GoldDescriptor,
 )
-from goldener.extract import (
+from goldener.embed import (
     EmbeddingFusionStrategy,
     GoldEmbeddingFusionTool,
     GoldEmbeddingTool,

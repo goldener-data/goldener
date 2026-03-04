@@ -9,7 +9,7 @@ from pixeltable.catalog import Table
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 
-from goldener.extract import GoldEmbeddingTool
+from goldener.embed import GoldEmbeddingTool
 from goldener.pxt_utils import (
     GoldPxtTorchDataset,
     get_expr_from_column_name,

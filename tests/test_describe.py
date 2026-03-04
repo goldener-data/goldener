@@ -4,7 +4,7 @@ import torch
 import pixeltable as pxt
 
 from goldener.describe import GoldDescriptor
-from goldener.extract import TorchGoldEmbeddingToolConfig, TorchGoldEmbeddingTool
+from goldener.embed import TorchGoldEmbeddingToolConfig, TorchGoldEmbeddingTool
 from goldener.vectorize import TensorVectorizer
 
 

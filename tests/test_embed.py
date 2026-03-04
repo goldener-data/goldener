@@ -2,7 +2,7 @@ import pytest
 
 import torch
 
-from goldener.extract import (
+from goldener.embed import (
     GoldEmbeddingFusionTool,
     EmbeddingFusionStrategy,
     TorchGoldEmbeddingTool,
@@ -44,7 +44,9 @@ class TestFeatureFusion:
     def test_concat(self, shape):
         t1 = make_tensor(shape)
         t2 = make_tensor(shape)
-        fused = GoldEmbeddingFusionTool.fuse_tensors([t1, t2], EmbeddingFusionStrategy.CONCAT)
+        fused = GoldEmbeddingFusionTool.fuse_tensors(
+            [t1, t2], EmbeddingFusionStrategy.CONCAT
+        )
         assert fused.shape[1] == shape[1] * 2
         assert fused.shape[:2] == (shape[0], shape[1] * 2)[:2]
 
@@ -52,14 +54,18 @@ class TestFeatureFusion:
     def test_add(self, shape):
         t1 = make_tensor(shape, 1.0)
         t2 = make_tensor(shape, 1.0)
-        fused = GoldEmbeddingFusionTool.fuse_tensors([t1, t2], EmbeddingFusionStrategy.ADD)
+        fused = GoldEmbeddingFusionTool.fuse_tensors(
+            [t1, t2], EmbeddingFusionStrategy.ADD
+        )
         assert torch.allclose(fused, torch.full_like(fused, 2.0))
 
     @pytest.mark.parametrize("shape", shapes_2d_3d_4d)
     def test_average(self, shape):
         t1 = make_tensor(shape, 1.0)
         t2 = make_tensor(shape, 3.0)
-        fused = GoldEmbeddingFusionTool.fuse_tensors([t1, t2], EmbeddingFusionStrategy.AVERAGE)
+        fused = GoldEmbeddingFusionTool.fuse_tensors(
+            [t1, t2], EmbeddingFusionStrategy.AVERAGE
+        )
         assert torch.allclose(fused, torch.full_like(fused, 2.0))
 
     @pytest.mark.parametrize("shape", shapes_2d_3d_4d)
@@ -70,7 +76,9 @@ class TestFeatureFusion:
         t1 = make_tensor(shape)
         smaller_shape = (shape[0], shape[1]) + tuple(max(1, s // 2) for s in shape[2:])
         t2 = make_tensor(smaller_shape)
-        fused = GoldEmbeddingFusionTool.fuse_tensors([t1, t2], EmbeddingFusionStrategy.ADD)
+        fused = GoldEmbeddingFusionTool.fuse_tensors(
+            [t1, t2], EmbeddingFusionStrategy.ADD
+        )
         assert fused.shape == shape
 
     @pytest.mark.parametrize("shape", shapes_2d_3d_4d)
@@ -144,9 +152,7 @@ class TestMultiModalTorchFeatureExtractor:
         model2 = DummyModel()
         config1 = TorchGoldEmbeddingToolConfig(model=model1, layers=["conv1"])
         config2 = TorchGoldEmbeddingToolConfig(model=model2, layers=["conv2"])
-        extractor = MultiModalTorchGoldEmbeddingTool(
-            {"img": config1, "aux": config2}
-        )
+        extractor = MultiModalTorchGoldEmbeddingTool({"img": config1, "aux": config2})
         data = {
             "img": torch.randn(2, 3, 8, 8),
             "aux": torch.randn(2, 3, 8, 8),

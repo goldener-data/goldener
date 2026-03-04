@@ -1,4 +1,4 @@
-from abc import abstractmethod
+from abc import abstractmethod, ABC
 from typing_extensions import assert_never
 from typing import Dict, List, Callable, Any
 
@@ -8,7 +8,7 @@ from enum import Enum
 import torch
 
 
-class GoldEmbeddingTool:
+class GoldEmbeddingTool(ABC):
     """Abstract base class for feature extraction from models.
 
     This class defines the interface for feature extractors that can extract and optionally
