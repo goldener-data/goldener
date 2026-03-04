@@ -804,15 +804,15 @@ class GoldSelector:
             collate_fn=self.collate_fn,
         )
 
-        already_in_selection = set(
+        # the vectors already present in the selection table will be excluded
+        # from the batches to process to avoid duplicates and speed up processing
+        # as well as the ones with excluded labels if specified
+        to_exclude_from_batch = set(
             [
                 row["idx_vector"]
                 for row in selection_table.select(selection_table.idx_vector).collect()
             ]
         )
-        not_empty = (
-            len(already_in_selection) > 0
-        )  # allow to filter out already described samples
 
         ready_to_insert: list[dict[str, Any]] = []
 
@@ -836,28 +836,23 @@ class GoldSelector:
             if "idx" not in batch:
                 batch["idx"] = batch["idx_vector"]
 
-            # Keep only not yet included samples in the batch
-            if not_empty or (
-                self.exclude_labels is not None
-                and self.label_key is not None
-                and self.label_key in batch
-            ):
-                if (
-                    self.exclude_labels is not None
-                    and self.label_key is not None
-                    and self.label_key in batch
-                ):
-                    already_in_selection.update(
-                        get_indices_with_excluded_labels(
-                            batch,
-                            self.label_key,
-                            self.exclude_labels,
-                            index_key="idx_vector",
-                        )
+            if self.exclude_labels is not None and self.label_key in batch:
+                assert self.label_key is not None
+                to_exclude_from_batch.update(
+                    get_indices_with_excluded_labels(
+                        batch,
+                        self.label_key,
+                        self.exclude_labels,
+                        index_key="idx_vector",
                     )
+                )
+
+            # Remove the vectors already present in the selection table to avoid duplicates and speed up processing
+            # and as well the ones with excluded labels
+            if to_exclude_from_batch:
                 batch = filter_batch_from_indices(
                     batch,
-                    already_in_selection,
+                    to_exclude_from_batch,
                     index_key="idx_vector",
                 )
 
@@ -869,7 +864,8 @@ class GoldSelector:
                     None for _ in range(len(batch[self.vectorized_key]))
                 ]
 
-            already_in_selection.update(
+            # add newly added vectors to the exclusion set to avoid duplicates in the next batches
+            to_exclude_from_batch.update(
                 [
                     idx.item() if isinstance(idx, torch.Tensor) else idx
                     for idx in batch["idx_vector"]

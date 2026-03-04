@@ -197,7 +197,7 @@ def get_indices_with_excluded_labels(
         A set of index values corresponding to items with excluded labels.
     """
     return {
-        (idx_value.item() if isinstance(idx_value, torch.Tensor) else idx_value)
+        (int(idx_value.item()) if isinstance(idx_value, torch.Tensor) else idx_value)
         for idx_value, label_value in zip(batch[index_key], batch[label_key])
         if label_value in exclude_labels
     }
