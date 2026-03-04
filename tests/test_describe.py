@@ -21,7 +21,7 @@ class DummyModel(torch.nn.Module):
 
 
 @pytest.fixture
-def extractor():
+def embedder():
     model = DummyModel()
     config = TorchGoldEmbeddingToolConfig(model=model, layers=None)
     return TorchGoldEmbeddingTool(config)
@@ -50,11 +50,11 @@ class DummyDataset:
 
 
 class TestGoldDescriptor:
-    def test_simple_describe_in_table(self, extractor):
+    def test_simple_describe_in_table(self, embedder):
         pxt.drop_dir("unit_test", force=True)
         desc = GoldDescriptor(
             table_path="unit_test.test_describe",
-            extractor=extractor,
+            embedder=embedder,
             to_keep_schema={"label": pxt.String},
             batch_size=2,
             collate_fn=None,
@@ -71,7 +71,7 @@ class TestGoldDescriptor:
 
         pxt.drop_dir("unit_test", force=True)
 
-    def test_describe_in_table_without_idx(self, extractor):
+    def test_describe_in_table_without_idx(self, embedder):
         pxt.drop_dir("unit_test", force=True)
 
         def collate_fn(batch):
@@ -81,7 +81,7 @@ class TestGoldDescriptor:
         desc = GoldDescriptor(
             table_path="unit_test.test_describe",
             batch_size=2,
-            extractor=extractor,
+            embedder=embedder,
             collate_fn=collate_fn,
             device=torch.device("cpu"),
             allow_existing=False,
@@ -97,12 +97,12 @@ class TestGoldDescriptor:
 
         pxt.drop_dir("unit_test", force=True)
 
-    def test_describe_in_table_with_non_dict_item(self, extractor):
+    def test_describe_in_table_with_non_dict_item(self, embedder):
         pxt.drop_dir("unit_test", force=True)
 
         desc = GoldDescriptor(
             table_path="unit_test.test_describe",
-            extractor=extractor,
+            embedder=embedder,
             collate_fn=lambda x: [d["data"] for d in x],
             device=torch.device("cpu"),
             allow_existing=False,
@@ -112,12 +112,12 @@ class TestGoldDescriptor:
 
         pxt.drop_dir("unit_test", force=True)
 
-    def test_describe_in_table_with_missing_data_key(self, extractor):
+    def test_describe_in_table_with_missing_data_key(self, embedder):
         pxt.drop_dir("unit_test", force=True)
 
         desc = GoldDescriptor(
             table_path="unit_test.test_describe",
-            extractor=extractor,
+            embedder=embedder,
             collate_fn=lambda x: {"not data": "not_data"},
             device=torch.device("cpu"),
             allow_existing=False,
@@ -129,7 +129,7 @@ class TestGoldDescriptor:
 
         pxt.drop_dir("unit_test", force=True)
 
-    def test_describe_in_table_with_collate_fn(self, extractor):
+    def test_describe_in_table_with_collate_fn(self, embedder):
         pxt.drop_dir("unit_test", force=True)
 
         def collate_fn(batch):
@@ -141,7 +141,7 @@ class TestGoldDescriptor:
         desc = GoldDescriptor(
             table_path="unit_test.test_describe",
             batch_size=2,
-            extractor=extractor,
+            embedder=embedder,
             collate_fn=collate_fn,
             device=torch.device("cpu"),
             allow_existing=False,
@@ -165,12 +165,12 @@ class TestGoldDescriptor:
 
         pxt.drop_dir("unit_test", force=True)
 
-    def test_describe_in_table_with_max_batches(self, extractor):
+    def test_describe_in_table_with_max_batches(self, embedder):
         pxt.drop_dir("unit_test", force=True)
 
         desc = GoldDescriptor(
             table_path="unit_test.test_describe",
-            extractor=extractor,
+            embedder=embedder,
             batch_size=2,
             collate_fn=None,
             device=torch.device("cpu"),
@@ -186,7 +186,7 @@ class TestGoldDescriptor:
 
         pxt.drop_dir("unit_test", force=True)
 
-    def test_describe_in_table_with_table_input(self, extractor):
+    def test_describe_in_table_with_table_input(self, embedder):
         pxt.drop_dir("unit_test", force=True)
 
         src_path = "unit_test.src_table_input"
@@ -204,7 +204,7 @@ class TestGoldDescriptor:
 
         desc = GoldDescriptor(
             table_path=desc_path,
-            extractor=extractor,
+            embedder=embedder,
             to_keep_schema={"label": pxt.String},
             batch_size=1,
             collate_fn=None,
@@ -223,12 +223,12 @@ class TestGoldDescriptor:
 
         pxt.drop_dir("unit_test", force=True)
 
-    def test_describe_in_table_after_restart(self, extractor):
+    def test_describe_in_table_after_restart(self, embedder):
         pxt.drop_dir("unit_test", force=True)
 
         desc = GoldDescriptor(
             table_path="unit_test.test_describe",
-            extractor=extractor,
+            embedder=embedder,
             batch_size=2,
             collate_fn=None,
             device=torch.device("cpu"),
@@ -251,12 +251,12 @@ class TestGoldDescriptor:
 
         pxt.drop_dir("unit_test", force=True)
 
-    def test_describe_in_table_after_restart_with_restart_disallowed(self, extractor):
+    def test_describe_in_table_after_restart_with_restart_disallowed(self, embedder):
         pxt.drop_dir("unit_test", force=True)
 
         desc = GoldDescriptor(
             table_path="unit_test.test_describe",
-            extractor=extractor,
+            embedder=embedder,
             batch_size=2,
             collate_fn=None,
             device=torch.device("cpu"),
@@ -273,12 +273,12 @@ class TestGoldDescriptor:
 
         pxt.drop_dir("unit_test", force=True)
 
-    def test_describe_in_dataset(self, extractor):
+    def test_describe_in_dataset(self, embedder):
         pxt.drop_dir("unit_test", force=True)
 
         desc = GoldDescriptor(
             table_path="unit_test.test_describe",
-            extractor=extractor,
+            embedder=embedder,
             batch_size=2,
             collate_fn=None,
             device=torch.device("cpu"),
@@ -296,7 +296,7 @@ class TestGoldDescriptor:
 
         pxt.drop_dir("unit_test", force=True)
 
-    def test_describe_in_dataset_from_table(self, extractor):
+    def test_describe_in_dataset_from_table(self, embedder):
         pxt.drop_dir("unit_test", force=True)
 
         src_path = "unit_test.src_table_input"
@@ -313,7 +313,7 @@ class TestGoldDescriptor:
 
         desc = GoldDescriptor(
             table_path="unit_test.test_describe",
-            extractor=extractor,
+            embedder=embedder,
             batch_size=2,
             collate_fn=None,
             device=torch.device("cpu"),
@@ -332,13 +332,13 @@ class TestGoldDescriptor:
         pxt.drop_dir("unit_test", force=True)
 
     def test_simple_describe_in_table_from_dataset_with_target(
-        self, extractor, vectorizer
+        self, embedder, vectorizer
     ):
         pxt.drop_dir("unit_test", force=True)
 
         desc = GoldDescriptor(
             table_path="unit_test.test_describe",
-            extractor=extractor,
+            embedder=embedder,
             vectorizer=vectorizer,
             to_keep_schema={"label": pxt.String},
             batch_size=2,
@@ -357,7 +357,7 @@ class TestGoldDescriptor:
         pxt.drop_dir("unit_test", force=True)
 
     def test_simple_describe_in_table_from_dataset_with_target_and_collatefn(
-        self, extractor, vectorizer
+        self, embedder, vectorizer
     ):
         pxt.drop_dir("unit_test", force=True)
 
@@ -370,7 +370,7 @@ class TestGoldDescriptor:
 
         desc = GoldDescriptor(
             table_path="unit_test.test_describe",
-            extractor=extractor,
+            embedder=embedder,
             vectorizer=vectorizer,
             to_keep_schema={"label": pxt.String},
             batch_size=2,
@@ -388,11 +388,11 @@ class TestGoldDescriptor:
 
         pxt.drop_dir("unit_test", force=True)
 
-    def test_describe_in_table_from_table_with_vectorizer(self, extractor, vectorizer):
+    def test_describe_in_table_from_table_with_vectorizer(self, embedder, vectorizer):
         pxt.drop_dir("unit_test", force=True)
         desc = GoldDescriptor(
             table_path="unit_test.test_describe",
-            extractor=extractor,
+            embedder=embedder,
             vectorizer=vectorizer,
             to_keep_schema={"label": pxt.String},
             batch_size=2,
@@ -413,7 +413,7 @@ class TestGoldDescriptor:
         pxt.drop_dir("unit_test", force=True)
 
     def test_describe_in_dataset_from_table_with_vectorizer(
-        self, extractor, vectorizer
+        self, embedder, vectorizer
     ):
         pxt.drop_dir("unit_test", force=True)
 
@@ -431,7 +431,7 @@ class TestGoldDescriptor:
 
         desc = GoldDescriptor(
             table_path="unit_test.test_describe",
-            extractor=extractor,
+            embedder=embedder,
             vectorizer=vectorizer,
             batch_size=2,
             collate_fn=None,
@@ -451,7 +451,7 @@ class TestGoldDescriptor:
         pxt.drop_dir("unit_test", force=True)
 
     def test_describe_in_dataset_from_table_with_vectorizer_and_target(
-        self, extractor, vectorizer
+        self, embedder, vectorizer
     ):
         pxt.drop_dir("unit_test", force=True)
 
@@ -479,7 +479,7 @@ class TestGoldDescriptor:
 
         desc = GoldDescriptor(
             table_path="unit_test.test_describe",
-            extractor=extractor,
+            embedder=embedder,
             vectorizer=vectorizer,
             batch_size=2,
             collate_fn=None,
@@ -499,7 +499,7 @@ class TestGoldDescriptor:
         pxt.drop_dir("unit_test", force=True)
 
     def test_describe_in_dataset_from_table_with_excluded_label(
-        self, extractor, vectorizer
+        self, embedder, vectorizer
     ):
         pxt.drop_dir("unit_test", force=True)
 
@@ -527,7 +527,7 @@ class TestGoldDescriptor:
 
         desc = GoldDescriptor(
             table_path="unit_test.test_describe",
-            extractor=extractor,
+            embedder=embedder,
             vectorizer=vectorizer,
             batch_size=2,
             collate_fn=None,
@@ -550,7 +550,7 @@ class TestGoldDescriptor:
         pxt.drop_dir("unit_test", force=True)
 
     def test_describe_in_dataset_from_table_with_vectorizer_and_multitarget(
-        self, extractor, vectorizer
+        self, embedder, vectorizer
     ):
         pxt.drop_dir("unit_test", force=True)
 
@@ -585,7 +585,7 @@ class TestGoldDescriptor:
 
         desc = GoldDescriptor(
             table_path="unit_test.test_describe",
-            extractor=extractor,
+            embedder=embedder,
             vectorizer=vectorizer,
             target_to_label={(25,): "class_1", (0,): "class_2"},
             batch_size=2,
@@ -605,7 +605,7 @@ class TestGoldDescriptor:
         pxt.drop_dir("unit_test", force=True)
 
     def test_describe_in_dataset_from_table_with_vectorizer_and_multitarget_without_zeros(
-        self, extractor, vectorizer
+        self, embedder, vectorizer
     ):
         pxt.drop_dir("unit_test", force=True)
 
@@ -640,7 +640,7 @@ class TestGoldDescriptor:
 
         desc = GoldDescriptor(
             table_path="unit_test.test_describe",
-            extractor=extractor,
+            embedder=embedder,
             vectorizer=vectorizer,
             target_to_label={(25,): "class_1", (0,): "class_2"},
             exclude_full_zero_target=True,
@@ -660,12 +660,12 @@ class TestGoldDescriptor:
 
         pxt.drop_dir("unit_test", force=True)
 
-    def test_describe_in_table_after_restart_with_vectorizer(self, extractor):
+    def test_describe_in_table_after_restart_with_vectorizer(self, embedder):
         pxt.drop_dir("unit_test", force=True)
 
         desc = GoldDescriptor(
             table_path="unit_test.test_describe",
-            extractor=extractor,
+            embedder=embedder,
             vectorizer=TensorVectorizer(),
             batch_size=2,
             collate_fn=None,
