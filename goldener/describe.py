@@ -63,11 +63,9 @@ class GoldDescriptor:
             only zeros (in case of multi target). Default is False.
         exclude_labels: Optional set of label strings to exclude from vectorization. Default is None.
         description_key: Column name to store the extracted features in the PixelTable table. Default is "features".
-        append_size_to_key: When True, the spatial dimensions of the input data are appended to
-            `description_key` to form the column name (e.g., "features_224x224"). This allows
-            multiple descriptors to coexist in the same table, each storing features extracted
-            from a different input size. When False (default), the column is named exactly
-            `description_key`.
+        force_fix_description: When True (default), the shape and dtype of the description are fixed in the
+            column schema. When False, the spatial dimensions of the description
+            can be different between rows.
         to_keep_schema: Optional dictionary defining additional columns to keep from the original dataset/table
             into the description table. The keys are the column names and the values are the PixelTable types.
         min_pxt_insert_size: Minimum number of rows to accumulate before inserting into PixelTable. Default is 100.
@@ -99,7 +97,7 @@ class GoldDescriptor:
         exclude_full_zero_target: bool = False,
         exclude_labels: set[str] | None = None,
         description_key: str = "features",
-        append_size_to_key: bool = False,
+        force_fix_description: bool = True,
         to_keep_schema: dict[str, type] | None = None,
         min_pxt_insert_size: int = 100,
         batch_size: int = 1,
@@ -126,8 +124,8 @@ class GoldDescriptor:
                 only zeros (in case of multi target). Default is False.
             exclude_labels: Optional set of label strings to exclude from vectorization. Default is None.
             description_key: Key for storing extracted features. Defaults to "features".
-            append_size_to_key: When True, appends the spatial dimensions of the input to
-                `description_key` (e.g., "features_224x224"). Defaults to False.
+            force_fix_description: When True (default), the shape and dtype of the description are fixed in
+                the column schema. When False, the spatial dimensions can differ between rows. Defaults to True.
             to_keep_schema: Optional schema for additional columns to preserve.
             min_pxt_insert_size: Minimum number of rows to accumulate before inserting into PixelTable. Defaults to 100.
             batch_size: Batch size used when iterating over the data.
@@ -150,7 +148,7 @@ class GoldDescriptor:
         self.exclude_full_zero_target = exclude_full_zero_target
         self.exclude_labels = exclude_labels
         self.description_key = description_key
-        self.append_size_to_key = append_size_to_key
+        self.force_fix_description = force_fix_description
         self.to_keep_schema = to_keep_schema
         self.min_pxt_insert_size = min_pxt_insert_size
         self.batch_size = batch_size
@@ -163,26 +161,6 @@ class GoldDescriptor:
         if device is None:
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.device = device
-        # Resolved at schema-creation time and reused in _sequential_describe
-        self._effective_description_key: str | None = None
-
-    def _resolve_description_key(self, data: torch.Tensor) -> str:
-        """Resolve the column name used to store the description.
-
-        When `append_size_to_key` is False, returns `description_key` unchanged.
-        When `append_size_to_key` is True, appends the spatial dimensions of `data`
-        to produce a unique column name per input size (e.g., "features_224x224").
-
-        Args:
-            data: A tensor whose last two dimensions are H and W.
-
-        Returns:
-            The resolved column name string.
-        """
-        if not self.append_size_to_key:
-            return self.description_key
-        h, w = data.shape[-2], data.shape[-1]
-        return f"{self.description_key}_{h}x{w}"
 
     def describe_in_dataset(
         self,
@@ -333,20 +311,17 @@ class GoldDescriptor:
         """
         description_table = self._get_description_valid_table(old_description_table)
 
-        sample = get_sample_row_from_idx(
-            to_describe,
-            collate_fn=pxt_torch_dataset_collate_fn,
-            expected_keys=[self.data_key],
-        )
-        sample_data = sample[self.data_key]
-        if self.transform is not None:
-            sample_data = self.transform(sample_data)
-
-        key = self._resolve_description_key(sample_data)
-        self._effective_description_key = key
-
-        if key not in description_table.columns():
+        if self.description_key not in description_table.columns():
             logger.info(f"Add the description column in {self.table_path}")
+            sample = get_sample_row_from_idx(
+                to_describe,
+                collate_fn=pxt_torch_dataset_collate_fn,
+                expected_keys=[self.data_key],
+            )
+            sample_data = sample[self.data_key]
+            if self.transform is not None:
+                sample_data = self.transform(sample_data)
+
             description = (
                 self.extractor.extract_and_fuse(sample_data.to(device=self.device))
                 .squeeze(0)
@@ -364,13 +339,12 @@ class GoldDescriptor:
                     .cpu()
                     .numpy()
                 )
-            description_table.add_column(
-                **{
-                    key: pxt.Array[  # type: ignore[misc]
-                        description.shape, pxt.Float
-                    ]
-                }
+            col_type = (
+                pxt.Array[description.shape, pxt.Float]  # type: ignore[misc]
+                if self.force_fix_description
+                else pxt.Array
             )
+            description_table.add_column(**{self.description_key: col_type})  # type: ignore[arg-type]
 
         return description_table
 
@@ -391,23 +365,17 @@ class GoldDescriptor:
         """
         description_table = self._get_description_valid_table(old_description_table)
 
-        sample = get_dataset_sample_dict(
-            to_describe,
-            collate_fn=self.collate_fn,
-            expected=[self.data_key],
-        )
-        sample_data = sample[self.data_key]
-        if self.transform is not None:
-            sample_data = self.transform(sample_data)
-
-        key = self._resolve_description_key(sample_data)
-        self._effective_description_key = key
-
-        if key in sample:
-            raise ValueError(f"Sample contains rejected keys: [{key}]")
-
-        if key not in description_table.columns():
+        if self.description_key not in description_table.columns():
             logger.info(f"Add the description column in {self.table_path}")
+            sample = get_dataset_sample_dict(
+                to_describe,
+                collate_fn=self.collate_fn,
+                expected=[self.data_key],
+            )
+            sample_data = sample[self.data_key]
+            if self.transform is not None:
+                sample_data = self.transform(sample_data)
+
             description = (
                 self.extractor.extract_and_fuse(sample_data.to(device=self.device))
                 .squeeze(0)
@@ -425,13 +393,12 @@ class GoldDescriptor:
                     .cpu()
                     .numpy()
                 )
-            description_table.add_column(
-                **{
-                    key: pxt.Array[  # type: ignore[misc]
-                        description.shape, pxt.Float
-                    ]
-                }
+            col_type = (
+                pxt.Array[description.shape, pxt.Float]  # type: ignore[misc]
+                if self.force_fix_description
+                else pxt.Array
             )
+            description_table.add_column(**{self.description_key: col_type})  # type: ignore[arg-type]
 
         return description_table
 
@@ -496,7 +463,7 @@ class GoldDescriptor:
             description_table.count() > 0
         )  # allow to filter out already described samples
 
-        desc_key = self._effective_description_key or self.description_key
+        desc_key = self.description_key
         description_col = get_expr_from_column_name(
             description_table, desc_key
         )
