@@ -84,7 +84,7 @@ class GoldGreedyKernelPointsSelectionTool(GoldSelectionTool):
 
     The solver is created at each request depending on the specified k points to select.
 
-    With  this method, the anchors are not used for the selection process.
+    With this method, the anchors are not used for the selection process.
 
     Attributes:
         feature_kernel: The kernel to use for the GreedyKernelPoints solver.
@@ -107,7 +107,7 @@ class GoldGreedyKernelPointsSelectionTool(GoldSelectionTool):
     ) -> list[int]:
         """Select a subset of data points from the input data using greedy kernel point coresubset sampling.
 
-        With  this method, the anchors are not used for the selection process.
+        With this method, the anchors are not used for the selection process.
 
         Args:
             x: A 2D torch.Tensor where each row represents a data point.
@@ -119,7 +119,7 @@ class GoldGreedyKernelPointsSelectionTool(GoldSelectionTool):
         """
         if anchors is not None:
             logger.info(
-                "Anchors are provided but are not used in the GoldGreedyKCenterSelectionTool. "
+                "Anchors are provided but are not used in the GoldGreedyKernelPointsSelectionTool. "
                 "The selection will be performed without considering the anchors."
             )
 
@@ -180,7 +180,7 @@ class GoldGreedyKCenterSelectionTool(GoldSelectionTool):
 
         x = x.to(self.device)
         if anchors is not None:
-            anchors = anchors.to(self.device)
+            anchors = anchors.to(device=self.device, dtype=x.dtype)
             x = torch.cat([anchors, x], dim=0)
 
         sample_to_sample_distance = torch.cdist(x, x)
@@ -190,7 +190,7 @@ class GoldGreedyKCenterSelectionTool(GoldSelectionTool):
 
         # initialize the distances for the first selected points
         # this will be updated iteratively to always take points farther to the already selected ones
-        if anchors is None:
+        if anchors is None or anchor_len == 0:
             # the first point is the one with the largest aggregated distance to all the other points
             first_idx = int(sample_to_sample_distance.norm(dim=1).argmax().item())
             selected_indices.append(first_idx)
@@ -212,10 +212,14 @@ class GoldGreedyKCenterSelectionTool(GoldSelectionTool):
                     distances = (
                         torch.stack([distances, distances_to_next]).min(dim=0).values
                     )
+            distances[:anchor_len] = float(
+                "inf"
+            )  # set distance to anchors to inf to avoid selecting them
 
         still_to_select = k - 1 if anchors is None else k
         for _ in range(still_to_select):
             next_idx = int(distances.argmax().item())
+
             selected_indices.append(
                 next_idx - anchor_len
             )  # remove the anchor offset if anchors are provided
@@ -231,6 +235,8 @@ class GoldGreedyClosestPointSelectionTool(GoldSelectionTool):
 
     This is a greedy algorithm that selects iteratively the point with the closest nearest neighbors
     among the not selected points.
+
+    With this method, the anchors are not used for the selection process.
 
     Attributes:
         device: The torch device to use for computations.
@@ -258,7 +264,7 @@ class GoldGreedyClosestPointSelectionTool(GoldSelectionTool):
         """
         if anchors is not None:
             logger.info(
-                "Anchors are provided but are not used in the GoldGreedyKCenterSelectionTool. "
+                "Anchors are provided but are not used in the GoldGreedyClosestPointSelectionTool. "
                 "The selection will be performed without considering the anchors."
             )
 
@@ -301,6 +307,8 @@ class GoldGreedyFarthestPointSelectionTool(GoldSelectionTool):
     This is a greedy algorithm that selects iteratively the point with the farthest nearest neighbors
     among the not selected points.
 
+    With this method, the anchors are not used for the selection process.
+
     Attributes:
         device: The torch device to use for computations.
     """
@@ -327,7 +335,7 @@ class GoldGreedyFarthestPointSelectionTool(GoldSelectionTool):
         """
         if anchors is not None:
             logger.info(
-                "Anchors are provided but are not used in the GoldGreedyKCenterSelectionTool. "
+                "Anchors are provided but are not used in the GoldGreedyFarthestPointSelectionTool. "
                 "The selection will be performed without considering the anchors."
             )
 
@@ -1452,6 +1460,8 @@ class GoldSelector:
             x: Input vectors to select from.
             select_count: Number of vectors to select.
             indices: Original indices corresponding to each vector.
+            anchors: Optional anchor vectors to influence the selection. Warning, depending on the selection tool,
+            the anchors might not be of any use.
 
         Returns:
             Set of selected indices from the original index space.
