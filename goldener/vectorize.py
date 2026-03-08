@@ -16,7 +16,7 @@ from torch import Generator
 import pixeltable as pxt
 from pixeltable.catalog import Table
 
-from goldener.embed import fuse_tensors
+from goldener.embed import fuse_tensors, EmbeddingFusionStrategy
 from goldener.pxt_utils import (
     GoldPxtTorchDataset,
     get_valid_table,
@@ -236,7 +236,7 @@ class TensorVectorizer:
         keep: Filter2DWithCount | None = None,
         remove: Filter2DWithCount | None = None,
         random: Filter2DWithCount | None = None,
-        fusion_strategy: Any | None = None,
+        fusion_strategy: EmbeddingFusionStrategy | None = None,
         transform_y: Callable[[torch.Tensor], torch.Tensor] | None = None,
         channel_pos: int = 1,
     ) -> None:
@@ -289,6 +289,14 @@ class TensorVectorizer:
 
         self.random = random
 
+        if (
+            fusion_strategy is not None
+            and fusion_strategy is EmbeddingFusionStrategy.CONCAT
+        ):
+            raise ValueError(
+                "The CONCAT fusion strategy is not supported in TensorVectorizer because "
+                "it does not preserve the original vector size"
+            )
         self.fusion_strategy = fusion_strategy
 
     def vectorize(
