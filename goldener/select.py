@@ -1357,9 +1357,9 @@ class GoldSelector:
                     if already_selected_vector_indices:
                         anchors_list = [
                             row[self.vectorized_key]
-                            for row in selection_table.where(
+                            for row in select_from.where(
                                 (
-                                    selection_table.idx_vector.isin(
+                                    select_from.idx_vector.isin(
                                         already_selected_vector_indices
                                     )
                                 )
