@@ -509,6 +509,40 @@ class TestGoldSelector:
 
         pxt.drop_dir("unit_test", force=True)
 
+    def test_select_in_table_with_restart_and_reducer(self):
+        pxt.drop_dir("unit_test", force=True)
+
+        table_path = "unit_test.test_select_max_batches"
+
+        dataset = DummyDataset(
+            [{"vectorized": torch.rand(5), "idx": idx} for idx in range(100)]
+        )
+
+        selector = GoldSelector(
+            table_path=table_path,
+            allow_existing=True,
+            batch_size=10,
+            reducer=GoldSKLearnReductionTool(PCA(n_components=3)),
+            max_batches=2,
+        )
+
+        selector.select_in_table(dataset, select_size=10, value="train")
+
+        selector.max_batches = None
+        selection_table = selector.select_in_table(
+            dataset, select_size=20, value="train"
+        )
+
+        assert selection_table.count() == 100
+        assert (
+            selection_table.where(
+                selection_table[selector.selection_key] == "train"
+            ).count()
+            == 20
+        )
+
+        pxt.drop_dir("unit_test", force=True)
+
     def test_select_in_table_with_restart(self):
         pxt.drop_dir("unit_test", force=True)
 
