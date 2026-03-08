@@ -11,9 +11,9 @@ from goldener.embed import (
     EmbeddingFusionStrategy,
     GoldEmbeddingFusionTool,
     GoldEmbeddingTool,
-    TorchGoldEmbeddingTool,
-    TorchGoldEmbeddingToolConfig,
-    MultiModalTorchGoldEmbeddingTool,
+    GoldTorchEmbeddingTool,
+    GoldTorchEmbeddingToolConfig,
+    GoldMultiModalTorchEmbeddingTool,
 )
 from goldener.pxt_utils import GoldPxtTorchDataset
 from goldener.reduce import (
@@ -49,9 +49,9 @@ __all__ = (
     "EmbeddingFusionStrategy",
     "GoldEmbeddingFusionTool",
     "GoldEmbeddingTool",
-    "TorchGoldEmbeddingTool",
-    "TorchGoldEmbeddingToolConfig",
-    "MultiModalTorchGoldEmbeddingTool",
+    "GoldTorchEmbeddingTool",
+    "GoldTorchEmbeddingToolConfig",
+    "GoldMultiModalTorchEmbeddingTool",
     "GoldPxtTorchDataset",
     "GoldReductionTool",
     "GoldReductionToolWithFit",

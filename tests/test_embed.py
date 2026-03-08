@@ -5,9 +5,9 @@ import torch
 from goldener.embed import (
     GoldEmbeddingFusionTool,
     EmbeddingFusionStrategy,
-    TorchGoldEmbeddingTool,
-    TorchGoldEmbeddingToolConfig,
-    MultiModalTorchGoldEmbeddingTool,
+    GoldTorchEmbeddingTool,
+    GoldTorchEmbeddingToolConfig,
+    GoldMultiModalTorchEmbeddingTool,
 )
 
 
@@ -113,12 +113,12 @@ class TestGoldEmbeddingFusionTool:
             assert fused.shape[2:] == shape[2:]
 
 
-class TestTorchGoldEmbeddingTool:
+class TestGoldTorchEmbeddingTool:
     def test_embed(self):
         model = DummyModel()
         layers = ["conv1", "conv2"]
-        config = TorchGoldEmbeddingToolConfig(model=model, layers=layers)
-        tool = TorchGoldEmbeddingTool(config)
+        config = GoldTorchEmbeddingToolConfig(model=model, layers=layers)
+        tool = GoldTorchEmbeddingTool(config)
         data = torch.randn(2, 3, 8, 8)
         embeddings = tool.embed(data)
         assert len(embeddings) == len(layers)
@@ -128,12 +128,12 @@ class TestTorchGoldEmbeddingTool:
     def test_embed_and_fuse(self):
         model = DummyModel()
         layers = ["conv1", "conv2"]
-        config = TorchGoldEmbeddingToolConfig(
+        config = GoldTorchEmbeddingToolConfig(
             model=model,
             layers=layers,
             layer_fusion=EmbeddingFusionStrategy.CONCAT,
         )
-        tool = TorchGoldEmbeddingTool(config)
+        tool = GoldTorchEmbeddingTool(config)
         data = torch.randn(2, 3, 8, 8)
         fused = tool.embed_and_fuse(data)
         # Should add embeddings from conv1 and conv2
@@ -141,18 +141,18 @@ class TestTorchGoldEmbeddingTool:
 
     def test_invalid_layer(self):
         model = DummyModel()
-        config = TorchGoldEmbeddingToolConfig(model=model, layers=["invalid_layer"])
+        config = GoldTorchEmbeddingToolConfig(model=model, layers=["invalid_layer"])
         with pytest.raises(ValueError):
-            TorchGoldEmbeddingTool(config)
+            GoldTorchEmbeddingTool(config)
 
 
-class TestMultiModalTorchGoldEmbeddingTool:
+class TestGoldMultiModalTorchEmbeddingTool:
     def test_embed(self):
         model1 = DummyModel()
         model2 = DummyModel()
-        config1 = TorchGoldEmbeddingToolConfig(model=model1, layers=["conv1"])
-        config2 = TorchGoldEmbeddingToolConfig(model=model2, layers=["conv2"])
-        tool = MultiModalTorchGoldEmbeddingTool({"img": config1, "aux": config2})
+        config1 = GoldTorchEmbeddingToolConfig(model=model1, layers=["conv1"])
+        config2 = GoldTorchEmbeddingToolConfig(model=model2, layers=["conv2"])
+        tool = GoldMultiModalTorchEmbeddingTool({"img": config1, "aux": config2})
         data = {
             "img": torch.randn(2, 3, 8, 8),
             "aux": torch.randn(2, 3, 8, 8),
@@ -165,9 +165,9 @@ class TestMultiModalTorchGoldEmbeddingTool:
     def test_embed_and_fuse(self):
         model1 = DummyModel()
         model2 = DummyModel()
-        config1 = TorchGoldEmbeddingToolConfig(model=model1, layers=["conv1"])
-        config2 = TorchGoldEmbeddingToolConfig(model=model2, layers=["conv2"])
-        tool = MultiModalTorchGoldEmbeddingTool(
+        config1 = GoldTorchEmbeddingToolConfig(model=model1, layers=["conv1"])
+        config2 = GoldTorchEmbeddingToolConfig(model=model2, layers=["conv2"])
+        tool = GoldMultiModalTorchEmbeddingTool(
             {"img": config1, "aux": config2},
             strategy=EmbeddingFusionStrategy.CONCAT,
         )
