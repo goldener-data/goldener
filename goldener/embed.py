@@ -46,6 +46,37 @@ class EmbeddingFusionStrategy(Enum):
     MAX = "max"
 
 
+def fuse_tensors(
+    tensors: List[torch.Tensor],
+    strategy: EmbeddingFusionStrategy,
+) -> torch.Tensor:
+    """Apply the specified embedding fusion strategy to a list of tensors.
+
+    Args:
+        tensors: List of tensors to be fused.
+        strategy: Strategy to fuse the tensors.
+
+    Returns: Fused tensor.
+
+    Raises:
+        ValueError: If the tensors have a different number of dimensions.
+    """
+    ndims = set(f.ndim for f in tensors)
+    if len(ndims) != 1:
+        raise ValueError("All embeddings must have the same number of dimensions.")
+
+    if strategy is EmbeddingFusionStrategy.CONCAT:
+        return torch.cat(tensors, dim=1)
+    elif strategy is EmbeddingFusionStrategy.ADD:
+        return torch.stack(tensors, dim=0).sum(dim=0)
+    elif strategy is EmbeddingFusionStrategy.AVERAGE:
+        return torch.stack(tensors, dim=0).mean(dim=0)
+    elif strategy is EmbeddingFusionStrategy.MAX:
+        return torch.stack(tensors, dim=0).max(dim=0).values
+    else:
+        assert_never(strategy)
+
+
 @dataclass
 class GoldTorchEmbeddingToolConfig:
     """Configuration for the GoldTorchEmbeddingTool.
@@ -130,16 +161,7 @@ class GoldEmbeddingFusionTool:
                 for embedding in tensors
             ]
 
-        if strategy is EmbeddingFusionStrategy.CONCAT:
-            return torch.cat(tensors, dim=1)
-        elif strategy is EmbeddingFusionStrategy.ADD:
-            return torch.stack(tensors, dim=0).sum(dim=0)
-        elif strategy is EmbeddingFusionStrategy.AVERAGE:
-            return torch.stack(tensors, dim=0).mean(dim=0)
-        elif strategy is EmbeddingFusionStrategy.MAX:
-            return torch.stack(tensors, dim=0).max(dim=0).values
-        else:
-            assert_never(strategy)
+        return fuse_tensors(tensors, strategy)
 
     def fuse_embeddings(
         self,

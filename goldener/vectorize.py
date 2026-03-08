@@ -16,6 +16,7 @@ from torch import Generator
 import pixeltable as pxt
 from pixeltable.catalog import Table
 
+from goldener.embed import fuse_tensors
 from goldener.pxt_utils import (
     GoldPxtTorchDataset,
     get_valid_table,
@@ -224,6 +225,8 @@ class TensorVectorizer:
         remove: Filter2DWithCount instance to remove specific rows in the input `x` of `filter`.
         random: Random Filter2DWithCount instance to randomly filter vectors after
         applying `keep`, `remove` and the target `y` on the input `x` of filter.
+        fusion_strategy: Optional strategy to fuse vectors when more than 1 vector is kept
+            for a sample after all filtering steps.
         transform_y: Optional callable to transform the target tensor before transforming it to 2D.
         channel_pos: position of the channel dimension in the input tensor to vectorize.
     """
@@ -233,6 +236,7 @@ class TensorVectorizer:
         keep: Filter2DWithCount | None = None,
         remove: Filter2DWithCount | None = None,
         random: Filter2DWithCount | None = None,
+        fusion_strategy: Any | None = None,
         transform_y: Callable[[torch.Tensor], torch.Tensor] | None = None,
         channel_pos: int = 1,
     ) -> None:
@@ -242,6 +246,8 @@ class TensorVectorizer:
             keep: Optional filter to keep specific rows in the input.
             remove: Optional filter to remove specific rows from the input.
             random: Optional random filter to apply after keep/remove filters.
+            fusion_strategy: Optional strategy to fuse vectors when more than 1 vector is kept
+                for a sample after all filtering steps.
             transform_y: Optional transformation to apply to the target tensor.
             channel_pos: Position of the channel dimension in the input tensor. Defaults to 1.
 
@@ -282,6 +288,8 @@ class TensorVectorizer:
                 )
 
         self.random = random
+
+        self.fusion_strategy = fusion_strategy
 
     def vectorize(
         self,
@@ -335,6 +343,11 @@ class TensorVectorizer:
 
             if self.random is not None and len(x_sample) > self.random.filter_count:
                 x_sample = self._apply_filter(self.random.filter, x_sample)
+
+            if len(x_sample) > 1 and self.fusion_strategy is not None:
+                x_sample = fuse_tensors(
+                    [s.unsqueeze(0) for s in x_sample], self.fusion_strategy
+                )
 
             filtered_x.append(x_sample)
             filtered_batch_info.append(
