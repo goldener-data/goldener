@@ -509,6 +509,40 @@ class TestGoldSelector:
 
         pxt.drop_dir("unit_test", force=True)
 
+    def test_select_in_table_with_restart_and_reducer(self):
+        pxt.drop_dir("unit_test", force=True)
+
+        table_path = "unit_test.test_select_max_batches"
+
+        dataset = DummyDataset(
+            [{"vectorized": torch.rand(5), "idx": idx} for idx in range(100)]
+        )
+
+        selector = GoldSelector(
+            table_path=table_path,
+            allow_existing=True,
+            batch_size=10,
+            reducer=GoldSKLearnReductionTool(PCA(n_components=3)),
+            max_batches=2,
+        )
+
+        selector.select_in_table(dataset, select_size=10, value="train")
+
+        selector.max_batches = None
+        selection_table = selector.select_in_table(
+            dataset, select_size=20, value="train"
+        )
+
+        assert selection_table.count() == 100
+        assert (
+            selection_table.where(
+                selection_table[selector.selection_key] == "train"
+            ).count()
+            == 20
+        )
+
+        pxt.drop_dir("unit_test", force=True)
+
     def test_select_in_table_with_restart(self):
         pxt.drop_dir("unit_test", force=True)
 
@@ -984,6 +1018,41 @@ class TestGoldGreedyKCenterSelectionTool:
             ValueError, match="GoldSelectionTool only accepts 2D tensors"
         ):
             tool.select(torch.randn(10, 5, 3), k=2)
+
+    def test_selection_with_anchors(self) -> None:
+        # 1D layout along x-axis: four points
+        x = torch.tensor(
+            [
+                [0.0, 0.0],
+                [10.0, 0.0],
+                [2.0, 0.0],
+                [20.0, 0.0],
+            ],
+            dtype=torch.float32,
+        )
+
+        # Two anchors between the points of x
+        anchors = torch.tensor(
+            [
+                [0.5, 0.0],
+                [2.5, 0.0],
+            ],
+            dtype=torch.float32,
+        )
+
+        tool = GoldGreedyKCenterSelectionTool(device="cpu")
+        k = 2
+        indices = tool.select(x, k=k, anchors=anchors)
+
+        # We must select k distinct indices
+        assert len(indices) == k
+        assert len(set(indices)) == k
+
+        # Indices must refer to rows in x (0..x_len-1)
+        assert all(0 <= idx < x.size(0) for idx in indices)
+
+        # In this symmetric 1D case we expect the extremes to be selected
+        assert set(indices) == {1, 3}
 
 
 class TestGoldGreedyKernelPointsSelectionTool:

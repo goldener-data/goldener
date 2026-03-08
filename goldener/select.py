@@ -63,12 +63,16 @@ class GoldSelectionTool(ABC):
         self,
         x: torch.Tensor,
         k: int,
+        anchors: torch.Tensor | None = None,
     ) -> list[int]:
         """Select a subset of data points from the input data.
 
         Args:
             x: A 2D torch.Tensor where each row represents a data point.
             k: The number of data points to select.
+            anchors: Optional 2D torch.Tensor of anchor points to consider during selection.
+                The shape should be (num_anchors, feature_dim). If provided, the selection will be performed
+                with respect to these anchor points and it will affect the selection process.
 
         Returns:
             A list of indices corresponding to the selected data points.
@@ -79,6 +83,8 @@ class GoldGreedyKernelPointsSelectionTool(GoldSelectionTool):
     """Coresubset selection using Coreax's GreedyKernelPoints solver.
 
     The solver is created at each request depending on the specified k points to select.
+
+    With this method, the anchors are not used for the selection process.
 
     Attributes:
         feature_kernel: The kernel to use for the GreedyKernelPoints solver.
@@ -97,16 +103,26 @@ class GoldGreedyKernelPointsSelectionTool(GoldSelectionTool):
         self,
         x: torch.Tensor,
         k: int,
+        anchors: torch.Tensor | None = None,
     ) -> list[int]:
         """Select a subset of data points from the input data using greedy kernel point coresubset sampling.
+
+        With this method, the anchors are not used for the selection process.
 
         Args:
             x: A 2D torch.Tensor where each row represents a data point.
             k: The number of data points to select.
+            anchors: Not used in this selection tool, included for compatibility with the base class.
 
         Returns:
             A list of indices corresponding to the selected data points.
         """
+        if anchors is not None:
+            logger.info(
+                "Anchors are provided but are not used in the GoldGreedyKernelPointsSelectionTool. "
+                "The selection will be performed without considering the anchors."
+            )
+
         self._validate_input(x)
         in_data = SupervisedData(
             data=jnp.array(x.numpy(force=True)), supervision=jnp.array(np.ones(len(x)))
@@ -139,6 +155,7 @@ class GoldGreedyKCenterSelectionTool(GoldSelectionTool):
         self,
         x: torch.Tensor,
         k: int,
+        anchors: torch.Tensor | None = None,
     ) -> list[int]:
         """Select a subset of data points from the input data by choosing iteratively the point
         with the farthest nearest neighbors among the not selected points.
@@ -146,6 +163,9 @@ class GoldGreedyKCenterSelectionTool(GoldSelectionTool):
         Args:
             x: A 2D torch.Tensor where each row represents a data point.
             k: The number of data points to select.
+            anchors: Optional 2D torch.Tensor of anchor points to consider during selection.
+                The shape should be (num_anchors, feature_dim). If provided, the selection
+                will be performed with respect to these anchor points and it will affect the selection process.
 
         Returns:
             A list of indices corresponding to the selected data points.
@@ -159,20 +179,50 @@ class GoldGreedyKCenterSelectionTool(GoldSelectionTool):
             return list(range(x_len))
 
         x = x.to(self.device)
+        if anchors is not None:
+            anchors = anchors.to(device=self.device, dtype=x.dtype)
+            x = torch.cat([anchors, x], dim=0)
 
-        # the first point is the one with the largest aggregated distance to all the other points
         sample_to_sample_distance = torch.cdist(x, x)
-        first_idx = int(sample_to_sample_distance.norm(dim=1).argmax().item())
-        selected_indices = [first_idx]
-        if k == 1:
-            return selected_indices
 
-        # the next points are selected iteratively as the ones
-        # with the largest distance to the already selected points
-        distances = sample_to_sample_distance[first_idx]
-        for _ in range(k - 1):
+        selected_indices = []
+        anchor_len = len(anchors) if anchors is not None else 0
+
+        # initialize the distances for the first selected points
+        # this will be updated iteratively to always take points farther to the already selected ones
+        if anchors is None or anchor_len == 0:
+            # the first point is the one with the largest aggregated distance to all the other points
+            first_idx = int(sample_to_sample_distance.norm(dim=1).argmax().item())
+            selected_indices.append(first_idx)
+            if k == 1:
+                return selected_indices
+
+            # the next points are selected iteratively as the ones
+            # with the largest distance to the already selected points
+            distances = sample_to_sample_distance[first_idx]
+        else:
+            # setup distances with respect to anchors
+            # all anchors are considered as already selected,
+            # the first point will be the one with the largest distance to its closest anchor
+            for idx_anchor in range(len(anchors)):
+                distances_to_next = sample_to_sample_distance[idx_anchor]
+                if idx_anchor == 0:
+                    distances = distances_to_next
+                else:
+                    distances = (
+                        torch.stack([distances, distances_to_next]).min(dim=0).values
+                    )
+            distances[:anchor_len] = float(
+                "-inf"
+            )  # set distance to anchors to -inf to avoid selecting them
+
+        still_to_select = k - 1 if anchors is None or anchor_len == 0 else k
+        for _ in range(still_to_select):
             next_idx = int(distances.argmax().item())
-            selected_indices.append(next_idx)
+
+            selected_indices.append(
+                next_idx - anchor_len
+            )  # remove the anchor offset if anchors are provided
 
             distances_to_next = sample_to_sample_distance[next_idx]
             distances = torch.stack([distances, distances_to_next]).min(dim=0).values
@@ -186,6 +236,8 @@ class GoldGreedyClosestPointSelectionTool(GoldSelectionTool):
     This is a greedy algorithm that selects iteratively the point with the closest nearest neighbors
     among the not selected points.
 
+    With this method, the anchors are not used for the selection process.
+
     Attributes:
         device: The torch device to use for computations.
     """
@@ -197,6 +249,7 @@ class GoldGreedyClosestPointSelectionTool(GoldSelectionTool):
         self,
         x: torch.Tensor,
         k: int,
+        anchors: torch.Tensor | None = None,
     ) -> list[int]:
         """Select a subset of data points from the input data by choosing iteratively the point
         with the closest nearest neighbors among the not selected points.
@@ -204,10 +257,17 @@ class GoldGreedyClosestPointSelectionTool(GoldSelectionTool):
         Args:
             x: A 2D torch.Tensor where each row represents a data point.
             k: The number of data points to select.
+            anchors: Not used in this selection tool, included for compatibility with the base class.
 
         Returns:
             A list of indices corresponding to the selected data points.
         """
+        if anchors is not None:
+            logger.info(
+                "Anchors are provided but are not used in the GoldGreedyClosestPointSelectionTool. "
+                "The selection will be performed without considering the anchors."
+            )
+
         self._validate_input(x)
         x_len = len(x)
         if k > x_len:
@@ -247,6 +307,8 @@ class GoldGreedyFarthestPointSelectionTool(GoldSelectionTool):
     This is a greedy algorithm that selects iteratively the point with the farthest nearest neighbors
     among the not selected points.
 
+    With this method, the anchors are not used for the selection process.
+
     Attributes:
         device: The torch device to use for computations.
     """
@@ -258,6 +320,7 @@ class GoldGreedyFarthestPointSelectionTool(GoldSelectionTool):
         self,
         x: torch.Tensor,
         k: int,
+        anchors: torch.Tensor | None = None,
     ) -> list[int]:
         """Select a subset of data points from the input data by choosing iteratively the point
         with the farthest nearest neighbors among the not selected points.
@@ -265,10 +328,17 @@ class GoldGreedyFarthestPointSelectionTool(GoldSelectionTool):
         Args:
             x: A 2D torch.Tensor where each row represents a data point.
             k: The number of data points to select.
+            anchors: Not used in this selection tool, included for compatibility with the base class.
 
         Returns:
             A list of indices corresponding to the selected data points.
         """
+        if anchors is not None:
+            logger.info(
+                "Anchors are provided but are not used in the GoldGreedyFarthestPointSelectionTool. "
+                "The selection will be performed without considering the anchors."
+            )
+
         self._validate_input(x)
         x_len = len(x)
         if k > x_len:
@@ -1188,6 +1258,7 @@ class GoldSelector:
             available_query = (selection_col == None) & (label_col == label_value)  # noqa: E712 E711
         else:
             available_query = selection_col == None  # noqa: E711
+
         while current_selected_count < select_count:
             loop_start = (
                 current_selected_count  # validate some samples have been selected
@@ -1281,16 +1352,54 @@ class GoldSelector:
                     # It can happen when the selection size is close to the total size
                     coresubset_indices = set(indices.tolist())
                 else:
-                    # make coresubset selection for the chunk
-                    if self.reducer is not None:
-                        vectors = (
-                            self.reducer.fit_transform(vectors)
-                            if isinstance(self.reducer, GoldReductionToolWithFit)
-                            else self.reducer.transform(vectors)
+                    # The already selected vectors might influence the selection of the current chunk
+                    anchors = None
+                    already_selected_vector_indices = self.get_selection_indices(
+                        selection_table,
+                        value=value,
+                        selection_key=self.selection_key,
+                        label_key=self.label_key,
+                        label_value=label_value,
+                        idx_key="idx_vector",
+                    )
+                    if already_selected_vector_indices:
+                        anchors_list = [
+                            row[self.vectorized_key]
+                            for row in select_from.where(
+                                (
+                                    select_from.idx_vector.isin(
+                                        already_selected_vector_indices
+                                    )
+                                )
+                            )
+                            .select(vectorized_col)
+                            .collect()
+                        ]
+                        anchors = torch.stack(
+                            [torch.from_numpy(anchor) for anchor in anchors_list], dim=0
                         )
 
+                    # make coresubset selection for the chunk
+                    if self.reducer is not None:
+                        to_be_reduced = (
+                            vectors
+                            if anchors is None
+                            else torch.cat([anchors, vectors], dim=0)
+                        )
+                        reduced = (
+                            self.reducer.fit_transform(to_be_reduced)
+                            if isinstance(self.reducer, GoldReductionToolWithFit)
+                            else self.reducer.transform(to_be_reduced)
+                        )
+                        if anchors is not None:
+                            anchors, vectors = torch.split(
+                                reduced, [len(anchors), len(vectors)], dim=0
+                            )
+                        else:
+                            vectors = reduced
+
                     coresubset_indices = self._coresubset_selection(
-                        vectors, chunk_select_count, indices
+                        vectors, chunk_select_count, indices, anchors
                     )
 
                 # update table with selected indices
@@ -1339,7 +1448,11 @@ class GoldSelector:
         raise NotImplementedError("Distributed selection is not implemented yet.")
 
     def _coresubset_selection(
-        self, x: torch.Tensor, select_count: int, indices: torch.Tensor
+        self,
+        x: torch.Tensor,
+        select_count: int,
+        indices: torch.Tensor,
+        anchors: torch.Tensor | None = None,
     ) -> set[int]:
         """Apply the selection algorithm.
 
@@ -1347,11 +1460,13 @@ class GoldSelector:
             x: Input vectors to select from.
             select_count: Number of vectors to select.
             indices: Original indices corresponding to each vector.
+            anchors: Optional anchor vectors to influence the selection. Warning, depending on the selection tool,
+            the anchors might not be of any use.
 
         Returns:
             Set of selected indices from the original index space.
         """
-        selected_indices = self.selection_tool.select(x, select_count)
+        selected_indices = self.selection_tool.select(x, select_count, anchors)
 
         return set(indices[torch.tensor(selected_indices)].tolist())
 
