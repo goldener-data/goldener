@@ -213,10 +213,10 @@ class GoldGreedyKCenterSelectionTool(GoldSelectionTool):
                         torch.stack([distances, distances_to_next]).min(dim=0).values
                     )
             distances[:anchor_len] = float(
-                "inf"
-            )  # set distance to anchors to inf to avoid selecting them
+                "-inf"
+            )  # set distance to anchors to -inf to avoid selecting them
 
-        still_to_select = k - 1 if anchors is None else k
+        still_to_select = k - 1 if anchors is None or anchor_len == 0 else k
         for _ in range(still_to_select):
             next_idx = int(distances.argmax().item())
 
