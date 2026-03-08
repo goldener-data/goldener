@@ -200,6 +200,36 @@ class TestTensorVectorizer:
         x = self.make_tensor()
         _ = v.vectorize(x)
 
+    def test_vectorize_with_fusion_strategy_average(self):
+        x = torch.tensor(
+            [
+                [
+                    [1.0, 3.0, 5.0],
+                    [2.0, 4.0, 6.0],
+                ],
+                [
+                    [10.0, 30.0, 50.0],
+                    [20.0, 40.0, 60.0],
+                ],
+            ]
+        )
+
+        from goldener.embed import EmbeddingFusionStrategy
+
+        v = TensorVectorizer(fusion_strategy=EmbeddingFusionStrategy.AVERAGE)
+        vec = v.vectorize(x)
+
+        assert vec.vectors.shape[0] == 2
+        assert vec.vectors.shape[1] == 2
+
+        expected_sample0 = torch.tensor([3.0, 4.0])
+        expected_sample1 = torch.tensor([30.0, 40.0])
+
+        assert torch.allclose(vec.vectors[0], expected_sample0)
+        assert torch.allclose(vec.vectors[1], expected_sample1)
+
+        assert torch.equal(vec.batch_indices, torch.tensor([0, 1]))
+
 
 class TestFilter2DWithCount:
     def make_tensor(self):

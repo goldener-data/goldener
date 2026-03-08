@@ -8,6 +8,7 @@ from goldener.embed import (
     GoldTorchEmbeddingTool,
     GoldTorchEmbeddingToolConfig,
     GoldMultiModalTorchEmbeddingTool,
+    fuse_tensors,
 )
 
 
@@ -39,6 +40,53 @@ shapes_2d_3d_4d = [
 ]
 
 
+class TestFuseTensors:
+    def test_top_level_basic_concat(self) -> None:
+        t1 = torch.ones(2, 3)
+        t2 = torch.full((2, 3), 2.0)
+
+        fused = fuse_tensors([t1, t2], EmbeddingFusionStrategy.CONCAT)
+
+        assert fused.shape == (2, 6)
+        assert torch.allclose(fused[:, :3], torch.ones_like(fused[:, :3]))
+        assert torch.allclose(fused[:, 3:], torch.full_like(fused[:, 3:], 2.0))
+
+    def test_top_level_add(self) -> None:
+        t1 = torch.full((2, 3), 1.0)
+        t2 = torch.full((2, 3), 3.0)
+
+        fused = fuse_tensors([t1, t2], EmbeddingFusionStrategy.ADD)
+
+        assert fused.shape == (2, 3)
+        assert torch.allclose(fused, torch.full_like(fused, 4.0))
+
+    def test_top_level_average(self) -> None:
+        t1 = torch.full((2, 3), 1.0)
+        t2 = torch.full((2, 3), 3.0)
+
+        fused = fuse_tensors([t1, t2], EmbeddingFusionStrategy.AVERAGE)
+
+        assert fused.shape == (2, 3)
+        assert torch.allclose(fused, torch.full_like(fused, 2.0))
+
+    def test_top_level_max(self) -> None:
+        t1 = torch.tensor([[1.0, 5.0, 2.0], [0.0, 3.0, 4.0]])
+        t2 = torch.tensor([[2.0, 4.0, 1.0], [1.0, 1.0, 5.0]])
+
+        fused = fuse_tensors([t1, t2], EmbeddingFusionStrategy.MAX)
+
+        expected = torch.max(t1, t2)
+        assert fused.shape == t1.shape
+        assert torch.allclose(fused, expected)
+
+    def test_top_level_raises_on_mismatched_ndim(self) -> None:
+        t1 = torch.ones(2, 3)
+        t2 = torch.ones(2, 3, 4)
+
+        with pytest.raises(ValueError, match="same number of dimensions"):
+            fuse_tensors([t1, t2], EmbeddingFusionStrategy.ADD)
+
+
 class TestGoldEmbeddingFusionTool:
     @pytest.mark.parametrize("shape", shapes_2d_3d_4d)
     def test_fuse_tensors_concat(self, shape):
@@ -67,6 +115,18 @@ class TestGoldEmbeddingFusionTool:
             [t1, t2], EmbeddingFusionStrategy.AVERAGE
         )
         assert torch.allclose(fused, torch.full_like(fused, 2.0))
+
+    @pytest.mark.parametrize("shape", shapes_2d_3d_4d)
+    def test_fuse_tensors_max(self, shape):
+        t1 = make_tensor(shape, 1.0)
+        t2 = make_tensor(shape, 3.0)
+
+        fused = GoldEmbeddingFusionTool.fuse_tensors(
+            [t1, t2], EmbeddingFusionStrategy.MAX
+        )
+
+        assert fused.shape == t1.shape
+        assert torch.allclose(fused, torch.full_like(fused, 3.0))
 
     @pytest.mark.parametrize("shape", shapes_2d_3d_4d)
     def test_fuse_tensors_with_different_shapes(self, shape):
@@ -111,6 +171,20 @@ class TestGoldEmbeddingFusionTool:
         assert fused.shape[0] == shape[0]
         if len(shape) > 2:
             assert fused.shape[2:] == shape[2:]
+
+    @pytest.mark.parametrize("shape", shapes_2d_3d_4d)
+    def test_fuse_embeddings_with_max_layer_fusion(self, shape):
+        t1 = make_tensor(shape, 1.0)
+        t2 = make_tensor(shape, 3.0)
+        embeddings = {"mod1": t1, "mod2": t2}
+        fusion = GoldEmbeddingFusionTool(
+            layer_fusion=EmbeddingFusionStrategy.MAX,
+            group_fusion=EmbeddingFusionStrategy.ADD,
+        )
+        fused = fusion.fuse_embeddings(embeddings, ["mod1", "mod2"])
+
+        assert fused.shape == shape
+        assert torch.allclose(fused, torch.full_like(fused, 3.0))
 
 
 class TestGoldTorchEmbeddingTool:
