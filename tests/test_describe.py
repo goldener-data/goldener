@@ -4,7 +4,7 @@ import torch
 import pixeltable as pxt
 
 from goldener.describe import GoldDescriptor
-from goldener.embed import TorchGoldEmbeddingToolConfig, TorchGoldEmbeddingTool
+from goldener.embed import GoldTorchEmbeddingToolConfig, GoldTorchEmbeddingTool
 from goldener.vectorize import TensorVectorizer
 
 
@@ -23,8 +23,8 @@ class DummyModel(torch.nn.Module):
 @pytest.fixture
 def embedder():
     model = DummyModel()
-    config = TorchGoldEmbeddingToolConfig(model=model, layers=None)
-    return TorchGoldEmbeddingTool(config)
+    config = GoldTorchEmbeddingToolConfig(model=model, layers=None)
+    return GoldTorchEmbeddingTool(config)
 
 
 @pytest.fixture
