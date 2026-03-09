@@ -8,7 +8,6 @@ from goldener.embed import (
     GoldTorchEmbeddingTool,
     GoldTorchEmbeddingToolConfig,
     GoldMultiModalTorchEmbeddingTool,
-    fuse_tensors,
 )
 
 
@@ -38,53 +37,6 @@ shapes_2d_3d_4d = [
     (2, 4, 5, 5),
     (2, 4, 5, 5, 5),
 ]
-
-
-class TestFuseTensors:
-    def test_top_level_basic_concat(self) -> None:
-        t1 = torch.ones(2, 3)
-        t2 = torch.full((2, 3), 2.0)
-
-        fused = fuse_tensors([t1, t2], EmbeddingFusionStrategy.CONCAT)
-
-        assert fused.shape == (2, 6)
-        assert torch.allclose(fused[:, :3], torch.ones_like(fused[:, :3]))
-        assert torch.allclose(fused[:, 3:], torch.full_like(fused[:, 3:], 2.0))
-
-    def test_top_level_add(self) -> None:
-        t1 = torch.full((2, 3), 1.0)
-        t2 = torch.full((2, 3), 3.0)
-
-        fused = fuse_tensors([t1, t2], EmbeddingFusionStrategy.ADD)
-
-        assert fused.shape == (2, 3)
-        assert torch.allclose(fused, torch.full_like(fused, 4.0))
-
-    def test_top_level_average(self) -> None:
-        t1 = torch.full((2, 3), 1.0)
-        t2 = torch.full((2, 3), 3.0)
-
-        fused = fuse_tensors([t1, t2], EmbeddingFusionStrategy.AVERAGE)
-
-        assert fused.shape == (2, 3)
-        assert torch.allclose(fused, torch.full_like(fused, 2.0))
-
-    def test_top_level_max(self) -> None:
-        t1 = torch.tensor([[1.0, 5.0, 2.0], [0.0, 3.0, 4.0]])
-        t2 = torch.tensor([[2.0, 4.0, 1.0], [1.0, 1.0, 5.0]])
-
-        fused = fuse_tensors([t1, t2], EmbeddingFusionStrategy.MAX)
-
-        expected = torch.max(t1, t2)
-        assert fused.shape == t1.shape
-        assert torch.allclose(fused, expected)
-
-    def test_top_level_raises_on_mismatched_ndim(self) -> None:
-        t1 = torch.ones(2, 3)
-        t2 = torch.ones(2, 3, 4)
-
-        with pytest.raises(ValueError, match="same number of dimensions"):
-            fuse_tensors([t1, t2], EmbeddingFusionStrategy.ADD)
 
 
 class TestGoldEmbeddingFusionTool:

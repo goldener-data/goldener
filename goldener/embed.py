@@ -46,37 +46,6 @@ class EmbeddingFusionStrategy(Enum):
     MAX = "max"
 
 
-def fuse_tensors(
-    tensors: List[torch.Tensor],
-    strategy: EmbeddingFusionStrategy,
-) -> torch.Tensor:
-    """Apply the specified embedding fusion strategy to a list of tensors.
-
-    Args:
-        tensors: List of tensors to be fused.
-        strategy: Strategy to fuse the tensors.
-
-    Returns: Fused tensor.
-
-    Raises:
-        ValueError: If the tensors have a different number of dimensions.
-    """
-    ndims = set(f.ndim for f in tensors)
-    if len(ndims) != 1:
-        raise ValueError("All embeddings must have the same number of dimensions.")
-
-    if strategy is EmbeddingFusionStrategy.CONCAT:
-        return torch.cat(tensors, dim=1)
-    elif strategy is EmbeddingFusionStrategy.ADD:
-        return torch.stack(tensors, dim=0).sum(dim=0)
-    elif strategy is EmbeddingFusionStrategy.AVERAGE:
-        return torch.stack(tensors, dim=0).mean(dim=0)
-    elif strategy is EmbeddingFusionStrategy.MAX:
-        return torch.stack(tensors, dim=0).max(dim=0).values
-    else:
-        assert_never(strategy)
-
-
 @dataclass
 class GoldTorchEmbeddingToolConfig:
     """Configuration for the GoldTorchEmbeddingTool.
@@ -85,12 +54,15 @@ class GoldTorchEmbeddingToolConfig:
         model: The PyTorch model from which to extract embeddings.
         layers: List of layer names or a dictionary mapping group names to lists of layer names.
             If None, the last layer of the model is used.
+        channel_dim: channel_dim: Localization of the channel dimension in the embedding tensors (default is 1).
+            It is used for concatenation and to determine the spatial dimensions for interpolation.
         layer_fusion: Strategy to fuse embeddings from multiple layers within the same group.
         group_fusion: Strategy to fuse embeddings from different groups.
     """
 
     model: torch.nn.Module
     layers: list[str] | dict[str, list[str]] | None = None
+    channel_dim: int = 1
     layer_fusion: EmbeddingFusionStrategy = EmbeddingFusionStrategy.CONCAT
     group_fusion: EmbeddingFusionStrategy = EmbeddingFusionStrategy.CONCAT
 
@@ -122,6 +94,7 @@ class GoldEmbeddingFusionTool:
     def fuse_tensors(
         tensors: List[torch.Tensor],
         strategy: EmbeddingFusionStrategy,
+        channel_dim: int = 1,
     ) -> torch.Tensor:
         """Fuse a list of tensors.
 
@@ -131,6 +104,8 @@ class GoldEmbeddingFusionTool:
         Args:
             tensors: List of tensors to be fused.
             strategy: Strategy to fuse the tensors.
+            channel_dim: Localization of the channel dimension in the embedding tensors (default is 1).
+                It is used for concatenation and to determine the spatial dimensions for interpolation.
 
         Returns: Fused tensors.
 
@@ -143,42 +118,58 @@ class GoldEmbeddingFusionTool:
 
         ndim = list(ndims)[0]
         if ndim > 2:
+            permuted_tensors = [t.movedim(channel_dim, 1) for t in tensors]
+
             max_size = tuple(
-                max(sizes) for sizes in zip(*(f.shape[2:] for f in tensors))
+                max(sizes) for sizes in zip(*(t.shape[2:] for t in permuted_tensors))
             )
             # Interpolate all tensors to the largest size
             mode = "linear" if ndim == 3 else ("bilinear" if ndim == 4 else "trilinear")
             tensors = [
                 (
                     torch.nn.functional.interpolate(
-                        embedding,
+                        t,
                         size=max_size,
                         mode=mode,
-                    )
-                    if embedding.shape[2:] != max_size
-                    else embedding
+                    ).movedim(1, channel_dim)
+                    if t.shape[2:] != max_size
+                    else t.movedim(1, channel_dim)
                 )
-                for embedding in tensors
+                for t in permuted_tensors
             ]
 
-        return fuse_tensors(tensors, strategy)
+        if strategy is EmbeddingFusionStrategy.CONCAT:
+            return torch.cat(tensors, dim=channel_dim)
+        elif strategy is EmbeddingFusionStrategy.ADD:
+            return torch.stack(tensors, dim=0).sum(dim=0)
+        elif strategy is EmbeddingFusionStrategy.AVERAGE:
+            return torch.stack(tensors, dim=0).mean(dim=0)
+        elif strategy is EmbeddingFusionStrategy.MAX:
+            return torch.stack(tensors, dim=0).max(dim=0).values
+        else:
+            assert_never(strategy)
 
     def fuse_embeddings(
         self,
         x: dict[str, torch.Tensor],
         layers: list[str] | dict[str, list[str]],
+        channel_dim: int = 1,
     ) -> torch.Tensor:
         """Fuse embeddings from multiple layers and groups.
 
         Args:
             x: Dictionary mapping layer names to embedding tensors.
             layers: List of layer names or a dictionary mapping group names to lists of layer names.
+            channel_dim: Localization of the channel dimension in the embedding tensors (default is 1).
+                It is used for concatenation and to determine the spatial dimensions for interpolation.
 
         Returns: Fused embedding tensor.
         """
         # list of layers are fused by layer_fusion strategy
         if isinstance(layers, list):
-            return self.fuse_tensors([x[name] for name in layers], self.layer_fusion)
+            return self.fuse_tensors(
+                [x[name] for name in layers], self.layer_fusion, channel_dim=channel_dim
+            )
 
         # groups of layers are fused by layer_fusion strategy,
         # then all groups are fused by group_fusion strategy
@@ -189,10 +180,14 @@ class GoldEmbeddingFusionTool:
             else:
                 fused_groups.append(
                     self.fuse_tensors(
-                        [x[name] for name in layer_names], self.layer_fusion
+                        [x[name] for name in layer_names],
+                        self.layer_fusion,
+                        channel_dim=channel_dim,
                     )
                 )
-        return self.fuse_tensors(fused_groups, self.group_fusion)
+        return self.fuse_tensors(
+            fused_groups, self.group_fusion, channel_dim=channel_dim
+        )
 
 
 class GoldTorchEmbeddingTool(GoldEmbeddingTool):
@@ -207,6 +202,8 @@ class GoldTorchEmbeddingTool(GoldEmbeddingTool):
     Attributes:
         _model: The PyTorch model from which to extract embeddings.
         fusion: GoldEmbeddingFusionTool instance to handle embedding fusion.
+        _channel_dim: Localization of the channel dimension in the embedding tensors (default is 1).
+         It is used for concatenation and to determine the spatial dimensions for interpolation.
         _layers: List of layer names or a dictionary mapping group names to lists of layer names.
         _hooks: Dictionary mapping layer names to their corresponding forward hook handles.
         _embeddings: Dictionary to store extracted embeddings.
@@ -226,6 +223,7 @@ class GoldTorchEmbeddingTool(GoldEmbeddingTool):
             layer_fusion=config.layer_fusion,
             group_fusion=config.group_fusion,
         )
+        self._channel_dim = config.channel_dim
 
         self._layers: list[str] | dict[str, list[str]]
         self._hooks: dict[str, torch.utils.hooks.RemovableHandle]
@@ -267,7 +265,7 @@ class GoldTorchEmbeddingTool(GoldEmbeddingTool):
         Returns: Fused embedding tensor.
         """
         embeddings = self.embed(x)
-        return self.fusion.fuse_embeddings(embeddings, self._layers)
+        return self.fusion.fuse_embeddings(embeddings, self._layers, self._channel_dim)
 
     def __del__(self):
         """Remove all registered hooks when the embedder is deleted."""
