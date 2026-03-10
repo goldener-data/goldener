@@ -32,6 +32,7 @@ from goldener.utils import (
     check_x_and_y_shapes,
     filter_batch_from_indices,
     transform_batch_from_multiple_to_binarized_targets,
+    transform_batch_from_multilabel_to_binary_labels,
 )
 
 logger = getLogger(__name__)
@@ -1017,10 +1018,19 @@ def vectorize_and_unwrap_in_batch(
         exclude_full_zero_target: Whether to exclude samples with a full zero target when binarizing
         targets based on the target_to_label mapping. Default is True.
     """
+    # when the target_key is not provided or not present in the batch
+    # the target is None but the label might need to be unwrapped
     if target_key is None or target_key not in batch:
         target = None
+        if label_key is not None and label_key in batch:
+            batch = transform_batch_from_multilabel_to_binary_labels(
+                batch=batch,
+                label_key=label_key,
+                exclude_labels=exclude_labels,
+            )
+
     else:
-        # in presence of multiple labels, the batch is "augmented"
+        # in presence of multiple labels and a target, the batch is "augmented"
         # to have one entry per label by binarizing the target based on the target-label mapping.
         if target_to_label is not None:
             batch = transform_batch_from_multiple_to_binarized_targets(
@@ -1032,10 +1042,10 @@ def vectorize_and_unwrap_in_batch(
                 exclude_labels=exclude_labels,
             )
 
-            if not batch:
-                return {}
-
         target = batch[target_key]
+
+    if not batch:
+        return {}
 
     vectorized = vectorizer.vectorize(
         batch[data_key],
