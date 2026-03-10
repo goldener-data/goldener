@@ -45,3 +45,10 @@ class TestCosineDistance:
 
         with pytest.raises(ValueError, match="Input tensors must be 2D"):
             cosine_distance(x_2d, x_1d)
+
+    def test_inputs_must_same_dim(self) -> None:
+        x1 = torch.rand(2, 4)
+        x2 = torch.rand(3, 5)
+
+        with pytest.raises(ValueError, match="must have the same number of channels"):
+            cosine_distance(x1, x2)
