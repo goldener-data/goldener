@@ -17,6 +17,7 @@ from goldener.select import (
     GoldSelector,
     GoldGreedyFarthestPointSelectionTool,
     GoldGreedyKCenterSelectionTool,
+    DistanceType,
 )
 from goldener.select import (
     GoldGreedyClosestPointSelectionTool,
@@ -891,6 +892,19 @@ class TestGoldGreedyClosestPointSelectionTool:
 
         assert indices == [0, 1]
 
+    def test_with_cosine_distance(self) -> None:
+        x = torch.tensor(
+            [[0.0, 1.0], [0.0, 2.0], [1.0, 0.0]],
+            dtype=torch.float32,
+        )
+
+        tool = GoldGreedyClosestPointSelectionTool(
+            device="cpu", distance=DistanceType.COSINE
+        )
+        indices = tool.select(x, k=2)
+
+        assert indices == [0, 1]
+
     def test_select_all_points(self) -> None:
         x = torch.tensor(
             [[0.0], [1.0], [2.0], [3.0]],
@@ -934,6 +948,19 @@ class TestGoldGreedyFarthestPointSelectionTool:
         )
 
         tool = GoldGreedyFarthestPointSelectionTool(device="cpu")
+        indices = tool.select(x, k=2)
+
+        assert indices == [2, 0]
+
+    def test_with_cosine(self) -> None:
+        x = torch.tensor(
+            [[0.0, 1.0], [0.0, 2.0], [1.0, 0.0]],
+            dtype=torch.float32,
+        )
+
+        tool = GoldGreedyFarthestPointSelectionTool(
+            device="cpu", distance=DistanceType.COSINE
+        )
         indices = tool.select(x, k=2)
 
         assert indices == [2, 0]
@@ -984,6 +1011,19 @@ class TestGoldGreedyKCenterSelectionTool:
         indices = tool.select(x, k=2)
 
         assert indices == [3, 0]
+
+    def test_cosine_distance(self) -> None:
+        x = torch.tensor(
+            [[0.0, 1.0], [0.0, 2.0], [3.0, 0.0], [1.0, 0.0]],
+            dtype=torch.float32,
+        )
+
+        tool = GoldGreedyKCenterSelectionTool(
+            device="cpu", distance=DistanceType.COSINE
+        )
+        indices = tool.select(x, k=2)
+
+        assert indices == [0, 2]
 
     def test_select_all_points(self) -> None:
         x = torch.tensor(
