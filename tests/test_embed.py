@@ -94,6 +94,21 @@ class TestGoldEmbeddingFusionTool:
         assert fused.shape == shape
 
     @pytest.mark.parametrize("shape", shapes_2d_3d_4d)
+    def test_fuse_tensors_with_different_shapes_and_channel_in_2(self, shape):
+        # Only test for 3D and 4D shapes (spatial dims)
+        if len(shape) < 3:
+            return
+        t1 = make_tensor(shape).movedim(1, 2)
+        smaller_shape = (shape[0], shape[1]) + tuple(max(1, s // 2) for s in shape[2:])
+        t2 = make_tensor(smaller_shape).movedim(1, 2)
+        fused = GoldEmbeddingFusionTool.fuse_tensors(
+            [t1, t2], EmbeddingFusionStrategy.CONCAT, channel_pos=2
+        )
+        expected = list(t1.shape)
+        expected[2] = expected[2] * 2
+        assert fused.shape == tuple(expected)
+
+    @pytest.mark.parametrize("shape", shapes_2d_3d_4d)
     def test_fuse_embeddings(self, shape):
         t1 = make_tensor(shape)
         t2 = make_tensor(shape)
