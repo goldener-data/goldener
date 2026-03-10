@@ -119,6 +119,7 @@ class GoldGreedyKernelPointsSelectionTool(GoldSelectionTool):
         distance: DistanceType = DistanceType.EUCLIDEAN,
     ) -> None:
         super().__init__(distance=distance)
+
         self.random_key = random_key
         self.feature_kernel = feature_kernel
 
