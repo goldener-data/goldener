@@ -1132,9 +1132,12 @@ class GoldSelector:
                     value=value,
                     force_all_labels=force_all_labels,
                 )
-                for label_idx, (label_value, label_count) in enumerate(
-                    selection_label_counts.items()
-                ):
+                # start with the labels with the lowest population in order to maximize the
+                # representativeness of the selection for all labels in multilabel tasks
+                selection_label_counts = dict(
+                    sorted(selection_label_counts.items(), key=lambda item: item[1])
+                )
+                for label_value, label_count in selection_label_counts.items():
                     if label_count == 0:
                         if force_all_labels:
                             raise ValueError(
