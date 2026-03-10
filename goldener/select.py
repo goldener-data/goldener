@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
+from enum import Enum
 from logging import getLogger
-from typing import Callable, Any
+from typing import Callable, Any, assert_never
 
 import jax
 import numpy as np
@@ -18,6 +19,7 @@ from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 
 from goldener.clusterize import get_random_chunk_assignment
+from goldener.distance import cosine_distance
 from goldener.pxt_utils import (
     set_value_to_idx_rows,
     GoldPxtTorchDataset,
@@ -40,8 +42,25 @@ from goldener.utils import (
 logger = getLogger(__name__)
 
 
+class DistanceType(Enum):
+    EUCLIDEAN = "euclidean"
+    COSINE = "cosine"
+
+    @property
+    def distance_function(self) -> Callable[[torch.Tensor, torch.Tensor], torch.Tensor]:
+        if self is DistanceType.EUCLIDEAN:
+            return torch.cdist
+        elif self is DistanceType.COSINE:
+            return cosine_distance
+        else:
+            assert_never(self)
+
+
 class GoldSelectionTool(ABC):
     """Run selection of a subset of data points from vectorized samples using a coresubset selection algorithm."""
+
+    def __init__(self, distance: DistanceType = DistanceType.EUCLIDEAN) -> None:
+        self.distance_func = distance.distance_function
 
     def _validate_input(self, x: torch.Tensor) -> None:
         """Validate that input is already vectorized (2D torch.Tensor).
@@ -89,13 +108,16 @@ class GoldGreedyKernelPointsSelectionTool(GoldSelectionTool):
     Attributes:
         feature_kernel: The kernel to use for the GreedyKernelPoints solver.
         random_key: Random key for reproducibility in the GreedyKernelPoints solver.
+        distance: Not used in this selection tool, included for compatibility with the base class.
     """
 
     def __init__(
         self,
         feature_kernel: ScalarValuedKernel,
         random_key: int = 42,
+        distance: DistanceType = DistanceType.EUCLIDEAN,
     ) -> None:
+        super().__init__(distance=distance)
         self.random_key = random_key
         self.feature_kernel = feature_kernel
 
@@ -148,7 +170,13 @@ class GoldGreedyKCenterSelectionTool(GoldSelectionTool):
         device: The torch device to use for computations.
     """
 
-    def __init__(self, device: torch.device | str) -> None:
+    def __init__(
+        self,
+        device: torch.device | str,
+        distance: DistanceType = DistanceType.EUCLIDEAN,
+    ) -> None:
+        super().__init__(distance=distance)
+
         self.device = device
 
     def select(
@@ -183,7 +211,7 @@ class GoldGreedyKCenterSelectionTool(GoldSelectionTool):
             anchors = anchors.to(device=self.device, dtype=x.dtype)
             x = torch.cat([anchors, x], dim=0)
 
-        sample_to_sample_distance = torch.cdist(x, x)
+        sample_to_sample_distance = self.distance_func(x, x)
 
         selected_indices = []
         anchor_len = len(anchors) if anchors is not None else 0
@@ -242,7 +270,13 @@ class GoldGreedyClosestPointSelectionTool(GoldSelectionTool):
         device: The torch device to use for computations.
     """
 
-    def __init__(self, device: torch.device | str) -> None:
+    def __init__(
+        self,
+        device: torch.device | str,
+        distance: DistanceType = DistanceType.EUCLIDEAN,
+    ) -> None:
+        super().__init__(distance=distance)
+
         self.device = device
 
     def select(
@@ -285,7 +319,7 @@ class GoldGreedyClosestPointSelectionTool(GoldSelectionTool):
             remaining_indices_as_list = list(remaining_indices)
             remaining_vectors = x[remaining_indices_as_list]
 
-            distance = torch.cdist(remaining_vectors, remaining_vectors)
+            distance = self.distance_func(remaining_vectors, remaining_vectors)
             distance = (
                 distance
                 + torch.eye(len(remaining_vectors), device=x.device, dtype=x.dtype)
@@ -313,7 +347,13 @@ class GoldGreedyFarthestPointSelectionTool(GoldSelectionTool):
         device: The torch device to use for computations.
     """
 
-    def __init__(self, device: torch.device | str) -> None:
+    def __init__(
+        self,
+        device: torch.device | str,
+        distance: DistanceType = DistanceType.EUCLIDEAN,
+    ) -> None:
+        super().__init__(distance=distance)
+
         self.device = device
 
     def select(
@@ -356,7 +396,7 @@ class GoldGreedyFarthestPointSelectionTool(GoldSelectionTool):
             remaining_indices_as_list = list(remaining_indices)
             remaining_vectors = x[remaining_indices_as_list]
 
-            distance = torch.cdist(remaining_vectors, remaining_vectors)
+            distance = self.distance_func(remaining_vectors, remaining_vectors)
             distance = (
                 distance
                 + torch.eye(len(remaining_vectors), device=x.device, dtype=x.dtype)
