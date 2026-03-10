@@ -16,7 +16,7 @@ from torch import Generator
 import pixeltable as pxt
 from pixeltable.catalog import Table
 
-from goldener.embed import fuse_tensors, EmbeddingFusionStrategy
+from goldener.embed import EmbeddingFusionStrategy, GoldEmbeddingFusionTool
 from goldener.pxt_utils import (
     GoldPxtTorchDataset,
     get_valid_table,
@@ -353,7 +353,7 @@ class TensorVectorizer:
                 x_sample = self._apply_filter(self.random.filter, x_sample)
 
             if len(x_sample) > 1 and self.fusion_strategy is not None:
-                x_sample = fuse_tensors(
+                x_sample = GoldEmbeddingFusionTool.fuse_tensors(
                     [s.unsqueeze(0) for s in x_sample], self.fusion_strategy
                 )
 
