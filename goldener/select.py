@@ -1,7 +1,8 @@
 from abc import ABC, abstractmethod
 from enum import Enum
 from logging import getLogger
-from typing import Callable, Any, assert_never
+from typing import Callable, Any
+from typing_extensions import assert_never
 
 import jax
 import numpy as np
