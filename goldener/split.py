@@ -433,12 +433,13 @@ class GoldSplitter:
 
         # select data for all sets
         for idx_set, gold_set in enumerate(self._sets):
-            logger.info(
-                f"Selecting samples for set '{gold_set.name}' with size {gold_set.size}."
-            )
             set_count = get_sampling_count_from_size(
                 sampling_size=gold_set.size, total_size=sample_count
             )
+            logger.info(
+                f"Selecting samples for set '{gold_set.name}' with size {set_count} over {sample_count} samples."
+            )
+
             # the first sets are selected based on the specified ratios,
             # while the last one gathers all the remaining samples,
             # so we don't need to select it explicitly
@@ -451,6 +452,9 @@ class GoldSplitter:
                     )
                 )
             else:
+                logger.info(
+                    f"{gold_set.name} is the last set, all the remaining samples will be assigned to it."
+                )
                 # The last set is gathering all the remaining samples
                 selection_col = get_expr_from_column_name(
                     selected_table, self.selector.selection_key
@@ -485,6 +489,10 @@ class GoldSplitter:
         # or keep it in the selected table.
         split_table = selected_table
         if self.in_described_table:
+            logger.info(
+                "in_described_table is set to True, moving the selection column to the described table "
+                "and returning the described table as the final split table."
+            )
             if not isinstance(description, Table):
                 raise ValueError(
                     "in_described_table is set to True, but description is not a PixelTable Table."
