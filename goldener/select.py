@@ -1546,8 +1546,8 @@ class GoldSelector:
                     current_selected_count -= already_selected_count  # remove the initial selection count to follow the current one
 
                 logger.info(
-                    f"Selected {current_selected_count - already_selected_count} samples "
-                    f"in the current chunk for value '{value}' and label '{label_value}'. "
+                    f"Selected {current_selected_count} samples "
+                    f"after the current chunk for value '{value}' and label '{label_value}'. "
                 )
 
             logger.info(

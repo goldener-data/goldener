@@ -490,7 +490,7 @@ class GoldSplitter:
         split_table = selected_table
         if self.in_described_table:
             logger.info(
-                "in_described_table is set to True, moving the selection column to the described table"
+                "in_described_table is set to True, moving the selection column to the described table "
                 "and returning the described table as the final split table."
             )
             if not isinstance(description, Table):
