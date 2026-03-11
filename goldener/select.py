@@ -1641,6 +1641,11 @@ class GoldSelector:
                     f"Label '{label}' has no more selectable sample for value '{value}', but force_all_labels is True. "
                     f"This might be due to an issue in the selection process or the data."
                 )
+            else:
+                logger.info(
+                    f"Label '{label}' has no more selectable sample for value '{value}'. "
+                    f"This label will not be selected in the current selection loop."
+                )
 
         label_ratios = {
             value: ratio
