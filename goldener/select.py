@@ -1164,6 +1164,9 @@ class GoldSelector:
                 value,
                 self.selection_key,
             )
+            logger.info(
+                f"The selection value '{value}' has already {already_selected_count} samples"
+            )
 
             # The selection is done iteratively per label
             # The first labels might as well include the next labels in case of multi labels per sample
@@ -1187,6 +1190,9 @@ class GoldSelector:
                     if force_all_labels
                     else select_count
                     - already_selected_count  # otherwise, select only the remaining samples to select after counting the already selected ones for the label
+                )
+                logger.info(
+                    f"Selection loop per label with target count {loop_select_count} for value '{value}'"
                 )
                 # During the loop over the labels, the status of each label is computed and this values
                 # allows to define how many samples are still to select for the label
@@ -1241,6 +1247,11 @@ class GoldSelector:
                         - label_counts_init[label_value]
                     )
                     if label_count_status >= label_count:
+                        logger.info(
+                            f"Label '{label_value}' has already enough selected samples "
+                            f"for value '{value}' with {label_count_status} samples already selected, "
+                            f"skipping the label"
+                        )
                         continue
 
                     # select the missing ones based on the current status of the label
@@ -1349,6 +1360,10 @@ class GoldSelector:
             available_query = selection_col == None  # noqa: E711
 
         while current_selected_count < select_count:
+            logger.info(
+                f"Starting coresubset selection for value '{value}' and label '{label_value}'"
+                f" with target count {select_count} and already selected count {already_selected_count}"
+            )
             loop_start = (
                 current_selected_count  # validate some samples have been selected
             )
@@ -1369,7 +1384,17 @@ class GoldSelector:
                 break
 
             loop_select_count = select_count - current_selected_count
+            if loop_select_count != select_count:
+                logger.info(
+                    f"{current_selected_count} samples have already been selected for value '{value}' and label '{label_value}'. "
+                    f"Selecting the remaining {loop_select_count} samples to reach the target count {select_count}"
+                )
+
             if loop_select_count == still_selectable:
+                logger.info(
+                    f"Selecting all the remaining {still_selectable} samples for value"
+                    f" '{value}' and label '{label_value}' to reach the target count {select_count}"
+                )
                 set_value_to_idx_rows(
                     table=selection_table,
                     col_expr=selection_col,
@@ -1406,6 +1431,11 @@ class GoldSelector:
                 if chunk_select_count == 0:
                     continue
 
+                logger.info(
+                    f"Selecting {chunk_select_count} samples for value '{value}' and "
+                    f"label '{label_value}' from a chunk of {len(chunk_indices)} vectors"
+                )
+
                 # update the vector available for selection because the selection from previous chunks
                 # might have selected some of the samples in the current chunk, making them no longer
                 # available for selection in the current chunk
@@ -1419,6 +1449,10 @@ class GoldSelector:
                     .collect()
                 ]
                 if len(chunk_vector_indices_not_selected) == 0:
+                    logger.info(
+                        f"No more vector available for selection in the current "
+                        f"chunk for value '{value}' and label '{label_value}', skipping the chunk"
+                    )
                     continue
 
                 # load the vectors and the corresponding indices for the chunk
@@ -1507,8 +1541,19 @@ class GoldSelector:
                     label_key=self.label_key,
                     label_value=label_value,
                 )
+
                 if not from_already:
                     current_selected_count -= already_selected_count  # remove the initial selection count to follow the current one
+
+                logger.info(
+                    f"Selected {current_selected_count - already_selected_count} samples "
+                    f"in the current chunk for value '{value}' and label '{label_value}'. "
+                )
+
+            logger.info(
+                f"Selected {current_selected_count} samples in the current loop "
+                f"for value '{value}' and label '{label_value}'."
+            )
 
             if current_selected_count == loop_start:
                 raise ValueError(
