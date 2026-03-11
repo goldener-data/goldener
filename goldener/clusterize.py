@@ -732,7 +732,7 @@ class GoldClusterizer:
         label_value: str | None = None,
         idx_key: str = "idx_vector",
     ) -> Query:
-        """Get the Pixeltable query to acces samples clustered in a given cluster.
+        """Get the Pixeltable query to access samples clustered in a given cluster.
 
         Args:
             table: PixelTable table to query.
@@ -742,8 +742,8 @@ class GoldClusterizer:
             label_value: Optional label value to filter samples by label.
             idx_key: Column name used to get sample indices.
 
-        Returns: A Pixeltable Query object that can be used to access the rows of the table corresponding
-        to the samples in the specified cluster (and label if specified).
+        Returns: A Pixeltable Query object that can be used to access
+            the samples in the specified cluster (and label if specified).
 
         Raises:
             ValueError: If only one of `label_key` or `label_value` is provided (both must be set together).
@@ -849,8 +849,6 @@ class GoldClusterizer:
             cluster_table: The table to store clustering results.
             n_clusters: Number of clusters.
 
-        Raises:
-            ValueError: If the size of the cluster table has decreased since the first clustering computation.
         """
         if self.label_key is not None:
             label_col = get_expr_from_column_name(cluster_table, self.label_key)

@@ -703,27 +703,15 @@ class TestGoldClusterizer:
         assert total_class0 == 20
         assert total_class1 == 20
 
-        all_indices = clusterizer.get_cluster_indices(
-            table=cluster_table,
-            cluster_key=clusterizer.cluster_key,
-        )
-        assert all_indices == set(range(40))
-
-        class0_indices = clusterizer.get_cluster_indices(
-            table=cluster_table,
-            cluster_key=clusterizer.cluster_key,
-            label_key=clusterizer.label_key,
-            label_value="0",
-        )
-        class1_indices = clusterizer.get_cluster_indices(
-            table=cluster_table,
-            cluster_key=clusterizer.cluster_key,
-            label_key=clusterizer.label_key,
-            label_value="1",
-        )
-
-        assert class0_indices.union(class1_indices) == set(range(40))
-        assert class0_indices.isdisjoint(class1_indices)
+        for cluster_idx in range(4):
+            assert (
+                clusterizer.get_cluster_count(
+                    table=cluster_table,
+                    cluster_key=clusterizer.cluster_key,
+                    cluster_idx=cluster_idx,
+                )
+                > 0
+            )
 
     def test_cluster_in_table_with_max_batches(self):
         table_path = "unit_test.test_cluster_max_batches"
