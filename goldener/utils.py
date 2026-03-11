@@ -1,4 +1,5 @@
 import math
+from collections import defaultdict
 from typing import Iterable, Any, TypeVar
 
 import torch
@@ -373,6 +374,10 @@ def transform_batch_from_multiple_to_binarized_targets(
         A new batch dictionary where the target key contains binarized targets for each label
         and the label key contains the corresponding labels,
         with other batch elements duplicated accordingly.
+
+    Raises:
+        ValueError: If any unique target in the target tensor is not found in the target_to_label mapping,
+        or if no valid targets are found after applying the exclude_full_zero filter.
     """
     multi_target = batch[target_key]
 
@@ -442,6 +447,54 @@ def transform_batch_from_multiple_to_binarized_targets(
     # add label if not already there
     if label_key is not None and label_key not in new_batch:
         new_batch[label_key] = list(target_per_label.keys())
+
+    return new_batch
+
+
+def transform_batch_from_multilabel_to_binary_labels(
+    batch: dict[str, torch.Tensor | list],
+    label_key: str,
+    exclude_labels: set[str] | None = None,
+) -> dict[str, torch.Tensor | list]:
+    """Transform a batch with multilabel into a batch with one entry per label.
+
+    Args:
+        batch: A dictionary representing a batch of data, where the target key contains a multilabel target
+            with values corresponding to the labels in target_to_label.
+        label_key: The key in the batch dictionary that contains the labels.
+        exclude_labels: An optional set of labels to exclude from the transformation (default: None).
+
+    Returns:
+        A new batch dictionary where samples with multiple labels are duplicated for each label.
+    """
+    # duplicate the batch element for each label and
+    # insert the corresponding label in the batch alongside them.
+    new_batch_as_lists = defaultdict(list)
+
+    for sample_idx, labels in enumerate(batch[label_key]):
+        if not isinstance(labels, tuple | set | list):
+            labels = [
+                labels,
+            ]
+
+        sample = {
+            key: value[sample_idx] for key, value in batch.items() if key != label_key
+        }
+        for label in labels:
+            if exclude_labels is not None and label in exclude_labels:
+                continue
+
+            sample[label_key] = label
+            for key, value in sample.items():
+                new_batch_as_lists[key].append(value)
+
+    # convert lists to tensors where applicable
+    new_batch: dict[str, torch.Tensor | list] = {}
+    for key, value in new_batch_as_lists.items():
+        if isinstance(value[0], torch.Tensor):
+            new_batch[key] = torch.stack(value, dim=0)
+        else:
+            new_batch[key] = value
 
     return new_batch
 
