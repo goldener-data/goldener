@@ -220,6 +220,9 @@ class GoldDescriptor:
         Returns:
             A PixelTable Table containing at least the computed embeddings in the `description_key` column
                 and an `idx` column as well.
+
+        Raises:
+            ValueError: If `allow_existing` is False and the table at `table_path` already exists.
         """
         # If the computation was already started or already done, we resume from there
         logger.info(f"Loading the existing description table from {self.table_path}")

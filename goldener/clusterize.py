@@ -88,6 +88,9 @@ class GoldRandomClusteringTool(GoldClusteringTool):
             n_clusters: Number of clusters to form.
 
         Returns: The cluster assignments for each input vector as a 1D tensor of cluster indices.
+
+        Raises:
+            ValueError: If `n_clusters` is greater than the number of samples in `x`.
         """
         self._validate_input(x)
         total = len(x)
@@ -106,6 +109,14 @@ class GoldRandomClusteringTool(GoldClusteringTool):
         )
 
     def predict(self, x: torch.Tensor) -> torch.Tensor:
+        """Predict cluster assignments for the input vectors.
+
+        Args:
+            x: Input vectors. Must be a 2D tensor of shape (num_vectors, feature_dim).
+
+        Raises:
+            NotImplementedError: Always, as random clustering does not support predict.
+        """
         raise NotImplementedError("Random clustering tool does not support predict.")
 
 
@@ -165,6 +176,15 @@ class GoldSKLearnClusteringTool(GoldClusteringTool):
     """Chunk data randomly into clusters of almost equal size."""
 
     def __init__(self, tool: ClusterMixin) -> None:
+        """Initialize the GoldSKLearnClusteringTool with a scikit-learn clustering tool.
+
+        Args:
+            tool: A scikit-learn clustering tool (ClusterMixin) to use for clustering.
+
+        Raises:
+            ValueError: If `tool` does not have a `predict` method.
+            NotImplementedError: If `tool` does not allow specifying `n_clusters`.
+        """
         if not hasattr(tool, "predict"):
             raise ValueError(
                 f"The clustering tool {tool} must provide a predict method."
@@ -302,6 +322,9 @@ class GoldClusterizer:
                 when using `cluster_in_dataset`. Default is False.
             max_batches: Optional maximum number of batches to process. Useful for testing on a small subset of the dataset.
             random_state: Optional random state for reproducibility during chunk assignment.
+
+        Raises:
+            ValueError: If `chunk` is not a positive integer or None.
         """
         self.table_path = table_path
         self.clustering_tool = clustering_tool
@@ -454,6 +477,10 @@ class GoldClusterizer:
 
         Returns:
             The cluster table with proper schema and initial rows.
+
+        Raises:
+            ValueError: If the source table does not contain the required `vectorized_key` column,
+                or if the source table is empty when trying to infer the vectorized data schema.
         """
         minimal_schema = self._MINIMAL_SCHEMA.copy()
 
@@ -733,9 +760,10 @@ class GoldClusterizer:
             label_key: Optional column name used to filter samples by label.
             label_value: Optional label value to filter samples by label.
             idx_key: Column name used to get sample indices.
+
+        Raises:
+            ValueError: If only one of `label_key` or `label_value` is provided (both must be set together).
         """
-        idx_col = get_expr_from_column_name(table, idx_key)
-        cluster_col = get_expr_from_column_name(table, cluster_key)
         query = (
             cluster_col != None  # noqa: E711
             if cluster_idx is None
@@ -774,6 +802,9 @@ class GoldClusterizer:
             cluster_from: The source table with vectorized data.
             cluster_table: The table to store clustering results.
             n_clusters: Number of clusters.
+
+        Raises:
+            ValueError: If the size of the cluster table has decreased since the first clustering computation.
         """
         if self.label_key is not None:
             label_col = get_expr_from_column_name(cluster_table, self.label_key)

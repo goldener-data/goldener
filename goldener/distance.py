@@ -11,6 +11,10 @@ def cosine_distance(x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
 
     Returns:
         A tensor of shape (n, m) where the entry at (i, j) is the cosine distance between x1[i] and x2[j].
+
+    Raises:
+        ValueError: If `x1` or `x2` is not a 2D tensor.
+        ValueError: If `x1` and `x2` do not have the same number of channels (feature dimension).
     """
     if x1.ndim != 2 or x2.ndim != 2:
         raise ValueError("Input tensors must be 2D")

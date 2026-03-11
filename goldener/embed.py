@@ -278,6 +278,9 @@ class GoldTorchEmbeddingTool(GoldEmbeddingTool):
         Args:
             layers: List of layer names or a dictionary mapping group names to lists of layer names.
                 If None, the last layer of the model is used.
+
+        Raises:
+            ValueError: If any of the specified layer names are not found in the model.
         """
 
         named_modules = list(self._model.named_modules())

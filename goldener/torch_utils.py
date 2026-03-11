@@ -147,7 +147,11 @@ class ResetableTorchIterableDataset(torch.utils.data.IterableDataset):
         return self
 
     def __next__(self):
-        """Return the next item from the iterator."""
+        """Return the next item from the iterator.
+
+        Raises:
+            StopIteration: When the iterator is exhausted.
+        """
         try:
             return next(self._data_iterator)
         except StopIteration:
@@ -175,6 +179,11 @@ def get_dataset_sample_dict(
 
     Returns:
         A sample from the dataset as a dictionary.
+
+    Raises:
+        ValueError: If the sample is not a dictionary after applying the `collate_fn`.
+        ValueError: If the sample is missing any of the `expected` keys.
+        ValueError: If the sample contains any of the `excluded` keys.
     """
 
     if isinstance(dataset, IterableDataset):

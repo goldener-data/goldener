@@ -73,6 +73,9 @@ def get_ratios_for_counts(counts: list[int]) -> list[float]:
 
     Returns:
         A list of float ratios corresponding to the input counts.
+
+    Raises:
+        ValueError: If `counts` is an empty list or if the total count is zero.
     """
     if len(counts) == 0:
         raise ValueError("Counts list cannot be empty.")
@@ -373,6 +376,10 @@ def transform_batch_from_multiple_to_binarized_targets(
         A new batch dictionary where the target key contains binarized targets for each label
         and the label key contains the corresponding labels,
         with other batch elements duplicated accordingly.
+
+    Raises:
+        ValueError: If a unique target tuple is not found in `target_to_label`.
+        ValueError: If no valid targets remain after applying the `exclude_full_zero` filter.
     """
     multi_target = batch[target_key]
 
@@ -467,6 +474,11 @@ def get_sampling_count_from_ratios(
     Returns:
         A dictionary mapping keys to their corresponding sampling counts (integers).
             The dictionary is sorted by count in ascending order.
+
+    Raises:
+        ValueError: If the ratios do not sum to 1.0.
+        ValueError: If `force_non_zero` is True and the count for the highest-count key becomes zero
+            while redistributing counts.
     """
     if not math.isclose(sum(ratios.values()), 1.0, rel_tol=1e-9, abs_tol=0.0):
         raise ValueError("Ratios must sum to 1.0")

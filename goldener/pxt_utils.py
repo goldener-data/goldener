@@ -62,6 +62,9 @@ def create_pxt_table_from_sample(
         unwrap: Whether to unwrap (only take first element) tensors/lists in the sample.
         add: Additional key-value pairs to add to the sample before creating the table.
         if_exists: Behavior if the table already exists. Options are 'error' or 'replace_force'.
+
+    Raises:
+        ValueError: If a key in `add` already exists in `sample`.
     """
     create_pxt_dirs_for_path(table_path)
 
@@ -307,6 +310,11 @@ def get_sample_row_from_idx(
 
     Returns:
         A dictionary representing a sample row from the table.
+
+    Raises:
+        ValueError: If no sample is found at the specified index.
+        ValueError: If multiple samples are found at the specified index.
+        ValueError: If the sample is missing any of the `expected_keys`.
     """
     idx_col = get_expr_from_column_name(table, idx_key)
     sample_list = list(table.where(idx_col == idx).collect())
