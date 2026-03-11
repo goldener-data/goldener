@@ -472,7 +472,7 @@ def transform_batch_from_multilabel_to_binary_labels(
     new_batch_as_lists = defaultdict(list)
 
     for sample_idx, labels in enumerate(batch[label_key]):
-        if not isinstance(labels, Iterable):
+        if not isinstance(labels, Iterable) or isinstance(labels, str):
             labels = [
                 labels,
             ]
