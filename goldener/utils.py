@@ -374,6 +374,10 @@ def transform_batch_from_multiple_to_binarized_targets(
         A new batch dictionary where the target key contains binarized targets for each label
         and the label key contains the corresponding labels,
         with other batch elements duplicated accordingly.
+
+    Raises:
+        ValueError: If any unique target in the target tensor is not found in the target_to_label mapping,
+        or if no valid targets are found after applying the exclude_full_zero filter.
     """
     multi_target = batch[target_key]
 
@@ -452,7 +456,7 @@ def transform_batch_from_multilabel_to_binary_labels(
     label_key: str,
     exclude_labels: set[str] | None = None,
 ) -> dict[str, torch.Tensor | list]:
-    """Transform a batch with multilabel targets into a batch with binary labels for each label.
+    """Transform a batch with multilabel into a batch with one entry per label.
 
     Args:
         batch: A dictionary representing a batch of data, where the target key contains a multilabel target
@@ -466,16 +470,12 @@ def transform_batch_from_multilabel_to_binary_labels(
     # duplicate the batch element for each label and
     # insert the corresponding label in the batch alongside them.
     new_batch_as_lists = defaultdict(list)
+
     for sample_idx, labels in enumerate(batch[label_key]):
-        if isinstance(labels, str):
+        if not isinstance(labels, Iterable):
             labels = [
                 labels,
             ]
-
-        if not isinstance(labels, list):
-            raise ValueError(
-                f"Labels for sample at index {sample_idx} must be a string or a list of strings. Got {type(labels)}."
-            )
 
         sample = {
             key: value[sample_idx] for key, value in batch.items() if key != label_key
