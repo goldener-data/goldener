@@ -135,6 +135,14 @@ class GoldSplitter:
             drop_table: Whether to drop intermediate tables. Defaults to False.
             max_batches: Optional maximum number of batches to process for the selection.
             Useful for testing on a small subset of the dataset.
+
+        Raises:
+            ValueError: If `in_described_table` is True but no `descriptor` is provided.
+            ValueError: If `vectorizer.vectorized_key` does not match `selector.vectorized_key`.
+            ValueError: If `descriptor.description_key` does not match `vectorizer.data_key` (when vectorizer is set).
+            ValueError: If `descriptor.description_key` does not match `selector.vectorized_key` (when no vectorizer).
+            ValueError: If `clusterizer.vectorized_key` does not match `selector.vectorized_key`.
+            ValueError: If the `sets` configuration is invalid (for example, invalid sum of sizes/ratios or duplicate set names).
         """
         if descriptor is None and in_described_table:
             raise ValueError(
@@ -241,6 +249,12 @@ class GoldSplitter:
 
         Args:
             sets: New list of GoldSet configurations defining the splits.
+
+        Raises:
+            ValueError: If fewer than two sets are provided.
+            ValueError: If the set sizes are not all of the same type.
+            ValueError: If the set sizes or ratios are invalid.
+            ValueError: If the set names are not unique.
         """
         if len(sets) < 2:
             raise ValueError("Splitting data requires at least two sets.")

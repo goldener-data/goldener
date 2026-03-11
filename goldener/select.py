@@ -199,6 +199,9 @@ class GoldGreedyKCenterSelectionTool(GoldSelectionTool):
 
         Returns:
             A list of indices corresponding to the selected data points.
+
+        Raises:
+            ValueError: If `k` is greater than the number of data points in `x`.
         """
         self._validate_input(x)
         x_len = len(x)
@@ -297,6 +300,9 @@ class GoldGreedyClosestPointSelectionTool(GoldSelectionTool):
 
         Returns:
             A list of indices corresponding to the selected data points.
+
+        Raises:
+            ValueError: If `k` is greater than the number of data points in `x`.
         """
         if anchors is not None:
             logger.info(
@@ -374,6 +380,9 @@ class GoldGreedyFarthestPointSelectionTool(GoldSelectionTool):
 
         Returns:
             A list of indices corresponding to the selected data points.
+
+        Raises:
+            ValueError: If `k` is greater than the number of data points in `x`.
         """
         if anchors is not None:
             logger.info(
@@ -510,6 +519,9 @@ class GoldSelector:
             drop_table: Whether to drop the table after dataset creation. Defaults to False.
             max_batches: Optional maximum number of batches to process.
             random_state: Optional random state for reproducibility during chunk assignment. Default is None.
+
+        Raises:
+            ValueError: If `exclude_labels` is provided but `label_key` is None.
         """
         self.table_path = table_path
         self.selection_tool = selection_tool
@@ -547,6 +559,10 @@ class GoldSelector:
 
         Returns: A PixelTable Table with the appropriate schema for selection,
             populated with rows corresponding to the source dataset or table.
+
+        Raises:
+            ValueError: If `allow_existing` is False and the table at `table_path` already exists, or
+                if an existing selection table is missing the expected primary key `idx_vector`.
         """
         logger.info(f"Loading the existing selection table from {self.table_path}")
         try:
@@ -728,6 +744,10 @@ class GoldSelector:
 
         Returns:
             The selection table with proper schema and initial rows.
+
+        Raises:
+            ValueError: If the source table does not contain the required `vectorized_key` column,
+                or if the source table is empty when trying to infer the vectorized data schema.
         """
         minimal_schema = self._MINIMAL_SCHEMA.copy()
 
@@ -1023,6 +1043,9 @@ class GoldSelector:
             label_key: Optional column name used to filter samples by label.
             label_value: Optional label value to filter samples by label.
             idx_key: Column name used to get sample indices.
+
+        Raises:
+            ValueError: If only one of `label_key` or `label_value` is provided (both must be set together).
         """
         idx_col = get_expr_from_column_name(table, idx_key)
         selection_col = get_expr_from_column_name(table, selection_key)
@@ -1115,6 +1138,9 @@ class GoldSelector:
             selection_table: The table to store selection results.
             select_count: Number of samples to select.
             value: Value to assign to selected samples in the selection_key column.
+
+        Raises:
+            ValueError: If not enough samples are available for a label when `force_all_labels` is True.
         """
         if self.label_key is not None:
             label_col = get_expr_from_column_name(selection_table, self.label_key)
@@ -1261,6 +1287,10 @@ class GoldSelector:
                 If False, the selection is done to select the full select_count even if some samples have already
                 been selected for the label. If True, the selection is done to select only the remaining samples
                  to reach select_count when counting the already selected ones for the label.
+
+        Raises:
+            ValueError: If `select_count` exceeds the number of available unique data points in the dataset.
+            ValueError: If no more samples are available for selection but the selection is not complete.
         """
         selection_col = get_expr_from_column_name(selection_table, self.selection_key)
         vectorized_col = get_expr_from_column_name(select_from, self.vectorized_key)

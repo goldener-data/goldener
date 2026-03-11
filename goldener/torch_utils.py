@@ -175,6 +175,11 @@ def get_dataset_sample_dict(
 
     Returns:
         A sample from the dataset as a dictionary.
+
+    Raises:
+        ValueError: If the sample is not a dictionary after applying the `collate_fn`.
+        ValueError: If the sample is missing any of the `expected` keys.
+        ValueError: If the sample contains any of the `excluded` keys.
     """
 
     if isinstance(dataset, IterableDataset):

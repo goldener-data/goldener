@@ -75,6 +75,9 @@ class Filter2DWithCount:
             filter_location: Location to filter from (start, end, random).
             keep: Whether to keep or remove the filtered rows.
             generator: Random number generator for random filtering.
+
+        Raises:
+            ValueError: If `filter_count` is not greater than 0.
         """
         if filter_count <= 0:
             raise ValueError("filter_count must be greater than 0")
@@ -591,6 +594,10 @@ class GoldVectorizer:
         Returns:
             A PixelTable Table containing at least the vectorized data in the `vectorized_key` column
                 and `idx` (index of the sample) and `idx_vector` (index of the vector) columns as well.
+
+        Raises:
+            ValueError: If `allow_existing` is False and the table at `table_path` already exists,
+                or if an existing vectorized table is missing the required `idx_vector` primary key.
         """
 
         # If the computation was already started or already done, we resume from there
@@ -942,6 +949,9 @@ def unwrap_vectors_in_batch(
 
     Returns:
         Dictionary with unwrapped vectors and metadata, ready for table insertion.
+
+    Raises:
+        ValueError: If `exclude_labels` is provided but `label_key` is None.
     """
     if label_key is None and exclude_labels is not None:
         raise ValueError(

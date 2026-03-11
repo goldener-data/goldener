@@ -88,6 +88,9 @@ class GoldRandomClusteringTool(GoldClusteringTool):
             n_clusters: Number of clusters to form.
 
         Returns: The cluster assignments for each input vector as a 1D tensor of cluster indices.
+
+        Raises:
+            ValueError: If `n_clusters` is greater than the number of samples in `x`.
         """
         self._validate_input(x)
         total = len(x)
@@ -302,6 +305,9 @@ class GoldClusterizer:
                 when using `cluster_in_dataset`. Default is False.
             max_batches: Optional maximum number of batches to process. Useful for testing on a small subset of the dataset.
             random_state: Optional random state for reproducibility during chunk assignment.
+
+        Raises:
+            ValueError: If `chunk` is not a positive integer or None.
         """
         self.table_path = table_path
         self.clustering_tool = clustering_tool
@@ -454,6 +460,10 @@ class GoldClusterizer:
 
         Returns:
             The cluster table with proper schema and initial rows.
+
+        Raises:
+            ValueError: If the source table does not contain the required `vectorized_key` column,
+                or if the source table is empty when trying to infer the vectorized data schema.
         """
         minimal_schema = self._MINIMAL_SCHEMA.copy()
 
@@ -733,9 +743,13 @@ class GoldClusterizer:
             label_key: Optional column name used to filter samples by label.
             label_value: Optional label value to filter samples by label.
             idx_key: Column name used to get sample indices.
+
+        Raises:
+            ValueError: If only one of `label_key` or `label_value` is provided (both must be set together).
         """
-        idx_col = get_expr_from_column_name(table, idx_key)
         cluster_col = get_expr_from_column_name(table, cluster_key)
+        idx_col = get_expr_from_column_name(table, idx_key)
+
         query = (
             cluster_col != None  # noqa: E711
             if cluster_idx is None
@@ -774,6 +788,9 @@ class GoldClusterizer:
             cluster_from: The source table with vectorized data.
             cluster_table: The table to store clustering results.
             n_clusters: Number of clusters.
+
+        Raises:
+            ValueError: If the size of the cluster table has decreased since the first clustering computation.
         """
         if self.label_key is not None:
             label_col = get_expr_from_column_name(cluster_table, self.label_key)
