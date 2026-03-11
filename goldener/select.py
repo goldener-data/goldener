@@ -1045,7 +1045,7 @@ class GoldSelector:
             idx_key: Column name used to get sample indices.
 
         Returns:
-            A PixelTable Query object that can be executed to rows of the table corresponding
+            A PixelTable Query object that can be executed to access rows of the table corresponding
                 to the samples with the specified value (and label if specified).
 
 

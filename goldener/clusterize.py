@@ -430,11 +430,8 @@ class GoldClusterizer:
         assert isinstance(cluster_from, Table)
 
         # define the number of element to sample
-        total_size = cluster_from.select(cluster_from.idx_vector).distinct().count()
-        already_clustered = (
-            cluster_table.select(cluster_table.idx_vector).distinct().count()
-        )
-        if already_clustered == total_size:
+        still_to_cluster_count = self.get_cluster_count(cluster_table, self.cluster_key)
+        if still_to_cluster_count == 0:
             logger.info(f"Cluster table {self.table_path} already fully clustered")
             return cluster_table
         elif self.distribute:
@@ -740,7 +737,7 @@ class GoldClusterizer:
         Args:
             table: PixelTable table to query.
             cluster_key: Column name used to store the clustering values.
-            cluster_idx: Value in the cluster column to filter samples by cluster.
+            cluster_idx: Value in the cluster column to filter samples.
             label_key: Optional column name used to filter samples by label.
             label_value: Optional label value to filter samples by label.
             idx_key: Column name used to get sample indices.
@@ -778,8 +775,7 @@ class GoldClusterizer:
         Args:
             table: PixelTable table to query.
             cluster_key: Column name used to store the clustering values.
-            cluster_idx: Optional cluster index to filter samples by cluster.
-            If None, all clustered samples are returned.
+            cluster_idx: Value in the cluster column to filter samples.
             label_key: Optional column name used to filter samples by label.
             label_value: Optional label value to filter samples by label.
             idx_key: Column name used to get sample indices.
@@ -817,8 +813,7 @@ class GoldClusterizer:
         Args:
             table: PixelTable table to query.
             cluster_key: Column name used to store the clustering values.
-            cluster_idx: Optional cluster index to filter samples by cluster.
-            If None, all clustered samples are returned.
+            cluster_idx: Value in the cluster column to filter samples.
             label_key: Optional column name used to filter samples by label.
             label_value: Optional label value to filter samples by label.
             idx_key: Column name used to get sample indices.
