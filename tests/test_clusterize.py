@@ -703,27 +703,15 @@ class TestGoldClusterizer:
         assert total_class0 == 20
         assert total_class1 == 20
 
-        all_indices = clusterizer.get_cluster_indices(
-            table=cluster_table,
-            cluster_key=clusterizer.cluster_key,
-        )
-        assert all_indices == set(range(40))
-
-        class0_indices = clusterizer.get_cluster_indices(
-            table=cluster_table,
-            cluster_key=clusterizer.cluster_key,
-            label_key=clusterizer.label_key,
-            label_value="0",
-        )
-        class1_indices = clusterizer.get_cluster_indices(
-            table=cluster_table,
-            cluster_key=clusterizer.cluster_key,
-            label_key=clusterizer.label_key,
-            label_value="1",
-        )
-
-        assert class0_indices.union(class1_indices) == set(range(40))
-        assert class0_indices.isdisjoint(class1_indices)
+        for cluster_idx in range(4):
+            assert (
+                clusterizer.get_cluster_count(
+                    table=cluster_table,
+                    cluster_key=clusterizer.cluster_key,
+                    cluster_idx=cluster_idx,
+                )
+                > 0
+            )
 
     def test_cluster_in_table_with_max_batches(self):
         table_path = "unit_test.test_cluster_max_batches"
@@ -777,27 +765,62 @@ class TestGoldClusterizer:
             {clusterizer.cluster_key: 1}
         )
 
-        all_indices = clusterizer.get_cluster_indices(
-            table=cluster_table,
-            cluster_key=clusterizer.cluster_key,
+        assert (
+            clusterizer.get_cluster_count(
+                table=cluster_table,
+                cluster_key=clusterizer.cluster_key,
+            )
+            == 0
         )
-        assert all_indices == {0, 1, 2, 3, 4, 5}
 
         class0_indices = clusterizer.get_cluster_indices(
             table=cluster_table,
             cluster_key=clusterizer.cluster_key,
+            cluster_idx=0,
             label_key=clusterizer.label_key,
             label_value="0",
         )
+        assert class0_indices == {
+            0,
+            2,
+        }
+        assert len(class0_indices) == clusterizer.get_cluster_count(
+            table=cluster_table,
+            cluster_key=clusterizer.cluster_key,
+            cluster_idx=0,
+            label_key=clusterizer.label_key,
+            label_value="0",
+        )
+
         class1_indices = clusterizer.get_cluster_indices(
             table=cluster_table,
+            cluster_idx=0,
             cluster_key=clusterizer.cluster_key,
             label_key=clusterizer.label_key,
             label_value="1",
         )
+        assert len(class1_indices) == clusterizer.get_cluster_count(
+            table=cluster_table,
+            cluster_key=clusterizer.cluster_key,
+            cluster_idx=0,
+            label_key=clusterizer.label_key,
+            label_value="1",
+        )
 
-        assert class0_indices.union(class1_indices) == {0, 1, 2, 3, 4, 5}
-        assert class0_indices.isdisjoint(class1_indices)
+        assert class1_indices == {
+            1,
+        }
+
+        cluster0_indices = clusterizer.get_cluster_indices(
+            table=cluster_table,
+            cluster_idx=0,
+            cluster_key=clusterizer.cluster_key,
+        )
+        assert len(cluster0_indices) == clusterizer.get_cluster_count(
+            table=cluster_table,
+            cluster_key=clusterizer.cluster_key,
+            cluster_idx=0,
+        )
 
         with pytest.raises(ValueError, match="must be set together"):
             clusterizer.get_cluster_indices(
