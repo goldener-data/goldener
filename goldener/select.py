@@ -1044,6 +1044,11 @@ class GoldSelector:
             label_value: Optional label value to filter samples by label.
             idx_key: Column name used to get sample indices.
 
+        Returns:
+            A PixelTable Query object that can be executed to rows of the table corresponding
+                to the samples with the specified value (and label if specified).
+
+
         Raises:
             ValueError: If only one of `label_key` or `label_value` is provided (both must be set together).
         """
@@ -1077,6 +1082,12 @@ class GoldSelector:
             label_key: Optional column name used to filter samples by label.
             label_value: Optional label value to filter samples by label.
             idx_key: Column name used to get sample indices.
+
+        Returns:
+            A set of indices with the specified value (and label if specified).
+
+        Raises:
+            ValueError: If only one of `label_key` or `label_value` is provided (both must be set together).
         """
         return set(
             [
@@ -1110,6 +1121,9 @@ class GoldSelector:
             label_key: Optional column name used to filter samples by label.
             label_value: Optional label value to filter samples by label.
             idx_key: Column name used to get sample indices.
+
+        Returns:
+            The number of samples with the specified value (and label if specified).
         """
         return GoldSelector.get_selection_pxt_query(
             table,

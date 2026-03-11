@@ -5,7 +5,7 @@ from typing import Callable, Any
 
 import numpy as np
 import pixeltable as pxt
-from pixeltable import Error
+from pixeltable import Error, Query
 from pixeltable.catalog import Table
 
 import torch
@@ -431,8 +431,10 @@ class GoldClusterizer:
 
         # define the number of element to sample
         total_size = cluster_from.select(cluster_from.idx_vector).distinct().count()
-
-        if len(self.get_cluster_indices(cluster_table, self.cluster_key)) == total_size:
+        already_clustered = (
+            cluster_table.select(cluster_table.idx_vector).distinct().count()
+        )
+        if already_clustered == total_size:
             logger.info(f"Cluster table {self.table_path} already fully clustered")
             return cluster_table
         elif self.distribute:
@@ -725,6 +727,44 @@ class GoldClusterizer:
             cluster_table.insert(ready_to_insert)
 
     @staticmethod
+    def get_cluster_pxt_query(
+        table: Table,
+        cluster_key: str,
+        cluster_idx: int | None = None,
+        label_key: str | None = None,
+        label_value: str | None = None,
+        idx_key: str = "idx_vector",
+    ) -> Query:
+        """Get the Pixeltable query to acces samples clustered in a given cluster.
+
+        Args:
+            table: PixelTable table to query.
+            cluster_key: Column name used to store the clustering values.
+            cluster_idx: Value in the cluster column to filter samples by cluster.
+            label_key: Optional column name used to filter samples by label.
+            label_value: Optional label value to filter samples by label.
+            idx_key: Column name used to get sample indices.
+
+        Returns: A Pixeltable Query object that can be used to access the rows of the table corresponding
+        to the samples in the specified cluster (and label if specified).
+
+        Raises:
+            ValueError: If only one of `label_key` or `label_value` is provided (both must be set together).
+        """
+        cluster_col = get_expr_from_column_name(table, cluster_key)
+        idx_col = get_expr_from_column_name(table, idx_key)
+
+        if label_value is not None and label_key is not None:
+            label_col = get_expr_from_column_name(table, label_key)
+            query = (cluster_col == cluster_idx) & (label_col == label_value)
+        else:
+            if label_key is not None or label_value is not None:
+                raise ValueError("label_key and label_value must be set together.")
+            query = cluster_col == cluster_idx  # noqa: E712
+
+        return table.where(query).select(idx_col).distinct()
+
+    @staticmethod
     def get_cluster_indices(
         table: Table,
         cluster_key: str,
@@ -744,33 +784,58 @@ class GoldClusterizer:
             label_value: Optional label value to filter samples by label.
             idx_key: Column name used to get sample indices.
 
+        Returns: A set of indices corresponding to the samples in the specified cluster (and label if specified).
+
         Raises:
             ValueError: If only one of `label_key` or `label_value` is provided (both must be set together).
         """
-        cluster_col = get_expr_from_column_name(table, cluster_key)
-        idx_col = get_expr_from_column_name(table, idx_key)
-
-        query = (
-            cluster_col != None  # noqa: E711
-            if cluster_idx is None
-            else cluster_col == cluster_idx
-        )
-        if label_value is not None and label_key is not None:
-            label_col = get_expr_from_column_name(table, label_key)
-            query = query & (label_col == label_value)
-        else:
-            if label_key is not None or label_value is not None:
-                raise ValueError("label_key and label_value must be set together.")
-
         return set(
             [
                 row[idx_key]
-                for row in table.where(query)  # noqa: E712
-                .select(idx_col)
-                .distinct()
-                .collect()
+                for row in GoldClusterizer.get_cluster_pxt_query(
+                    table=table,
+                    cluster_key=cluster_key,
+                    cluster_idx=cluster_idx,
+                    label_key=label_key,
+                    label_value=label_value,
+                    idx_key=idx_key,
+                ).collect()
             ]
         )
+
+    @staticmethod
+    def get_cluster_count(
+        table: Table,
+        cluster_key: str,
+        cluster_idx: int | None = None,
+        label_key: str | None = None,
+        label_value: str | None = None,
+        idx_key: str = "idx_vector",
+    ) -> int:
+        """Get the number of samples clustered in a given cluster.
+
+        Args:
+            table: PixelTable table to query.
+            cluster_key: Column name used to store the clustering values.
+            cluster_idx: Optional cluster index to filter samples by cluster.
+            If None, all clustered samples are returned.
+            label_key: Optional column name used to filter samples by label.
+            label_value: Optional label value to filter samples by label.
+            idx_key: Column name used to get sample indices.
+
+        Returns: The number of samples in the specified cluster (and label if specified).
+
+        Raises:
+            ValueError: If only one of `label_key` or `label_value` is provided (both must be set together).
+        """
+        return GoldClusterizer.get_cluster_pxt_query(
+            table=table,
+            cluster_key=cluster_key,
+            cluster_idx=cluster_idx,
+            label_key=label_key,
+            label_value=label_value,
+            idx_key=idx_key,
+        ).count()
 
     def _sequential_cluster(
         self,
@@ -802,35 +867,17 @@ class GoldClusterizer:
             ]
 
             for label_idx, label_value in enumerate(label_values):
-                already_clustered = len(
-                    self.get_cluster_indices(
-                        table=cluster_table,
-                        cluster_key=self.cluster_key,
-                        label_key=self.label_key,
-                        label_value=label_value,
-                    )
-                )
-                label_still_to_cluster_count = (
-                    cluster_table.where(
-                        label_col == label_value  # noqa: E712
-                    )
-                    .select(cluster_table.idx_vector)
-                    .distinct()
-                    .count()
-                )
-
-                label_still_to_cluster_count = (
-                    label_still_to_cluster_count - already_clustered
+                label_still_to_cluster_count = GoldClusterizer.get_cluster_count(
+                    table=cluster_table,
+                    cluster_key=self.cluster_key,
+                    label_key=self.label_key,
+                    label_value=label_value,
                 )
                 if label_still_to_cluster_count == 0:
                     logger.info(
                         f"Label '{label_value}' already fully clustered, skipping."
                     )
                     continue
-                elif label_still_to_cluster_count < 0:
-                    raise ValueError(
-                        "The size of the cluster table has decreased since the 1st clustering computation"
-                    )
 
                 self._cluster_label(
                     cluster_from,
@@ -840,14 +887,10 @@ class GoldClusterizer:
                 )
 
         else:
-            already_clustered = len(
-                self.get_cluster_indices(
-                    table=cluster_table,
-                    cluster_key=self.cluster_key,
-                )
+            still_to_cluster_count = GoldClusterizer.get_cluster_count(
+                table=cluster_table,
+                cluster_key=self.cluster_key,
             )
-            sample_count = cluster_table.count()
-            still_to_cluster_count = sample_count - already_clustered
             logger.info(
                 f"Clustering {still_to_cluster_count} samples in {n_clusters} clusters."
             )
