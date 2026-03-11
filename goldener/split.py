@@ -519,24 +519,6 @@ class GoldSplitter:
         set_count: int,
         gold_set: GoldSet,
     ) -> Table:
-        """Perform cluster-wise selection for a given set.
-
-        Iterates over all clusters and selects samples from each cluster proportionally,
-        repeating until the required number of samples for the set is reached.
-
-        Args:
-            clusterized: The PixelTable table containing clustered samples.
-            set_count: The number of samples to select for the set.
-            gold_set: The GoldSet configuration for the current set.
-
-        Returns:
-            A PixelTable Table containing the selected samples for the set.
-
-        Raises:
-            ValueError: If the clusterizer output column contains null values.
-            ValueError: If no new samples could be selected during an iteration over all clusters.
-            RuntimeError: If no selection table was created during the cluster-wise selection.
-        """
         assert self.clusterizer is not None
         # the table for each cluster are processed sequentially, and sent as GoldPxtTorchDataset
         # to the selector, so the collate_fn of the selector is temporarily updated to `pxt_torch_dataset_collate_fn,

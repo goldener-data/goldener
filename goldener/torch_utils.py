@@ -147,11 +147,7 @@ class ResetableTorchIterableDataset(torch.utils.data.IterableDataset):
         return self
 
     def __next__(self):
-        """Return the next item from the iterator.
-
-        Raises:
-            StopIteration: When the iterator is exhausted.
-        """
+        """Return the next item from the iterator."""
         try:
             return next(self._data_iterator)
         except StopIteration:

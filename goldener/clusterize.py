@@ -109,14 +109,6 @@ class GoldRandomClusteringTool(GoldClusteringTool):
         )
 
     def predict(self, x: torch.Tensor) -> torch.Tensor:
-        """Predict cluster assignments for the input vectors.
-
-        Args:
-            x: Input vectors. Must be a 2D tensor of shape (num_vectors, feature_dim).
-
-        Raises:
-            NotImplementedError: Always, as random clustering does not support predict.
-        """
         raise NotImplementedError("Random clustering tool does not support predict.")
 
 
@@ -176,15 +168,6 @@ class GoldSKLearnClusteringTool(GoldClusteringTool):
     """Chunk data randomly into clusters of almost equal size."""
 
     def __init__(self, tool: ClusterMixin) -> None:
-        """Initialize the GoldSKLearnClusteringTool with a scikit-learn clustering tool.
-
-        Args:
-            tool: A scikit-learn clustering tool (ClusterMixin) to use for clustering.
-
-        Raises:
-            ValueError: If `tool` does not have a `predict` method.
-            NotImplementedError: If `tool` does not allow specifying `n_clusters`.
-        """
         if not hasattr(tool, "predict"):
             raise ValueError(
                 f"The clustering tool {tool} must provide a predict method."

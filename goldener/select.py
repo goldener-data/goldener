@@ -1552,22 +1552,6 @@ class GoldSelector:
         value: str | None = None,
         force_all_labels: bool = True,
     ) -> dict[str, int]:
-        """Compute the number of samples to select per label based on label distribution.
-
-        Args:
-            selection_table: The selection table containing samples and their label assignments.
-            labels: List of label values to compute selection counts for.
-            select_count: Total number of samples to select across all labels.
-            value: The selection value used to identify already-selected samples for each label.
-            force_all_labels: If True, all labels must have at least one selectable sample.
-                Defaults to True.
-
-        Returns:
-            A dictionary mapping each label to the number of samples to select for it.
-
-        Raises:
-            ValueError: If `force_all_labels` is True and a label has no selectable samples.
-        """
         assert self.label_key is not None
         # When all labels are required, all the not selected samples and the selected samples for the current
         # value are included in the count of the label.
