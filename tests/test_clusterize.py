@@ -765,14 +765,12 @@ class TestGoldClusterizer:
             {clusterizer.cluster_key: 1}
         )
 
-        all_indices = clusterizer.get_cluster_indices(
-            table=cluster_table,
-            cluster_key=clusterizer.cluster_key,
-        )
-        assert all_indices == set([])
-        assert len(all_indices) == clusterizer.get_cluster_count(
-            table=cluster_table,
-            cluster_key=clusterizer.cluster_key,
+        assert (
+            clusterizer.get_cluster_count(
+                table=cluster_table,
+                cluster_key=clusterizer.cluster_key,
+            )
+            == 0
         )
 
         class0_indices = clusterizer.get_cluster_indices(

@@ -429,7 +429,6 @@ class GoldClusterizer:
 
         assert isinstance(cluster_from, Table)
 
-        # define the number of element to sample
         still_to_cluster_count = self.get_cluster_count(cluster_table, self.cluster_key)
         if still_to_cluster_count == 0:
             logger.info(f"Cluster table {self.table_path} already fully clustered")
