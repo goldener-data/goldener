@@ -973,6 +973,40 @@ class TestVectorizeAndUnwrapInBatch:
         for i in range(6):
             assert (vectors[i] == torch.zeros(3)).all()
 
+    def test_with_multilabel(self, batch, vectorizer):
+        batch["label"] = [["a", "b"], ["c", "d"]]
+
+        result = vectorize_and_unwrap_in_batch(
+            batch=batch,
+            vectorizer=vectorizer,
+            data_key="data",
+            vectorized_key="vectorized",
+            target_key=None,
+            label_key="label",
+            to_keep=["label"],
+        )
+        assert set(result.keys()) == {"idx", "vectorized", "idx_vector", "label"}
+        assert result["idx"] == [0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1]
+        assert result["idx_vector"] == list(range(12))
+        vectors = result["vectorized"]
+        assert len(vectors) == 12
+        for i in range(12):
+            assert (vectors[i] == torch.zeros(3)).all()
+        assert result["label"] == [
+            "a",
+            "a",
+            "a",
+            "b",
+            "b",
+            "b",
+            "c",
+            "c",
+            "c",
+            "d",
+            "d",
+            "d",
+        ]
+
     def test_with_start(self, batch, vectorizer):
         result = vectorize_and_unwrap_in_batch(
             batch=batch,

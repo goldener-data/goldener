@@ -13,6 +13,7 @@ from goldener.utils import (
     split_sampling_among_chunks,
     transform_batch_from_multiple_to_binarized_targets,
     get_sampling_count_from_ratios,
+    transform_batch_from_multilabel_to_binary_labels,
 )
 
 
@@ -674,3 +675,72 @@ class TestGetSamplingCountFromRatios:
                 ratios,
                 sampling_size,
             )
+
+
+class TestTransformBatchFromMultilabelToBinaryLabels:
+    def test_single_string_labels(self) -> None:
+        batch: dict[str, torch.Tensor | list] = {
+            "x": torch.arange(4).reshape(2, 2),
+            "label": ["a", "b"],
+        }
+
+        out = transform_batch_from_multilabel_to_binary_labels(
+            batch=batch,
+            label_key="label",
+        )
+        x_out = out["x"]
+        x_batch = batch["x"]
+        assert isinstance(x_out, torch.Tensor)
+        assert isinstance(x_batch, torch.Tensor)
+        assert torch.equal(x_out, x_batch)
+        assert out["label"] == ["a", "b"]
+
+    def test_multilabel_sets(self) -> None:
+        x = torch.arange(6).reshape(3, 2)
+        batch: dict[str, torch.Tensor | list] = {
+            "x": x,
+            "label": [
+                {"a", "b"},
+                {"b"},
+                {"c", "a"},
+            ],
+        }
+
+        out = transform_batch_from_multilabel_to_binary_labels(
+            batch=batch,
+            label_key="label",
+        )
+
+        expected_x = torch.stack([x[0], x[0], x[1], x[2], x[2]])
+        x_out = out["x"]
+        assert isinstance(x_out, torch.Tensor)
+        assert torch.equal(x_out, expected_x)
+        expected_labels = sorted(["a", "b", "b", "c", "a"])
+        assert sorted(out["label"]) == expected_labels
+
+    def test_exclude_labels(self) -> None:
+        x = torch.arange(6).reshape(3, 2)
+        batch: dict[str, list | torch.Tensor] = {
+            "x": x,
+            "label": [
+                {"a", "b"},
+                {"b"},
+                {"c", "a"},
+            ],
+            "other": ["keep1", "keep2", "keep3"],
+        }
+
+        out = transform_batch_from_multilabel_to_binary_labels(
+            batch=batch,
+            label_key="label",
+            exclude_labels={"b"},
+        )
+
+        expected_labels = sorted(["a", "c", "a"])
+        expected_x = torch.stack([x[0], x[2], x[2]])
+        expected_other = ["keep1", "keep3", "keep3"]
+        x_out = out["x"]
+        assert isinstance(x_out, torch.Tensor)
+        assert torch.equal(x_out, expected_x)
+        assert sorted(out["label"]) == expected_labels
+        assert out["other"] == expected_other
