@@ -142,6 +142,7 @@ class GoldSplitter:
             ValueError: If `descriptor.description_key` does not match `vectorizer.data_key` (when vectorizer is set).
             ValueError: If `descriptor.description_key` does not match `selector.vectorized_key` (when no vectorizer).
             ValueError: If `clusterizer.vectorized_key` does not match `selector.vectorized_key`.
+            ValueError: If the `sets` configuration is invalid (for example, invalid sum of sizes/ratios or duplicate set names).
         """
         if descriptor is None and in_described_table:
             raise ValueError(
@@ -252,6 +253,8 @@ class GoldSplitter:
         Raises:
             ValueError: If fewer than two sets are provided.
             ValueError: If the set sizes are not all of the same type.
+            ValueError: If the set sizes or ratios are invalid.
+            ValueError: If the set names are not unique.
         """
         if len(sets) < 2:
             raise ValueError("Splitting data requires at least two sets.")

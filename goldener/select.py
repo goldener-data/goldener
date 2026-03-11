@@ -561,7 +561,8 @@ class GoldSelector:
             populated with rows corresponding to the source dataset or table.
 
         Raises:
-            ValueError: If `allow_existing` is False and the table at `table_path` already exists.
+            ValueError: If `allow_existing` is False and the table at `table_path` already exists, or
+                if an existing selection table is missing the expected primary key `idx_vector`.
         """
         logger.info(f"Loading the existing selection table from {self.table_path}")
         try:

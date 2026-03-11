@@ -222,7 +222,8 @@ class GoldDescriptor:
                 and an `idx` column as well.
 
         Raises:
-            ValueError: If `allow_existing` is False and the table at `table_path` already exists.
+            ValueError: If `allow_existing` is False and the table at `table_path` already exists,
+                or if an existing description table does not have the expected primary key.
         """
         # If the computation was already started or already done, we resume from there
         logger.info(f"Loading the existing description table from {self.table_path}")

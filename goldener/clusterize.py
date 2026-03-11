@@ -747,6 +747,9 @@ class GoldClusterizer:
         Raises:
             ValueError: If only one of `label_key` or `label_value` is provided (both must be set together).
         """
+        cluster_col = get_expr_from_column_name(table, cluster_key)
+        idx_col = get_expr_from_column_name(table, idx_key)
+
         query = (
             cluster_col != None  # noqa: E711
             if cluster_idx is None

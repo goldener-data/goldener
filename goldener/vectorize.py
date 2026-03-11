@@ -596,7 +596,8 @@ class GoldVectorizer:
                 and `idx` (index of the sample) and `idx_vector` (index of the vector) columns as well.
 
         Raises:
-            ValueError: If `allow_existing` is False and the table at `table_path` already exists.
+            ValueError: If `allow_existing` is False and the table at `table_path` already exists,
+                or if an existing vectorized table is missing the required `idx_vector` primary key.
         """
 
         # If the computation was already started or already done, we resume from there
