@@ -22,6 +22,7 @@ from goldener.select import (
 from goldener.select import (
     GoldGreedyClosestPointSelectionTool,
     GoldGreedyKernelPointsSelectionTool,
+    GoldZCoreSelectionTool,
 )
 
 
@@ -1148,3 +1149,77 @@ class TestGoldGreedyKernelPointsSelectionTool:
             ValueError, match="GoldSelectionTool only accepts 2D tensors"
         ):
             tool.select(torch.randn(10, 5, 3), k=2)
+
+
+class TestGoldZCoreSelectionTool:
+    def test_select_basic(self):
+        device = torch.device("cpu")
+        tool = GoldZCoreSelectionTool(
+            device=device,
+            distance=DistanceType.EUCLIDEAN,
+            n_dim_for_score=2,
+            n_random_anchors=10,
+            n_redundancy=3,
+            redundancy_scale=2,
+            random_state=0,
+        )
+        x = torch.stack(
+            [
+                torch.tensor([0.0, 0.0]),
+                torch.tensor([1.0, 0.0]),
+                torch.tensor([0.0, 1.0]),
+                torch.tensor([1.0, 1.0]),
+            ]
+        )
+
+        k = 2
+        indices = tool.select(x, k=k)
+
+        assert isinstance(indices, list)
+        assert len(indices) == k
+        assert len(set(indices)) == k
+        assert all(0 <= idx < len(x) for idx in indices)
+
+    def test_select_k_equals_len(self):
+        device = torch.device("cpu")
+        tool = GoldZCoreSelectionTool(device=device, n_random_anchors=5, n_redundancy=2)
+        x = torch.randn(5, 3)
+
+        indices = tool.select(x, k=len(x))
+
+        assert sorted(indices) == list(range(len(x)))
+
+    def test_select_k_greater_than_len_raises(self):
+        device = torch.device("cpu")
+        tool = GoldZCoreSelectionTool(device=device, n_random_anchors=5, n_redundancy=2)
+        x = torch.randn(4, 3)
+
+        with pytest.raises(
+            ValueError, match="k cannot be greater than the number of data points in x"
+        ):
+            tool.select(x, k=len(x) + 1)
+
+    def test_select_reproducible_with_random_state(self):
+        device = torch.device("cpu")
+        x = torch.randn(20, 4)
+
+        tool1 = GoldZCoreSelectionTool(
+            device=device,
+            n_dim_for_score=2,
+            n_random_anchors=15,
+            n_redundancy=5,
+            random_state=123,
+        )
+        tool2 = GoldZCoreSelectionTool(
+            device=device,
+            n_dim_for_score=2,
+            n_random_anchors=15,
+            n_redundancy=5,
+            random_state=123,
+        )
+
+        k = 5
+        indices1 = tool1.select(x, k=k)
+        indices2 = tool2.select(x, k=k)
+
+        assert indices1 == indices2
