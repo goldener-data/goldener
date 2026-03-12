@@ -1223,3 +1223,76 @@ class TestGoldZCoreSelectionTool:
         indices2 = tool2.select(x, k=k)
 
         assert indices1 == indices2
+
+    def test_select_n_dim_for_score_exceeds_feature_dim(self):
+        device = torch.device("cpu")
+        x = torch.randn(10, 3)
+        tool = GoldZCoreSelectionTool(
+            device=device,
+            n_dim_for_score=5,
+            n_random_anchors=8,
+            n_redundancy=3,
+            random_state=0,
+        )
+
+        with pytest.raises(
+            ValueError,
+            match="n_dim_for_score cannot be greater",
+        ):
+            tool.select(x, k=3)
+
+    def test_select_with_cosine_distance(self):
+        device = torch.device("cpu")
+        x = torch.tensor(
+            [[0.0, 1.0], [0.0, 2.0], [1.0, 0.0]],
+            dtype=torch.float32,
+        )
+
+        tool = GoldZCoreSelectionTool(
+            device=device,
+            distance=DistanceType.COSINE,
+            n_dim_for_score=2,
+            n_random_anchors=2,
+            n_redundancy=1,
+            random_state=0,
+        )
+        indices = tool.select(x, k=2)
+
+        assert len(indices) == 2
+
+    def test_with_0_init(self):
+        with pytest.raises(
+            ValueError,
+            match="n_dim_for_score must be a positive integer",
+        ):
+            GoldZCoreSelectionTool(
+                device=torch.device("cpu"),
+                n_dim_for_score=0,
+                n_random_anchors=8,
+                n_redundancy=3,
+                random_state=0,
+            )
+        with pytest.raises(
+            ValueError,
+            match="n_random_anchors must be a positive integer",
+        ):
+            GoldZCoreSelectionTool(
+                device=torch.device("cpu"),
+                n_dim_for_score=2,
+                n_random_anchors=0,
+                n_redundancy=3,
+                random_state=0,
+            )
+
+        with pytest.raises(
+            ValueError,
+            match="eps must be a positive float",
+        ):
+            GoldZCoreSelectionTool(
+                device=torch.device("cpu"),
+                n_dim_for_score=2,
+                n_random_anchors=8,
+                n_redundancy=3,
+                random_state=0,
+                eps=0,
+            )
