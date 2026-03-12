@@ -1129,7 +1129,7 @@ class TestGoldGreedyKernelPointsSelectionTool:
         tool = GoldGreedyKernelPointsSelectionTool(
             feature_kernel=LinearKernel(output_scale=1, constant=0)
         )
-        with pytest.raises(ValueError, match="must be less than"):
+        with pytest.raises(ValueError, match="k cannot be greater"):
             tool.select(x, k=5)
 
     def test_rejects_1d_tensor(self) -> None:
