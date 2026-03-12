@@ -454,6 +454,8 @@ class GoldVectorizer:
         vectorized_key: Column name to store the resulting vectors in the PixelTable table. Default is "vectorized".
         label_key: Optional key for labels in the batch dictionary. Default is None.
         target_to_label: Optional mapping from target values to label strings. Default is None.
+        merge_multilabels: Whether to merge multiple labels into a single label
+            string when target_to_label is used. Default is False.
         exclude_full_zero_target: Whether to exclude samples with a target tensor containing
             only zeros (in case of multi target). Default is False.
         exclude_labels: Optional set of label strings to exclude from vectorization. Default is None.
@@ -484,6 +486,7 @@ class GoldVectorizer:
         vectorized_key: str = "vectorized",
         label_key: str | None = None,
         target_to_label: dict[tuple[int, ...], str] | None = None,
+        merge_multilabels: bool = False,
         exclude_labels: set[str] | None = None,
         exclude_full_zero_target: bool = False,
         to_keep_schema: dict[str, type] | None = None,
@@ -506,6 +509,8 @@ class GoldVectorizer:
             vectorized_key: Column name for storing vectors. Defaults to "vectorized".
             label_key: Optional key for labels in the batch dictionary. Default is None.
             target_to_label: Optional mapping from target values to label strings. Default is None.
+            merge_multilabels: Whether to merge multiple labels into a single label
+                string when target_to_label is used. Default is False.
             exclude_labels: Optional set of label strings to exclude from vectorization. Default is None.
             exclude_full_zero_target: Whether to exclude samples with a target tensor containing
                 only zeros (in case of multi target). Default is False.
@@ -527,6 +532,7 @@ class GoldVectorizer:
         self.target_to_label = target_to_label
         self.exclude_labels = exclude_labels
         self.exclude_full_zero_target = exclude_full_zero_target
+        self.merge_multilabels = merge_multilabels
         self.vectorized_key = vectorized_key
         self.to_keep_schema = to_keep_schema
         self.min_pxt_insert_size = min_pxt_insert_size
