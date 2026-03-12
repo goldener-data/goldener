@@ -1010,6 +1010,7 @@ def vectorize_and_unwrap_in_batch(
     target_key: str | None = None,
     label_key: str | None = None,
     target_to_label: dict[tuple[int, ...], str] | None = None,
+    merge_multilabels: bool = False,
     exclude_labels: set[str] | None = None,
     to_keep: list[str] | None = None,
     starts: int = 0,
@@ -1028,6 +1029,8 @@ def vectorize_and_unwrap_in_batch(
         target_key: Optional key in the batch dictionary containing the target used to filter vectors.
         label_key: Optional key in the batch dictionary containing the labels.
         target_to_label: Optional mapping from target values to labels for binarization.
+        merge_multilabels: Whether to merge multiple labels into a single label
+            string when target_to_label is used. Default is False.
         exclude_labels: Optional set of label strings to exclude from vectorization. Default is None.
         to_keep: Optional list of additional keys to preserve from the batch.
         starts: Starting index for assigning new `idx_vector` values.
