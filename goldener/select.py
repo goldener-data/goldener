@@ -58,7 +58,12 @@ class DistanceType(Enum):
 
 
 class GoldSelectionTool(ABC):
-    """Run selection of a subset of data points from vectorized samples using a coresubset selection algorithm."""
+    """Run selection of a subset of data points from vectorized samples using a coresubset selection algorithm.
+
+    Attributes:
+        distance_func: The distance function to use for computing distances between points,
+            determined by the `distance` parameter in the constructor.
+    """
 
     def __init__(self, distance: DistanceType = DistanceType.EUCLIDEAN) -> None:
         self.distance_func = distance.distance_function
@@ -109,7 +114,7 @@ class GoldGreedyKernelPointsSelectionTool(GoldSelectionTool):
     Attributes:
         feature_kernel: The kernel to use for the GreedyKernelPoints solver.
         random_key: Random key for reproducibility in the GreedyKernelPoints solver.
-        distance: Not used in this selection tool, included for compatibility with the base class.
+        distance_func: Not used in this selection tool, included for compatibility with the base class.
     """
 
     def __init__(
@@ -118,6 +123,13 @@ class GoldGreedyKernelPointsSelectionTool(GoldSelectionTool):
         random_key: int = 42,
         distance: DistanceType = DistanceType.EUCLIDEAN,
     ) -> None:
+        """Initialize the GoldGreedyKernelPointsSelectionTool.
+
+        Args:
+            feature_kernel: The kernel to use for the GreedyKernelPoints solver.
+            random_key: Random key for reproducibility in the GreedyKernelPoints solver. Default is 42.
+            distance: Not used in this selection tool, included for compatibility with the base class.
+        """
         super().__init__(distance=distance)
 
         self.random_key = random_key
@@ -140,6 +152,11 @@ class GoldGreedyKernelPointsSelectionTool(GoldSelectionTool):
 
         Returns:
             A list of indices corresponding to the selected data points.
+
+        Raises:
+            ValueError: If x is not a 2D tensor.
+                If `k` is greater than the number of data points in `x`.
+
         """
         if anchors is not None:
             logger.info(
@@ -148,6 +165,10 @@ class GoldGreedyKernelPointsSelectionTool(GoldSelectionTool):
             )
 
         self._validate_input(x)
+        x_len = len(x)
+        if k > x_len:
+            raise ValueError("k cannot be greater than the number of data points in x.")
+
         in_data = SupervisedData(
             data=jnp.array(x.numpy(force=True)), supervision=jnp.array(np.ones(len(x)))
         )
@@ -170,6 +191,8 @@ class GoldGreedyKCenterSelectionTool(GoldSelectionTool):
 
     Attributes:
         device: The torch device to use for computations.
+        distance_func: The distance function to use for computing distances between points,
+            determined by the `distance` parameter in the constructor.
     """
 
     def __init__(
@@ -177,6 +200,12 @@ class GoldGreedyKCenterSelectionTool(GoldSelectionTool):
         device: torch.device | str,
         distance: DistanceType = DistanceType.EUCLIDEAN,
     ) -> None:
+        """Initialize the GoldGreedyKCenterSelectionTool.
+
+        Args:
+            device: The torch device to use for computations.
+            distance: The distance type to use for selection.
+        """
         super().__init__(distance=distance)
 
         self.device = device
@@ -201,7 +230,9 @@ class GoldGreedyKCenterSelectionTool(GoldSelectionTool):
             A list of indices corresponding to the selected data points.
 
         Raises:
-            ValueError: If `k` is greater than the number of data points in `x`.
+            ValueError:
+                If x is not a 2D tensor.
+                If `k` is greater than the number of data points in `x`.
         """
         self._validate_input(x)
         x_len = len(x)
@@ -280,6 +311,12 @@ class GoldGreedyClosestPointSelectionTool(GoldSelectionTool):
         device: torch.device | str,
         distance: DistanceType = DistanceType.EUCLIDEAN,
     ) -> None:
+        """Initialize the GoldGreedyClosestPointSelectionTool.
+
+        Args:
+            device: The torch device to use for computations.
+            distance: The distance type to use for selection.
+        """
         super().__init__(distance=distance)
 
         self.device = device
@@ -302,7 +339,9 @@ class GoldGreedyClosestPointSelectionTool(GoldSelectionTool):
             A list of indices corresponding to the selected data points.
 
         Raises:
-            ValueError: If `k` is greater than the number of data points in `x`.
+            ValueError:
+                If x is not a 2D tensor.
+                If `k` is greater than the number of data points in `x`.
         """
         if anchors is not None:
             logger.info(
@@ -353,6 +392,8 @@ class GoldGreedyFarthestPointSelectionTool(GoldSelectionTool):
 
     Attributes:
         device: The torch device to use for computations.
+        distance_func: The distance function to use for computing distances between points,
+            determined by the `distance` parameter in the constructor.
     """
 
     def __init__(
@@ -360,6 +401,12 @@ class GoldGreedyFarthestPointSelectionTool(GoldSelectionTool):
         device: torch.device | str,
         distance: DistanceType = DistanceType.EUCLIDEAN,
     ) -> None:
+        """Initialize the GoldGreedyFarthestPointSelectionTool.
+
+        Args:
+            device: The torch device to use for computations.
+            distance: The distance type to use for selection.
+        """
         super().__init__(distance=distance)
 
         self.device = device
@@ -382,7 +429,9 @@ class GoldGreedyFarthestPointSelectionTool(GoldSelectionTool):
             A list of indices corresponding to the selected data points.
 
         Raises:
-            ValueError: If `k` is greater than the number of data points in `x`.
+            ValueError:
+                If x is not a 2D tensor.
+                If `k` is greater than the number of data points in `x`.
         """
         if anchors is not None:
             logger.info(
@@ -420,6 +469,159 @@ class GoldGreedyFarthestPointSelectionTool(GoldSelectionTool):
             remaining_indices.remove(index_in_original)
 
         return selected_indices
+
+
+class GoldZCoreSelectionTool(GoldSelectionTool):
+    """Create a coresubset from selecting with the ZCore algorithm.
+
+    This algorithm compute a score of coverage penalized by a redundancy penalty for each point
+    and select the points with the highest score.
+
+    This selection tool is inspired from [Zero-Shot Coreset Selection via Iterative Subspace Sampling](https://arxiv.org/pdf/2411.15349).
+
+    Attributes:
+        device: The torch device to use for computations.
+        distance_func: The distance function to use for computing distances between points
+        n_dim_for_score: The number of dimensions to use when computing the coverage score and redundancy penalty. Default is 2.
+        n_random_anchors: The number of random anchors to use for computing the coverage score. Default is 2 million.
+        n_redundancy: The number of closest points to consider for the redundancy penalty. Default is 1000.
+        redundancy_scale: The scale factor for the redundancy penalty. Default is 4.
+        eps: A small value to avoid division by zero in the redundancy penalty. Default is 1e-8.
+        random_state: Optional random state for reproducibility when generating random anchors. Default is None.
+    """
+
+    def __init__(
+        self,
+        device: torch.device | str,
+        distance: DistanceType = DistanceType.EUCLIDEAN,
+        n_dim_for_score: int = 2,
+        n_random_anchors: int = int(2e6),
+        n_redundancy: int = 1000,
+        redundancy_scale: int = 4,
+        eps: float = 1e-8,
+        random_state: int | None = None,
+    ) -> None:
+        """Initialize the GoldZCoreSelectionTool.
+
+        Args:
+            device: The torch device to use for computations.
+            distance: The distance type to use for selection.
+            n_dim_for_score: The number of dimensions to use when computing the coverage score and redundancy penalty. Default is 2.
+            n_random_anchors: The number of random anchors to use for computing the coverage score. Default is 2 million.
+            n_redundancy: The number of closest points to consider for the redundancy penalty. Default is 1000.
+            redundancy_scale: The scale factor for the redundancy penalty. Default is 4.
+            eps: A small value to avoid division by zero in the redundancy penalty. Default is 1e-8.
+            random_state: Optional random state for reproducibility when generating random anchors. Default is None.
+
+        Raises:
+            ValueError: If `n_dim_for_score` is not a positive integer.
+                If `n_random_anchors` is not a positive integer.
+                If `eps` is not a positive float.
+        """
+        super().__init__(distance=distance)
+
+        self.device = device
+        if n_dim_for_score <= 0:
+            raise ValueError("n_dim_for_score must be a positive integer.")
+        self.n_dim_for_score = n_dim_for_score
+
+        if n_random_anchors <= 0:
+            raise ValueError("n_random_anchors must be a positive integer.")
+        self.n_random_anchors = n_random_anchors
+        self.n_redundancy = n_redundancy
+        self.redundancy_scale = redundancy_scale
+
+        if eps <= 0:
+            raise ValueError("eps must be a positive float.")
+        self.eps = eps
+        self.np_generator = np.random.default_rng(seed=random_state)
+
+    def select(
+        self,
+        x: torch.Tensor,
+        k: int,
+        anchors: torch.Tensor | None = None,
+    ) -> list[int]:
+        """Select a subset of data points from the ZCore algorithm.
+
+        Args:
+            x: A 2D torch.Tensor where each row represents a data point.
+            k: The number of data points to select.
+            anchors: This selection tool does not use anchors, included for compatibility with the base class.
+
+        Returns:
+            A list of indices corresponding to the selected data points.
+
+        Raises:
+            ValueError:
+                If x is not a 2D tensor.
+                If `k` is greater than the number of data points in `x`.
+                if `n_dim_for_score` is greater than the number of dimensions in `x`.
+        """
+        self._validate_input(x)
+        x_len = len(x)
+        if k > x_len:
+            raise ValueError("k cannot be greater than the number of data points in x.")
+
+        if k == x_len:
+            return list(range(x_len))
+
+        n_total_dim = x.shape[1]
+        if self.n_dim_for_score > n_total_dim:
+            raise ValueError(
+                f"n_dim_for_score cannot be greater than the number of dimensions in x. "
+                f"Got n_dim_for_score={self.n_dim_for_score} and x.shape[1]={n_total_dim}."
+            )
+
+        # to generate the random anchors, the range of values for each
+        # dimension allows to set up the triangular distribution
+        min_channel_values = x.min(dim=0).values.cpu().numpy()
+        max_channel_values = x.max(dim=0).values.cpu().numpy()
+        med_channel_values = x.median(dim=0).values.cpu().numpy()
+
+        x = x.to(self.device)
+        scores = torch.zeros(len(x), device=self.device)
+        for _ in range(self.n_random_anchors):
+            random_dims = self.np_generator.choice(
+                n_total_dim, size=self.n_dim_for_score, replace=False
+            ).tolist()
+            reduced_x = x[:, random_dims]
+            # coverage score
+            # increase the score for the point closest to the random anchor
+            random_anchor = self.np_generator.triangular(
+                left=min_channel_values[random_dims],
+                mode=med_channel_values[random_dims],
+                right=max_channel_values[random_dims],
+            )
+            dist_to_anchor = self.distance_func(
+                reduced_x,
+                torch.from_numpy(random_anchor)
+                .to(device=self.device, dtype=x.dtype)
+                .unsqueeze(0),
+            )
+            closest_to_anchor_idx = dist_to_anchor.argmin(dim=0)
+            scores[closest_to_anchor_idx] += 1
+
+            # redundancy score
+            # points closest to the favorized point are penalized to avoid selecting points in dense areas
+            if self.n_redundancy <= 0 or self.redundancy_scale == 0:
+                continue
+
+            closest_sample = x[closest_to_anchor_idx, random_dims]
+            dist_to_closest = self.distance_func(
+                reduced_x, closest_sample.unsqueeze(0)
+            ).squeeze()
+            closest_to_farthest_indices = dist_to_closest.argsort(dim=0)[
+                1 : self.n_redundancy + 1
+            ].squeeze()  # exclude itself and keep only first ones
+            redundancy_penalty = 1 / (
+                (dist_to_closest[closest_to_farthest_indices] + self.eps)
+                * self.redundancy_scale
+            )
+            redundancy_penalty /= redundancy_penalty.sum()  # normalize the redundancy penalty to not have too much impact on the score
+            scores[closest_to_farthest_indices] -= redundancy_penalty
+
+        return scores.argsort(descending=True)[:k].cpu().tolist()
 
 
 class GoldSelector:
