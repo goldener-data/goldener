@@ -32,7 +32,7 @@ from goldener.utils import (
     check_x_and_y_shapes,
     filter_batch_from_indices,
     transform_batch_from_multiple_to_binarized_targets,
-    transform_batch_from_multilabel_to_binary_labels,
+    transform_batch_from_multilabel_to_independent_labels,
 )
 
 logger = getLogger(__name__)
@@ -454,8 +454,7 @@ class GoldVectorizer:
         vectorized_key: Column name to store the resulting vectors in the PixelTable table. Default is "vectorized".
         label_key: Optional key for labels in the batch dictionary. Default is None.
         target_to_label: Optional mapping from target values to label strings. Default is None.
-        merge_multilabels: Whether to merge multiple labels into a single label
-            string when target_to_label is used. Default is False.
+        merge_multilabels: Whether to merge multiple labels into a single label. Default is False.
         exclude_full_zero_target: Whether to exclude samples with a target tensor containing
             only zeros (in case of multi target). Default is False.
         exclude_labels: Optional set of label strings to exclude from vectorization. Default is None.
@@ -509,8 +508,7 @@ class GoldVectorizer:
             vectorized_key: Column name for storing vectors. Defaults to "vectorized".
             label_key: Optional key for labels in the batch dictionary. Default is None.
             target_to_label: Optional mapping from target values to label strings. Default is None.
-            merge_multilabels: Whether to merge multiple labels into a single label
-                string when target_to_label is used. Default is False.
+            merge_multilabels: Whether to merge multiple labels into a single label. Default is False.
             exclude_labels: Optional set of label strings to exclude from vectorization. Default is None.
             exclude_full_zero_target: Whether to exclude samples with a target tensor containing
                 only zeros (in case of multi target). Default is False.
@@ -901,6 +899,7 @@ class GoldVectorizer:
                 to_keep=to_keep_keys,
                 starts=start_idx,
                 target_to_label=self.target_to_label,
+                merge_multilabels=self.merge_multilabels,
                 label_key=self.label_key,
                 exclude_full_zero_target=self.exclude_full_zero_target,
                 exclude_labels=self.exclude_labels,
@@ -1042,9 +1041,10 @@ def vectorize_and_unwrap_in_batch(
     if target_key is None or target_key not in batch:
         target = None
         if label_key is not None and label_key in batch:
-            batch = transform_batch_from_multilabel_to_binary_labels(
+            batch = transform_batch_from_multilabel_to_independent_labels(
                 batch=batch,
                 label_key=label_key,
+                merge_labels=merge_multilabels,
                 exclude_labels=exclude_labels,
             )
 
@@ -1057,6 +1057,7 @@ def vectorize_and_unwrap_in_batch(
                 target_key=target_key,
                 label_key=label_key,
                 target_to_label=target_to_label,
+                merge_labels=merge_multilabels,
                 exclude_full_zero=exclude_full_zero_target,
                 exclude_labels=exclude_labels,
             )

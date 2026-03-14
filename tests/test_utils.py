@@ -13,7 +13,7 @@ from goldener.utils import (
     split_sampling_among_chunks,
     transform_batch_from_multiple_to_binarized_targets,
     get_sampling_count_from_ratios,
-    transform_batch_from_multilabel_to_binary_labels,
+    transform_batch_from_multilabel_to_independent_labels,
 )
 
 
@@ -493,6 +493,39 @@ class TestTransformBatchFromMultipleToBinarizedTargets:
         assert (out["target"] == new_target).all()
         assert out["label"] == ["A", "A", "B", "B"]
 
+    def test_with_merge_multilabel(self):
+        target = torch.zeros(2, 2)
+        target[0, 0] = 25
+        data = torch.arange(6).reshape(2, 3)
+        batch = {
+            "data": data,
+            "target": target,
+            "label": [
+                {"A", "B"},
+                {
+                    "B",
+                },
+            ],
+        }
+
+        target_to_label = {
+            (0, 0): "A",
+            (25, 0): "B",
+        }
+
+        out = transform_batch_from_multiple_to_binarized_targets(
+            batch=batch,
+            target_key="target",
+            label_key="label",
+            target_to_label=target_to_label,
+            merge_labels=True,
+        )
+
+        assert (out["data"] == data).all()
+        new_target = torch.ones(2, 1)
+        assert (out["target"] == new_target).all()
+        assert out["label"] == ["A_B", "A_B"]
+
     def test_with_exclude_zero(self):
         target = torch.zeros(2, 1)
         target[0, 0] = 25
@@ -684,7 +717,7 @@ class TestTransformBatchFromMultilabelToBinaryLabels:
             "label": ["a", "b"],
         }
 
-        out = transform_batch_from_multilabel_to_binary_labels(
+        out = transform_batch_from_multilabel_to_independent_labels(
             batch=batch,
             label_key="label",
         )
@@ -706,7 +739,7 @@ class TestTransformBatchFromMultilabelToBinaryLabels:
             ],
         }
 
-        out = transform_batch_from_multilabel_to_binary_labels(
+        out = transform_batch_from_multilabel_to_independent_labels(
             batch=batch,
             label_key="label",
         )
@@ -716,6 +749,35 @@ class TestTransformBatchFromMultilabelToBinaryLabels:
         assert isinstance(x_out, torch.Tensor)
         assert torch.equal(x_out, expected_x)
         expected_labels = sorted(["a", "b", "b", "c", "a"])
+        assert sorted(out["label"]) == expected_labels
+
+    def test_with_merge_labels(self) -> None:
+        x = torch.arange(6).reshape(3, 2)
+        batch: dict[str, torch.Tensor | list] = {
+            "x": x,
+            "label": [
+                {"a", "b"},
+                {"b"},
+                {"c", "a"},
+            ],
+        }
+
+        out = transform_batch_from_multilabel_to_independent_labels(
+            batch=batch,
+            label_key="label",
+            merge_labels=True,
+        )
+
+        x_out = out["x"]
+        assert isinstance(x_out, torch.Tensor)
+        assert torch.equal(x_out, x)
+        expected_labels = sorted(
+            [
+                "a_b",
+                "a_c",
+                "b",
+            ]
+        )
         assert sorted(out["label"]) == expected_labels
 
     def test_exclude_labels(self) -> None:
@@ -730,7 +792,7 @@ class TestTransformBatchFromMultilabelToBinaryLabels:
             "other": ["keep1", "keep2", "keep3"],
         }
 
-        out = transform_batch_from_multilabel_to_binary_labels(
+        out = transform_batch_from_multilabel_to_independent_labels(
             batch=batch,
             label_key="label",
             exclude_labels={"b"},

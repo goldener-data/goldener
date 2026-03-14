@@ -61,6 +61,7 @@ class GoldDescriptor:
         target_to_label: Optional mapping from target values to label strings. Default is None.
         exclude_full_zero_target: Whether to exclude samples with a target tensor containing
             only zeros (in case of multi target). Default is False.
+        merge_multilabels: Whether to merge multiple labels into a single label. Default is False.
         exclude_labels: Optional set of label strings to exclude from vectorization. Default is None.
         description_key: Column name to store the computed embeddings in the PixelTable table. Default is "embeddings".
         force_fix_description: When True (default), the shape and dtype of the description are fixed in the
@@ -95,6 +96,7 @@ class GoldDescriptor:
         label_key: str | None = None,
         target_to_label: dict[tuple[int, ...], str] | None = None,
         exclude_full_zero_target: bool = False,
+        merge_multilabels: bool = False,
         exclude_labels: set[str] | None = None,
         description_key: str = "embeddings",
         force_fix_description: bool = True,
@@ -122,6 +124,7 @@ class GoldDescriptor:
             target_to_label: Optional mapping from target values to label strings. Default is None.
             exclude_full_zero_target: Whether to exclude samples with a target tensor containing
                 only zeros (in case of multi target). Default is False.
+            merge_multilabels: Whether to merge multiple labels into a single label. Default is False.
             exclude_labels: Optional set of label strings to exclude from vectorization. Default is None.
             description_key: Key for storing computed embeddings. Defaults to "embeddings".
             force_fix_description: When True (default), the shape and dtype of the description are fixed in
@@ -146,6 +149,7 @@ class GoldDescriptor:
         self.label_key = label_key
         self.target_to_label = target_to_label
         self.exclude_full_zero_target = exclude_full_zero_target
+        self.merge_multilabels = merge_multilabels
         self.exclude_labels = exclude_labels
         self.description_key = description_key
         self.force_fix_description = force_fix_description
@@ -576,6 +580,7 @@ class GoldDescriptor:
                     starts=start_idx,
                     label_key=self.label_key,
                     target_to_label=self.target_to_label,
+                    merge_multilabels=self.merge_multilabels,
                     exclude_full_zero_target=self.exclude_full_zero_target,
                     exclude_labels=self.exclude_labels,
                 )

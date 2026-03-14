@@ -359,6 +359,7 @@ def transform_batch_from_multiple_to_binarized_targets(
     target_key: str,
     label_key: str | None,
     target_to_label: dict[tuple[int, ...], str],
+    merge_labels: bool = False,
     exclude_labels: set[str] | None = None,
     exclude_full_zero: bool = False,
 ) -> dict[str, Any]:
@@ -370,6 +371,7 @@ def transform_batch_from_multiple_to_binarized_targets(
         target_key: The key in the batch dictionary that contains the target.
         label_key: The key in the batch dictionary that containes the labels.
         target_to_label: A mapping from unique target tuples to label values.
+        merge_labels: Whether to merge the labels into a single label (default: False).
         exclude_labels: An optional set of labels to exclude from the transformation (default: None).
         exclude_full_zero: Whether to exclude the all-zero target from the transformation (default: False).
 
@@ -415,6 +417,12 @@ def transform_batch_from_multiple_to_binarized_targets(
 
         target_per_label[label] = new_target
 
+    if merge_labels:
+        new_label = "_".join(sorted(target_per_label.keys()))
+        target_per_label = {
+            new_label: torch.stack(list(target_per_label.values()), dim=0).sum(dim=0)
+        }
+
     if not target_per_label:
         raise ValueError(
             "No valid targets found after applying exclude_full_zero filter."
@@ -454,9 +462,10 @@ def transform_batch_from_multiple_to_binarized_targets(
     return new_batch
 
 
-def transform_batch_from_multilabel_to_binary_labels(
+def transform_batch_from_multilabel_to_independent_labels(
     batch: dict[str, torch.Tensor | list],
     label_key: str,
+    merge_labels: bool = False,
     exclude_labels: set[str] | None = None,
 ) -> dict[str, torch.Tensor | list]:
     """Transform a batch with multilabel into a batch with one entry per label.
@@ -465,10 +474,14 @@ def transform_batch_from_multilabel_to_binary_labels(
         batch: A dictionary representing a batch of data, where the target key contains a multilabel target
             with values corresponding to the labels in target_to_label.
         label_key: The key in the batch dictionary that contains the labels.
+        merge_labels: Whether to merge the labels into a single label (default: False).
+            If False, the batch will be duplicated for each label.
+            If True, the labels will be merged into a single label by concatenating
+            them with a separator (e.g., "_").
         exclude_labels: An optional set of labels to exclude from the transformation (default: None).
 
     Returns:
-        A new batch dictionary where samples with multiple labels are duplicated for each label.
+        A new batch dictionary where samples with multiple labels are split/merge in single entries.
     """
     # duplicate the batch element for each label and
     # insert the corresponding label in the batch alongside them.
@@ -483,10 +496,18 @@ def transform_batch_from_multilabel_to_binary_labels(
         sample = {
             key: value[sample_idx] for key, value in batch.items() if key != label_key
         }
-        for label in labels:
-            if exclude_labels is not None and label in exclude_labels:
-                continue
 
+        not_excluded_labels = sorted(
+            [
+                label
+                for label in labels
+                if exclude_labels is None or label not in exclude_labels
+            ]
+        )
+        if merge_labels:
+            not_excluded_labels = ["_".join(not_excluded_labels)]
+
+        for label in not_excluded_labels:
             sample[label_key] = label
             for key, value in sample.items():
                 new_batch_as_lists[key].append(value)
