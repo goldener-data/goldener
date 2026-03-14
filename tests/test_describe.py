@@ -1,3 +1,6 @@
+from collections import defaultdict
+
+import numpy as np
 import pytest
 import torch
 
@@ -569,35 +572,158 @@ class TestGoldDescriptor:
         target = torch.zeros(1, 8, 8).numpy()
         target[0, 0, 0] = 25
 
-        source_rows = [
-            {
-                "idx": 0,
-                "data": torch.zeros(3, 8, 8).numpy(),
-                "label": [
-                    "class_1",
-                ],
-                "target": target,
+        pxt.create_dir("unit_test", if_exists="ignore")
+        src_table = pxt.create_table(
+            src_path,
+            schema={
+                "idx": pxt.Int,
+                "data": pxt.Array[(3, 8, 8), np.float32],
+                "label": pxt.Json,
+                "target": pxt.Array[(1, 8, 8), np.float32],
             },
-            {
-                "idx": 1,
-                "data": torch.zeros(3, 8, 8).numpy(),
-                "label": [
-                    "class_1",
-                ],
-                "target": target,
-            },
-        ]
+            if_exists="replace_force",
+        )
+
+        src_table.insert(
+            [
+                {
+                    "idx": 0,
+                    "data": torch.zeros(3, 8, 8).numpy(),
+                    "label": [
+                        "class_1",
+                        "class_2",
+                    ],
+                    "target": target,
+                },
+                {
+                    "idx": 1,
+                    "data": torch.zeros(3, 8, 8).numpy(),
+                    "label": [
+                        "class_1",
+                        "class_2",
+                    ],
+                    "target": target,
+                },
+            ]
+        )
+
+        def collate_fn(batch: list[dict]):
+            new_batch_as_list = defaultdict(list)
+
+            for sample in batch:
+                new_batch_as_list["idx"].append(sample["idx"])
+                new_batch_as_list["label"].append(sample["label"])
+                new_batch_as_list["target"].append(sample["target"])
+                new_batch_as_list["data"].append(sample["data"])
+
+            return {
+                "data": torch.stack(
+                    [torch.from_numpy(d) for d in new_batch_as_list["data"]], dim=0
+                ),
+                "target": torch.stack(
+                    [torch.from_numpy(t) for t in new_batch_as_list["target"]], dim=0
+                ),
+                "idx": new_batch_as_list["idx"],
+                "label": new_batch_as_list["label"],
+            }
+
+        desc = GoldDescriptor(
+            table_path="unit_test.test_describe",
+            embedder=embedder,
+            vectorizer=vectorizer,
+            label_key="label",
+            to_keep_schema={"label": pxt.String},
+            target_to_label={(25,): "class_1", (0,): "class_2"},
+            batch_size=2,
+            collate_fn=collate_fn,
+            device=torch.device("cpu"),
+            allow_existing=False,
+            drop_table=True,
+        )
+
+        description = desc.describe_in_table(src_table)
+
+        assert description.count() == 128
+        for row in description.collect():
+            assert row["idx"] in (0, 1)
+            assert row["embeddings"].shape == (4,)
+            assert row["label"] in ("class_1", "class_2")
+
+        pxt.drop_dir("unit_test", force=True)
+
+    def test_describe_in_dataset_from_table_with_vectorizer_and_merge_multilabel(
+        self, embedder, vectorizer
+    ):
+        pxt.drop_dir("unit_test", force=True)
+
+        src_path = "unit_test.src_table_input"
+
+        target = torch.zeros(1, 8, 8).numpy()
+        target[0, 0, 0] = 25
 
         pxt.create_dir("unit_test", if_exists="ignore")
         src_table = pxt.create_table(
-            src_path, source=source_rows, if_exists="replace_force"
+            src_path,
+            schema={
+                "idx": pxt.Int,
+                "data": pxt.Array[(3, 8, 8), np.float32],
+                "label": pxt.Json,
+                "target": pxt.Array[(1, 8, 8), np.float32],
+            },
+            if_exists="replace_force",
         )
+
+        src_table.insert(
+            [
+                {
+                    "idx": 0,
+                    "data": torch.zeros(3, 8, 8).numpy(),
+                    "label": [
+                        "class_1",
+                        "class_2",
+                    ],
+                    "target": target,
+                },
+                {
+                    "idx": 1,
+                    "data": torch.zeros(3, 8, 8).numpy(),
+                    "label": [
+                        "class_1",
+                        "class_2",
+                    ],
+                    "target": target,
+                },
+            ]
+        )
+
+        def collate_fn(batch: list[dict]):
+            new_batch_as_list = defaultdict(list)
+
+            for sample in batch:
+                new_batch_as_list["idx"].append(sample["idx"])
+                new_batch_as_list["label"].append(sample["label"])
+                new_batch_as_list["target"].append(sample["target"])
+                new_batch_as_list["data"].append(sample["data"])
+
+            return {
+                "data": torch.stack(
+                    [torch.from_numpy(d) for d in new_batch_as_list["data"]], dim=0
+                ),
+                "target": torch.stack(
+                    [torch.from_numpy(t) for t in new_batch_as_list["target"]], dim=0
+                ),
+                "idx": new_batch_as_list["idx"],
+                "label": new_batch_as_list["label"],
+            }
 
         desc = GoldDescriptor(
             table_path="unit_test.test_describe",
             embedder=embedder,
             vectorizer=vectorizer,
             target_to_label={(25,): "class_1", (0,): "class_2"},
+            label_key="label",
+            merge_multilabels=True,
+            to_keep_schema={"label": pxt.String},
             batch_size=2,
             collate_fn=None,
             device=torch.device("cpu"),
@@ -611,6 +737,7 @@ class TestGoldDescriptor:
         for row in description.collect():
             assert row["idx"] in (0, 1)
             assert row["embeddings"].shape == (4,)
+            assert row["label"] == "class_1_class_2"
 
         pxt.drop_dir("unit_test", force=True)
 
