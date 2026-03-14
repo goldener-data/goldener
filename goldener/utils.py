@@ -417,16 +417,16 @@ def transform_batch_from_multiple_to_binarized_targets(
 
         target_per_label[label] = new_target
 
+    if not target_per_label:
+        raise ValueError(
+            "No valid targets found after applying exclude_full_zero filter."
+        )
+
     if merge_labels:
         new_label = "_".join(sorted(target_per_label.keys()))
         target_per_label = {
             new_label: torch.stack(list(target_per_label.values()), dim=0).sum(dim=0)
         }
-
-    if not target_per_label:
-        raise ValueError(
-            "No valid targets found after applying exclude_full_zero filter."
-        )
 
     # duplicate the batch element for each label/target and
     # insert the corresponding binarized target/label in the batch alongside them.
@@ -471,8 +471,7 @@ def transform_batch_from_multilabel_to_independent_labels(
     """Transform a batch with multilabel into a batch with one entry per label.
 
     Args:
-        batch: A dictionary representing a batch of data, where the target key contains a multilabel target
-            with values corresponding to the labels in target_to_label.
+        batch: A dictionary representing a batch of data, where the label key contains several labels.
         label_key: The key in the batch dictionary that contains the labels.
         merge_labels: Whether to merge the labels into a single label (default: False).
             If False, the batch will be duplicated for each label.
@@ -504,7 +503,7 @@ def transform_batch_from_multilabel_to_independent_labels(
                 if exclude_labels is None or label not in exclude_labels
             ]
         )
-        if merge_labels:
+        if merge_labels and not_excluded_labels:
             not_excluded_labels = ["_".join(not_excluded_labels)]
 
         for label in not_excluded_labels:
