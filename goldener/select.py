@@ -1,3 +1,4 @@
+import math
 from abc import ABC, abstractmethod
 from enum import Enum
 from logging import getLogger
@@ -38,6 +39,7 @@ from goldener.utils import (
     split_sampling_among_chunks,
     get_sampling_count_from_ratios,
     get_ratios_for_counts,
+    force_non_zero_count,
 )
 
 logger = getLogger(__name__)
@@ -880,14 +882,23 @@ class GoldSelector:
         assert isinstance(select_from, Table)
 
         # define the number of element to sample
-        total_size = select_from.select(select_from.idx).distinct().count()
+        total_size = selection_table.select(selection_table.idx).distinct().count()
+        if total_size == 0:
+            raise ValueError("The selection table is empty.")
+        if isinstance(select_size, int) and select_size > total_size:
+            raise ValueError(
+                f"select_size {select_size} cannot be greater than the total number of samples {total_size}."
+            )
+
         select_count = (
             select_size
             if isinstance(select_size, int)
-            else int(select_size * total_size)
+            else math.ceil(select_size * total_size)  # at least one sample
         )
-        if select_count == 0 and isinstance(select_size, float):
-            select_count = 1  # at least one sample
+
+        select_ratio = (
+            select_size if isinstance(select_size, float) else select_count / total_size
+        )
 
         selection_indices = self.get_selection_indices(
             selection_table, value, self.selection_key
@@ -916,9 +927,21 @@ class GoldSelector:
                 f"which is more than the requested {select_count} samples."
             )
         elif self.distribute:
-            self._distributed_select(select_from, selection_table, select_count, value)
+            self._distributed_select(
+                select_from=select_from,
+                selection_table=selection_table,
+                select_count=select_count,
+                select_ratio=select_ratio,
+                value=value,
+            )
         else:
-            self._sequential_select(select_from, selection_table, select_count, value)
+            self._sequential_select(
+                select_from=select_from,
+                selection_table=selection_table,
+                select_count=select_count,
+                select_ratio=select_ratio,
+                value=value,
+            )
 
         logger.info(
             f"Selection table populated {
@@ -1341,6 +1364,7 @@ class GoldSelector:
         select_from: Table,
         selection_table: Table,
         select_count: int,
+        select_ratio: float,
         value: str | None,
     ) -> None:
         """Run sequential (single-process) selection process.
@@ -1353,6 +1377,7 @@ class GoldSelector:
             select_from: The source table with vectorized data.
             selection_table: The table to store selection results.
             select_count: Number of samples to select.
+            select_ratio: Ratio of samples to select (between 0 and 1).
             value: Value to assign to selected samples in the selection_key column.
 
         Raises:
@@ -1415,12 +1440,19 @@ class GoldSelector:
                     }
                 )
 
-                selection_label_counts = self._compute_label_counts_for_selection(
-                    selection_table=selection_table,
-                    labels=labels,
-                    select_count=loop_select_count,
-                    value=value,
-                    force_all_labels=force_all_labels,
+                selection_label_counts = (
+                    self._compute_label_counts_for_selection_from_selection_ratio(
+                        selection_table=selection_table,
+                        labels=labels,
+                        select_ratio=select_ratio,
+                        value=value,
+                    )
+                    if force_all_labels
+                    else self._compute_label_counts_from_not_selected_ratios(
+                        selection_table=selection_table,
+                        labels=labels,
+                        select_count=loop_select_count,
+                    )
                 )
                 # start with the labels with the lowest population in order to maximize the
                 # representativeness of the selection for all labels in multilabel tasks
@@ -1768,6 +1800,7 @@ class GoldSelector:
         select_from: Table,
         selection_table: Table,
         select_count: int,
+        select_ratio: float,
         value: str | None,
     ) -> None:
         """Run distributed selection process (not implemented).
@@ -1776,6 +1809,7 @@ class GoldSelector:
             select_from: The source table with vectorized data.
             selection_table: The table to store selection results.
             select_count: Number of samples to select.
+            select_ratio: Ratio of samples to select.
             value: Value to assign to selected samples in the selection_key column.
 
         Raises:
@@ -1806,18 +1840,16 @@ class GoldSelector:
 
         return set(indices[torch.tensor(selected_indices)].tolist())
 
-    def _compute_label_counts_for_selection(
+    def _compute_label_counts_from_not_selected_ratios(
         self,
         selection_table: Table,
         labels: list[str],
         select_count: int,
-        value: str | None = None,
-        force_all_labels: bool = True,
     ) -> dict[str, int]:
+        # when all the labels have already been selected from the selection ratio
+        # the missing samples are taken from remaining available ones
+        # based on the ratios of the populations favorizing the most represented labels
         assert self.label_key is not None
-        # When all labels are required, all the not selected samples and the selected samples for the current
-        # value are included in the count of the label.
-        # This allows to maximize the idempotence of the selection process
         label_counts = {}
         for label in labels:
             count = self.get_selection_count(
@@ -1827,27 +1859,14 @@ class GoldSelector:
                 label_key=self.label_key,
                 label_value=label,
             )
-            if force_all_labels:
-                count += self.get_selection_count(
-                    table=selection_table,
-                    value=value,
-                    selection_key=self.selection_key,
-                    label_key=self.label_key,
-                    label_value=label,
-                )
-
+            # only the remaining labels are kept
             if count > 0:
                 label_counts[label] = count
-            elif force_all_labels:
-                raise ValueError(
-                    f"Label '{label}' has no more selectable sample for value '{value}', but force_all_labels is True. "
-                    f"This might be due to an issue in the selection process or the data."
-                )
-            else:
-                logger.info(
-                    f"Label '{label}' has no more selectable sample for value '{value}'. "
-                    f"This label will not be selected in the current selection loop."
-                )
+
+        if not label_counts:
+            raise RuntimeError(
+                f"No more samples can be selected for any label. Cannot find {select_count} samples."
+            )
 
         label_ratios = {
             value: ratio
@@ -1858,5 +1877,43 @@ class GoldSelector:
         }
 
         return get_sampling_count_from_ratios(
-            label_ratios, select_count, force_non_zero=force_all_labels
+            label_ratios, select_count, force_non_zero=False
         )
+
+    def _compute_label_counts_for_selection_from_selection_ratio(
+        self,
+        selection_table: Table,
+        labels: list[str],
+        select_ratio: float,
+        value: str | None = None,
+    ) -> dict[str, int]:
+        # when selecting from the specified ratio, the label population include the available samples
+        # but as well the samples already sampled with the selection value
+        label_counts = {
+            label: self.get_selection_count(
+                table=selection_table,
+                value=value,
+                selection_key=self.selection_key,
+                label_key=self.label_key,
+                label_value=label,
+            )
+            + self.get_selection_count(
+                table=selection_table,
+                value=None,
+                selection_key=self.selection_key,
+                label_key=self.label_key,
+                label_value=label,
+            )
+            for label in labels
+        }
+
+        # The selection count for each label is first obtained from
+        # flooring the multiplication of the label count by the selection ratio.
+        # Then, labels with 0 selected samples are forced to have a non-zero
+        # selection count by taking samples from the bigger labels.
+        label_select_count = {
+            label: math.floor(count * select_ratio)
+            for label, count in label_counts.items()
+        }
+
+        return force_non_zero_count(label_select_count)

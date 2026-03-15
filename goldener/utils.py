@@ -574,7 +574,12 @@ def get_sampling_count_from_ratios(
         return dict(sorted(counts.items(), key=lambda x: x[1]))
 
     # If force_non_zero is activated, adjust counts to ensure no key has a count of zero
-    # first, the zero counts are identified and incremented by 1, while keeping track of how many were incremented
+    return force_non_zero_count(counts)
+
+
+def force_non_zero_count(counts: dict[T, int]) -> dict[T, int]:
+    # first, the zero counts are identified and incremented by 1,
+    # while keeping track of how many were incremented
     added = 0
     for key, count in counts.items():
         if count == 0:

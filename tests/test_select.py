@@ -614,7 +614,7 @@ class TestGoldSelector:
 
         # calling select_in_table when a table exists and allow_existing is False should raise
         with pytest.raises(
-            ValueError, match="Cannot select more unique data points than available"
+            ValueError, match="cannot be greater than the total number of samples"
         ):
             selector.select_in_table(dataset, select_size=21, value="train")
 
