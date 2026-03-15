@@ -882,14 +882,19 @@ class GoldSelector:
         assert isinstance(select_from, Table)
 
         # define the number of element to sample
-        total_size = select_from.select(select_from.idx).distinct().count()
+        total_size = selection_table.select(selection_table.idx).distinct().count()
+        if total_size == 0:
+            raise ValueError("The selection table is empty.")
+        if isinstance(select_size, int) and select_size > total_size:
+            raise ValueError(
+                f"select_size {select_size} cannot be greater than the total number of samples {total_size}."
+            )
+
         select_count = (
             select_size
             if isinstance(select_size, int)
-            else int(select_size * total_size)
+            else math.ceil(select_size * total_size)  # at least one sample
         )
-        if select_count == 0 and isinstance(select_size, float):
-            select_count = 1  # at least one sample
 
         select_ratio = (
             select_size if isinstance(select_size, float) else select_size / total_size
@@ -1898,11 +1903,11 @@ class GoldSelector:
         }
 
         # The selection count for each label is first obtained from
-        # the flooring of the multiplication of the label count by the selection ratio
-        # then the label with 0 selected sampled are forced to be not 0
-        # by taking samples from the bigger labels
+        # flooring the multiplication of the label count by the selection ratio.
+        # Then, labels with 0 selected samples are forced to have a non-zero
+        # selection count by taking samples from the bigger labels.
         label_select_count = {
-            label: math.floor(count * select_ratio) if count > 0 else 0
+            label: math.floor(count * select_ratio)
             for label, count in label_counts.items()
         }
 
