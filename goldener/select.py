@@ -897,7 +897,7 @@ class GoldSelector:
         )
 
         select_ratio = (
-            select_size if isinstance(select_size, float) else select_size / total_size
+            select_size if isinstance(select_size, float) else select_count / total_size
         )
 
         selection_indices = self.get_selection_indices(
@@ -1862,6 +1862,11 @@ class GoldSelector:
             # only the remaining labels are kept
             if count > 0:
                 label_counts[label] = count
+
+        if not label_counts:
+            raise RuntimeError(
+                f"No more samples can be selected for any label. Cannot find {select_count} samples."
+            )
 
         label_ratios = {
             value: ratio
