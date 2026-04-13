@@ -6,7 +6,7 @@
     />
 </picture>
 
-A python library orchestrating data during the full life cycle of machine learning pipelines.
+A Python library orchestrating data during the full life cycle of Machine Learning pipelines.
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-0530AD.svg)](https://opensource.org/licenses/Apache-2.0)
 [![PyPI Package](https://img.shields.io/pypi/v/goldener?color=6D165C)](https://pypi.org/project/goldener/)
@@ -20,11 +20,11 @@ A python library orchestrating data during the full life cycle of machine learni
 # Overview
 
 Goldener is an **open-source Python library** (Apache 2 licence) designed to manage the **orchestration
-of data** (sampling, splitting) during the full life cycle of machine learning (ML) pipelines.
+of data** (sampling, splitting) during the full life cycle of Machine Learning (ML) pipelines.
 
 In the artificial intelligence (AI) era, the data is the new gold. Being able to collect it is already something
 but **creating value from it is the real challenge**. Goldener is designed to help to make the most of the available data.
-It provides tools to orchestrate data during the full life cycle of machine learning pipelines,
+It provides tools to orchestrate data during the full life cycle of Machine Learning pipelines,
 from the training phase to the monitoring phase.
 
 Goldener makes the **right data** available at the **right time**, allowing to **optimize the performance**
