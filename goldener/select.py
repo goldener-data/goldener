@@ -886,7 +886,7 @@ class GoldSelector:
                 and `idx` (index of the sample) and `idx_vector` (index of the vector) columns as well.
 
         Raises:
-            ValueError: If select_size is a float not in the range (0.0, 1.0).
+            ValueError: If select_size is a float not in the range ]0.0, 1.0].
         """
         if isinstance(select_size, float):
             if not (0.0 < select_size <= 1.0):

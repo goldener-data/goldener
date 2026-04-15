@@ -616,7 +616,7 @@ class GoldSplitter:
                             cluster_col == cluster_idx
                             if force_all_clusters
                             else (
-                                (clusterized.idx == cluster_idx)
+                                (cluster_col == cluster_idx)
                                 & (~clusterized.idx.isin(already_selected))
                             )
                         )
@@ -716,7 +716,7 @@ class GoldSplitter:
                     loop_cluster_selected_counts = {
                         cluster_idx: loop_cluster_selected_counts[cluster_idx]
                         + clusterized.where(
-                            (clusterized.idx == cluster_idx)
+                            (cluster_col == cluster_idx)
                             & (clusterized.idx.isin(already_selected))
                             & (clusterized.idx_vector.isin(remaining_vectors))
                         )
