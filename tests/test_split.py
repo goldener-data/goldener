@@ -896,7 +896,7 @@ class TestGoldSplitter:
             ]
         )
 
-        # validate using clustering and then restart while alreayd done
+        # validate using clustering and then restart while already done
         splitter.split_in_table(to_split=dataset)
         split_table = splitter.split_in_table(to_split=dataset)
 
