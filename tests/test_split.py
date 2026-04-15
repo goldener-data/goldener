@@ -576,6 +576,9 @@ class TestGoldSplitter:
         basic_splitter.split_in_table(to_split=dataset)
 
         basic_splitter.max_batches = None
+        _ = basic_splitter.split_in_table(
+            to_split=dataset
+        )  # do a 1st split to simulate when the split is totally done as well
         split_table = basic_splitter.split_in_table(to_split=dataset)
         splitted = basic_splitter.get_split_indices(
             split_table,
@@ -866,7 +869,7 @@ class TestGoldSplitter:
             table_path="unit_test.clusterizer_split",
             clustering_tool=GoldRandomClusteringTool(random_state=0),
             label_key="label",
-            allow_existing=False,
+            allow_existing=True,
         )
 
         splitter = GoldSplitter(
@@ -876,23 +879,26 @@ class TestGoldSplitter:
             vectorizer=None,
             clusterizer=clusterizer,
             n_clusters=2,
+            allow_existing=True,
         )
 
-        split_table = splitter.split_in_table(
-            to_split=DummyDataset(
-                [
-                    {
-                        "vectorized": torch.rand(
-                            3,
-                        ),
-                        "idx": idx_vector // 4,
-                        "label": "dummy",
-                        "idx_vector": idx_vector,
-                    }
-                    for idx_vector in range(120)
-                ]
-            )
+        dataset = DummyDataset(
+            [
+                {
+                    "vectorized": torch.rand(
+                        3,
+                    ),
+                    "idx": idx_vector // 4,
+                    "label": "dummy",
+                    "idx_vector": idx_vector,
+                }
+                for idx_vector in range(120)
+            ]
         )
+
+        # validate using clustering and then restart while alreayd done
+        splitter.split_in_table(to_split=dataset)
+        split_table = splitter.split_in_table(to_split=dataset)
 
         splitted = splitter.get_split_indices(
             split_table,
