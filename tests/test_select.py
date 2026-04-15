@@ -252,7 +252,7 @@ class TestGoldSelector:
         with pytest.raises(
             ValueError, match="When select_size is a float, it must be in the range"
         ):
-            selector.select_in_table(dataset, select_size=1.0, value="train")
+            selector.select_in_table(dataset, select_size=1.1, value="train")
 
         with pytest.raises(ValueError, match="select_size must be a positive integer"):
             selector.select_in_table(dataset, select_size=0, value="train")
@@ -723,7 +723,7 @@ class TestGoldSelector:
             table_path=table_path, allow_existing=False, batch_size=10, max_batches=2
         )
 
-        dataset = selector.select_in_dataset(dataset, select_count=3, value="train")
+        dataset = selector.select_in_dataset(dataset, select_size=3, value="train")
 
         assert isinstance(dataset, GoldPxtTorchDataset)
 
@@ -788,7 +788,7 @@ class TestGoldSelector:
             drop_table=True,
         )
 
-        dataset = selector.select_in_dataset(dataset, select_count=3, value="train")
+        dataset = selector.select_in_dataset(dataset, select_size=3, value="train")
 
         sleep(1)
         with pytest.raises(
