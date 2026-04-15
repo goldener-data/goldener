@@ -801,7 +801,12 @@ class GoldSelector:
         return selection_table
 
     def select_in_dataset(
-        self, select_from: Dataset | Table, select_count: int, value: str
+        self,
+        select_from: Dataset | Table,
+        select_size: int | float,
+        value: str,
+        restrict_to: set[int] | None = None,
+        restriction_idx_key: str = "idx_vector",
     ) -> GoldPxtTorchDataset:
         """Select a subset of samples using coresubset selection and return results as a GoldPxtTorchDataset.
 
@@ -820,15 +825,24 @@ class GoldSelector:
                 dictionary with at least the `vectorized_key` and `idx` keys after applying the collate_fn.
                 If the collate_fn is None, the dataset is expected to directly provide such batches.
                 If a Table is provided, it should contain at least the `vectorized_key`, `idx` and `idx_vector` columns.
-            select_count: Number of data points to select.
+            select_size: Number or ratio (between 0 and 1) of data points to select
             value: Value to set in the `selection_key` column for selected samples.
+            restrict_to: Optional set of indices to restrict the search to.
+                If provided, only the selected indices in `restriction_idx_key` will be used for the selection.
+            restriction_idx_key: Column name used to get sample indices for restriction.
 
         Returns:
             A GoldPxtTorchDataset containing at least the selection information in the `selection_key` key
                 and `idx` (index of the sample) and `idx_vector` (index of the vector) keys as well.
         """
 
-        selected_table = self.select_in_table(select_from, select_count, value)
+        selected_table = self.select_in_table(
+            select_from=select_from,
+            select_size=select_size,
+            value=value,
+            restrict_to=restrict_to,
+            restriction_idx_key=restriction_idx_key,
+        )
 
         selected_dataset = GoldPxtTorchDataset(selected_table, keep_cache=True)
 
@@ -838,7 +852,12 @@ class GoldSelector:
         return selected_dataset
 
     def select_in_table(
-        self, select_from: Dataset | Table, select_size: int | float, value: str | None
+        self,
+        select_from: Dataset | Table,
+        select_size: int | float,
+        value: str | None,
+        restrict_to: set[int] | None = None,
+        restriction_idx_key: str = "idx_vector",
     ) -> Table:
         """Select a subset of samples using coresubset selection and store results in a PixelTable table.
 
@@ -858,18 +877,21 @@ class GoldSelector:
                 If a Table is provided, it should contain at least the `vectorized_key`, `idx` and `idx_vector` columns.
             select_size: Number or ratio (between 0 and 1) of data points to select.
             value: Value to set in the `selection_key` column for selected samples.
+            restrict_to: Optional set of indices to restrict the search to.
+                If provided, only the selected indices in `restriction_idx_key` will be used for the selection.
+            restriction_idx_key: Column name used to get sample indices for restriction.
 
         Returns:
             A PixelTable Table containing at least the selection information in the `selection_key` column
                 and `idx` (index of the sample) and `idx_vector` (index of the vector) columns as well.
 
         Raises:
-            ValueError: If select_size is a float not in the range (0.0, 1.0).
+            ValueError: If select_size is a float not in the range ]0.0, 1.0].
         """
         if isinstance(select_size, float):
-            if not (0.0 < select_size < 1.0):
+            if not (0.0 < select_size <= 1.0):
                 raise ValueError(
-                    "When select_size is a float, it must be in the range (0.0, 1.0)."
+                    "When select_size is a float, it must be in the range ]0.0, 1.0]."
                 )
         else:
             if select_size <= 0:
@@ -882,7 +904,16 @@ class GoldSelector:
         assert isinstance(select_from, Table)
 
         # define the number of element to sample
-        total_size = selection_table.select(selection_table.idx).distinct().count()
+        total_query = (
+            selection_table
+            if restrict_to is None
+            else selection_table.where(
+                get_expr_from_column_name(selection_table, restriction_idx_key).isin(
+                    restrict_to
+                )
+            )
+        )
+        total_size = total_query.select(selection_table.idx).distinct().count()
         if total_size == 0:
             raise ValueError("The selection table is empty.")
         if isinstance(select_size, int) and select_size > total_size:
@@ -901,7 +932,11 @@ class GoldSelector:
         )
 
         selection_indices = self.get_selection_indices(
-            selection_table, value, self.selection_key
+            selection_table,
+            value,
+            self.selection_key,
+            restrict_to=restrict_to,
+            restriction_idx_key=restriction_idx_key,
         )
         already_selected_count = len(selection_indices)
         if already_selected_count > 0:
@@ -933,6 +968,8 @@ class GoldSelector:
                 select_count=select_count,
                 select_ratio=select_ratio,
                 value=value,
+                restrict_to=restrict_to,
+                restriction_idx_key=restriction_idx_key,
             )
         else:
             self._sequential_select(
@@ -941,6 +978,8 @@ class GoldSelector:
                 select_count=select_count,
                 select_ratio=select_ratio,
                 value=value,
+                restrict_to=restrict_to,
+                restriction_idx_key=restriction_idx_key,
             )
 
         logger.info(
@@ -1258,6 +1297,8 @@ class GoldSelector:
         label_key: str | None = None,
         label_value: str | None = None,
         idx_key: str = "idx",
+        restrict_to: set[int] | None = None,
+        restriction_idx_key: str = "idx_vector",
     ) -> Query:
         """Get the Pixeltable query to access samples selected with a given value.
 
@@ -1268,11 +1309,13 @@ class GoldSelector:
             label_key: Optional column name used to filter samples by label.
             label_value: Optional label value to filter samples by label.
             idx_key: Column name used to get sample indices.
+            restrict_to: Optional set of indices to restrict the search to.
+                If provided, only the selected indices in `restriction_idx_key` will be used for the selection.
+            restriction_idx_key: Column name used to get sample indices for restriction.
 
         Returns:
             A PixelTable Query object that can be executed to access
                 the samples with the specified value (and label if specified).
-
 
         Raises:
             ValueError: If only one of `label_key` or `label_value` is provided (both must be set together).
@@ -1287,6 +1330,10 @@ class GoldSelector:
                 raise ValueError("label_key and label_value must be set together.")
             query = selection_col == value  # noqa: E712
 
+        if restrict_to is not None:
+            restrict_idx_col = get_expr_from_column_name(table, restriction_idx_key)
+            query = query & restrict_idx_col.isin(restrict_to)
+
         return table.where(query).select(idx_col).distinct()
 
     @staticmethod
@@ -1297,6 +1344,8 @@ class GoldSelector:
         label_key: str | None = None,
         label_value: str | None = None,
         idx_key: str = "idx",
+        restrict_to: set[int] | None = None,
+        restriction_idx_key: str = "idx_vector",
     ) -> set[int]:
         """Get the indices of samples selected with a given value.
 
@@ -1307,6 +1356,9 @@ class GoldSelector:
             label_key: Optional column name used to filter samples by label.
             label_value: Optional label value to filter samples by label.
             idx_key: Column name used to get sample indices.
+            restrict_to: Optional set of indices to restrict the search to.
+                If provided, only the selected indices in `restriction_idx_key` will be used for the selection.
+            restriction_idx_key: Column name used to get sample indices for restriction.
 
         Returns:
             A set of indices with the specified value (and label if specified).
@@ -1318,12 +1370,14 @@ class GoldSelector:
             [
                 row[idx_key]
                 for row in GoldSelector.get_selection_pxt_query(
-                    table,
-                    value,
-                    selection_key,
-                    label_key,
-                    label_value,
-                    idx_key,
+                    table=table,
+                    value=value,
+                    selection_key=selection_key,
+                    label_key=label_key,
+                    label_value=label_value,
+                    idx_key=idx_key,
+                    restrict_to=restrict_to,
+                    restriction_idx_key=restriction_idx_key,
                 ).collect()
             ]
         )
@@ -1336,6 +1390,8 @@ class GoldSelector:
         label_key: str | None = None,
         label_value: str | None = None,
         idx_key: str = "idx",
+        restrict_to: set[int] | None = None,
+        restriction_idx_key: str = "idx_vector",
     ) -> int:
         """Get the number of samples selected with a given value.
 
@@ -1346,17 +1402,22 @@ class GoldSelector:
             label_key: Optional column name used to filter samples by label.
             label_value: Optional label value to filter samples by label.
             idx_key: Column name used to get sample indices.
+            restrict_to: Optional set of indices to restrict the search to.
+                If provided, only the selected indices in `restriction_idx_key` will be used for the selection.
+            restriction_idx_key: Column name used to get sample indices for restriction.
 
         Returns:
             The number of samples with the specified value (and label if specified).
         """
         return GoldSelector.get_selection_pxt_query(
-            table,
-            value,
-            selection_key,
-            label_key,
-            label_value,
-            idx_key,
+            table=table,
+            value=value,
+            selection_key=selection_key,
+            label_key=label_key,
+            label_value=label_value,
+            idx_key=idx_key,
+            restrict_to=restrict_to,
+            restriction_idx_key=restriction_idx_key,
         ).count()
 
     def _sequential_select(
@@ -1366,6 +1427,8 @@ class GoldSelector:
         select_count: int,
         select_ratio: float,
         value: str | None,
+        restrict_to: set[int] | None = None,
+        restriction_idx_key: str = "idx_vector",
     ) -> None:
         """Run sequential (single-process) selection process.
 
@@ -1379,6 +1442,9 @@ class GoldSelector:
             select_count: Number of samples to select.
             select_ratio: Ratio of samples to select (between 0 and 1).
             value: Value to assign to selected samples in the selection_key column.
+            restrict_to: Optional set of indices to restrict the search to.
+                If provided, only the selected indices in `restriction_idx_key` will be used for the selection.
+            restriction_idx_key: Column name used to get sample indices for restriction.
 
         Raises:
             ValueError: If not enough samples are available for a label when `force_all_labels` is True.
@@ -1387,9 +1453,11 @@ class GoldSelector:
             label_col = get_expr_from_column_name(selection_table, self.label_key)
 
             already_selected_count = self.get_selection_count(
-                selection_table,
-                value,
-                self.selection_key,
+                table=selection_table,
+                value=value,
+                selection_key=self.selection_key,
+                restrict_to=restrict_to,
+                restriction_idx_key=restriction_idx_key,
             )
             logger.info(
                 f"The selection value '{value}' has already {already_selected_count} samples"
@@ -1435,6 +1503,8 @@ class GoldSelector:
                             self.selection_key,
                             self.label_key,
                             label,
+                            restrict_to=restrict_to,
+                            restriction_idx_key=restriction_idx_key,
                         )
                         for label in labels
                     }
@@ -1446,12 +1516,16 @@ class GoldSelector:
                         labels=labels,
                         select_ratio=select_ratio,
                         value=value,
+                        restrict_to=restrict_to,
+                        restriction_idx_key=restriction_idx_key,
                     )
                     if force_all_labels
                     else self._compute_label_counts_from_not_selected_ratios(
                         selection_table=selection_table,
                         labels=labels,
                         select_count=loop_select_count,
+                        restrict_to=restrict_to,
+                        restriction_idx_key=restriction_idx_key,
                     )
                 )
                 # start with the labels with the lowest population in order to maximize the
@@ -1472,11 +1546,13 @@ class GoldSelector:
                     # skip the label (over selection is not an issue)
                     label_count_status = (
                         self.get_selection_count(
-                            selection_table,
-                            value,
-                            self.selection_key,
-                            self.label_key,
-                            label_value,
+                            table=selection_table,
+                            value=value,
+                            selection_key=self.selection_key,
+                            label_key=self.label_key,
+                            label_value=label_value,
+                            restrict_to=restrict_to,
+                            restriction_idx_key=restriction_idx_key,
                         )
                         - label_counts_init[label_value]
                     )
@@ -1494,16 +1570,18 @@ class GoldSelector:
                         f"Selecting {label_count} samples for label '{label_value}' for value '{value}'"
                     )
                     self._select_label(
-                        select_from,
-                        selection_table,
-                        (
+                        select_from=select_from,
+                        selection_table=selection_table,
+                        select_count=(
                             label_count
                             if force_all_labels
                             else label_count - label_count_status
                         ),
-                        value,
+                        value=value,
                         label_value=label_value,
                         from_already=force_all_labels,
+                        restrict_to=restrict_to,
+                        restriction_idx_key=restriction_idx_key,
                     )
 
                 # after the first loop, labels with lower population might are allowed to be sampled again.
@@ -1515,10 +1593,12 @@ class GoldSelector:
         else:
             logger.info(f"Selecting {select_count} samples for value '{value}'")
             self._select_label(
-                select_from,
-                selection_table,
-                select_count,
-                value,
+                select_from=select_from,
+                selection_table=selection_table,
+                select_count=select_count,
+                value=value,
+                restrict_to=restrict_to,
+                restriction_idx_key=restriction_idx_key,
             )
 
     def _select_label(
@@ -1529,6 +1609,8 @@ class GoldSelector:
         value: str | None,
         label_value: str | None = None,
         from_already: bool = True,
+        restrict_to: set[int] | None = None,
+        restriction_idx_key: str = "idx_vector",
     ) -> None:
         """Perform coresubset selection for a specific label or all data.
 
@@ -1545,7 +1627,10 @@ class GoldSelector:
             from_already: Whether to restart selection from the already selected ones for the label.
                 If False, the selection is done to select the full select_count even if some samples have already
                 been selected for the label. If True, the selection is done to select only the remaining samples
-                 to reach select_count when counting the already selected ones for the label.
+                to reach select_count when counting the already selected ones for the label.
+            restrict_to: Optional set of indices to restrict the search to.
+                If provided, only the selected indices in `restriction_idx_key` will be used for the selection.
+            restriction_idx_key: Column name used to get sample indices for restriction.
 
         Raises:
             ValueError: If `select_count` exceeds the number of available unique data points in the dataset.
@@ -1564,6 +1649,8 @@ class GoldSelector:
             selection_key=self.selection_key,
             label_key=self.label_key,
             label_value=label_value,
+            restrict_to=restrict_to,
+            restriction_idx_key=restriction_idx_key,
         )
 
         # validate that there is still enough samples to select from
@@ -1574,6 +1661,8 @@ class GoldSelector:
             selection_key=self.selection_key,
             label_key=self.label_key,
             label_value=label_value,
+            restrict_to=restrict_to,
+            restriction_idx_key=restriction_idx_key,
         )
         if available_samples_for_selection_count < (
             select_count - current_selected_count
@@ -1586,12 +1675,17 @@ class GoldSelector:
         # (depending on data, a data point can have multiple vectors).
         # Then, the same data point can be selected multiple times if it has multiple vectors selected.
         # To achieve select_count of unique data points, we loop until we have enough unique data points selected.
+        available_query = selection_col == None  # noqa: E711
         if label_value is not None:
             assert self.label_key is not None
             label_col = get_expr_from_column_name(selection_table, self.label_key)
-            available_query = (selection_col == None) & (label_col == label_value)  # noqa: E712 E711
-        else:
-            available_query = selection_col == None  # noqa: E711
+            available_query = available_query & (label_col == label_value)  # noqa: E712 E711
+
+        if restrict_to is not None:
+            restricted_idx_col = get_expr_from_column_name(
+                selection_table, restriction_idx_key
+            )
+            available_query = available_query & restricted_idx_col.isin(restrict_to)
 
         while current_selected_count < select_count:
             logger.info(
@@ -1718,6 +1812,8 @@ class GoldSelector:
                         label_key=self.label_key,
                         label_value=label_value,
                         idx_key="idx_vector",
+                        restrict_to=restrict_to,
+                        restriction_idx_key=restriction_idx_key,
                     )
                     if already_selected_vector_indices:
                         anchors_list = [
@@ -1774,6 +1870,8 @@ class GoldSelector:
                     selection_key=self.selection_key,
                     label_key=self.label_key,
                     label_value=label_value,
+                    restrict_to=restrict_to,
+                    restriction_idx_key=restriction_idx_key,
                 )
 
                 if not from_already:
@@ -1802,6 +1900,8 @@ class GoldSelector:
         select_count: int,
         select_ratio: float,
         value: str | None,
+        restrict_to: set[int] | None = None,
+        restriction_idx_key: str = "idx_vector",
     ) -> None:
         """Run distributed selection process (not implemented).
 
@@ -1811,6 +1911,9 @@ class GoldSelector:
             select_count: Number of samples to select.
             select_ratio: Ratio of samples to select.
             value: Value to assign to selected samples in the selection_key column.
+            restrict_to: Optional set of indices to restrict the search to.
+                If provided, only the selected indices in `restriction_idx_key` will be used for the selection.
+            restriction_idx_key: Column name used to get sample indices for restriction.
 
         Raises:
             NotImplementedError: Always raised as distributed mode is not yet implemented.
@@ -1845,6 +1948,8 @@ class GoldSelector:
         selection_table: Table,
         labels: list[str],
         select_count: int,
+        restrict_to: set[int] | None = None,
+        restriction_idx_key: str = "idx_vector",
     ) -> dict[str, int]:
         # when all the labels have already been selected from the selection ratio
         # the missing samples are taken from remaining available ones
@@ -1858,6 +1963,8 @@ class GoldSelector:
                 selection_key=self.selection_key,
                 label_key=self.label_key,
                 label_value=label,
+                restrict_to=restrict_to,
+                restriction_idx_key=restriction_idx_key,
             )
             # only the remaining labels are kept
             if count > 0:
@@ -1886,6 +1993,8 @@ class GoldSelector:
         labels: list[str],
         select_ratio: float,
         value: str | None = None,
+        restrict_to: set[int] | None = None,
+        restriction_idx_key: str = "idx_vector",
     ) -> dict[str, int]:
         # when selecting from the specified ratio, the label population include the available samples
         # but as well the samples already sampled with the selection value
@@ -1896,6 +2005,8 @@ class GoldSelector:
                 selection_key=self.selection_key,
                 label_key=self.label_key,
                 label_value=label,
+                restrict_to=restrict_to,
+                restriction_idx_key=restriction_idx_key,
             )
             + self.get_selection_count(
                 table=selection_table,
@@ -1903,6 +2014,8 @@ class GoldSelector:
                 selection_key=self.selection_key,
                 label_key=self.label_key,
                 label_value=label,
+                restrict_to=restrict_to,
+                restriction_idx_key=restriction_idx_key,
             )
             for label in labels
         }
