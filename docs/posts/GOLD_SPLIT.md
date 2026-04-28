@@ -14,39 +14,40 @@ In [Goldener](https://github.com/goldener-data/goldener), pretrained models and 
 ```python
 # Create an embedder to access the semantic representation
 embedder_config = GoldTorchEmbeddingToolConfig(
-  model=my_model,
-  layers=my_layers,
-  layer_fusion=EmbeddingFusionStrategy.AVERAGE,
-  group_fusion=EmbeddingFusionStrategy.CONCAT,
-  channel_pos=1,
+    model=my_model,
+    layers=my_layers,
+    layer_fusion=EmbeddingFusionStrategy.AVERAGE,
+    group_fusion=EmbeddingFusionStrategy.CONCAT,
+    channel_pos=1,
 )
 embedder = GoldTorchEmbeddingTool(embedder_config)
 vectorizer = TensorVectorizer(
-  keep=keep,
-  fusion_strategy=EmbeddingFusionStrategy.AVERAGE,
-  transform_y=None,
-  channel_pos=1
+    keep=keep,
+    fusion_strategy=EmbeddingFusionStrategy.AVERAGE,
+    transform_y=None,
+    channel_pos=1
 )
 gold_descriptor = GoldDescriptor(
-  table_path="my_table_for_description",
-  embedder=embedder,
-  vectorizer=vectorizer,
-  data_key="data",
-  target_key="target",
-  label_key="label",
-  description_key="embeddings",
+    table_path="my_table_for_description",
+    embedder=embedder,
+    vectorizer=vectorizer,
+    data_key="data",
+    target_key="target",
+    label_key="label",
+    description_key="embeddings",
 )
 
 # Create a selector to select the samples
 selection_tool = GoldGreedyKCenterSelectionTool(
-  distance=DistanceType.EUCLIDEAN
+    device=torch.device("cuda"),
+    distance=DistanceType.EUCLIDEAN
 )
 gold_selector = GoldSelector(
-  table_path="my_table_for_selection",
-  selection_tool=selection_tool,
-  selection_key="selected",
-  label_key="label",
-  vectorized_key="vectorized",
+    table_path="my_table_for_selection",
+    selection_tool=selection_tool,
+    selection_key="selected",
+    label_key="label",
+    vectorized_key="vectorized",
 )
 
 # Create a splitter to orchestrate the split
@@ -104,22 +105,22 @@ The [Goldener](https://github.com/goldener-data/goldener) class orchestrating th
 ```python
 # Create an embedder to access the semantic representation
 embedder_config = GoldTorchEmbeddingToolConfig(
-  model=my_model,
-  layers=my_layers,
-  layer_fusion=EmbeddingFusionStrategy.AVERAGE,
-  group_fusion=EmbeddingFusionStrategy.CONCAT,
-  channel_pos=1,
+    model=my_model,
+    layers=my_layers,
+    layer_fusion=EmbeddingFusionStrategy.AVERAGE,
+    group_fusion=EmbeddingFusionStrategy.CONCAT,
+    channel_pos=1,
 )
 embedder = GoldTorchEmbeddingTool(embedder_config)
 
 # Extract and store the semantic representation
 gold_descriptor = GoldDescriptor(
-  table_path="my_table_for_description",
-  embedder=embedder,
-  data_key="data",
-  target_key="target",
-  label_key="label",
-  description_key="embeddings",
+    table_path="my_table_for_description",
+    embedder=embedder,
+    data_key="data",
+    target_key="target",
+    label_key="label",
+    description_key="embeddings",
 )
 description_table = gold_descriptor.describe_in_table(my_dataset)
 ```
@@ -141,25 +142,25 @@ When the `Description` is not yet available and the processing pipeline requires
 # Create a vectorizer to split the samples as vectors
 # Here it keeps only the 1st vector in the description for all samples
 keep = Filter2DWithCount(
-  filter_count=1,
-  filter_location=FilterLocation.START,
-  keep=True,
+    filter_count=1,
+    filter_location=FilterLocation.START,
+    keep=True,
 )
 vectorizer = TensorVectorizer(
-  keep=keep,
-  fusion_strategy=EmbeddingFusionStrategy.AVERAGE,
-  transform_y=None,
-  channel_pos=1
+    keep=keep,
+    fusion_strategy=EmbeddingFusionStrategy.AVERAGE,
+    transform_y=None,
+    channel_pos=1
 )
 
 # Vectorize and store all the vectors
 gold_vectorizer = GoldVectorizer(
-  table_path="my_table_for_vectorization",
-  vectorizer=vectorizer,
-  data_key="embeddings",
-  target_key="target",
-  label_key="label",
-  vectorized_key="vectorized",
+    table_path="my_table_for_vectorization",
+    vectorizer=vectorizer,
+    data_key="embeddings",
+    target_key="target",
+    label_key="label",
+    vectorized_key="vectorized",
 )
 vectorized_table = gold_vectorizer.vectorize_in_table(my_dataset)
 ```
@@ -183,16 +184,17 @@ In [Goldener](https://github.com/goldener-data/goldener), `GoldSelector` is call
 ```python
 # Create a selection tool to select the samples
 selection_tool = GoldGreedyKCenterSelectionTool(
-  distance=DistanceType.EUCLIDEAN
+    device=torch.device("cuda"),
+    distance=DistanceType.EUCLIDEAN
 )
 
 # Select the samples and store the result
 gold_selector = GoldSelector(
-  table_path="my_table_for_selection",
-  selection_tool=selection_tool,
-  selection_key="selected",
-  label_key="label",
-  vectorized_key="vectorized",
+    table_path="my_table_for_selection",
+    selection_tool=selection_tool,
+    selection_key="selected",
+    label_key="label",
+    vectorized_key="vectorized",
 )
 selection_table = gold_selector.select_in_table(my_dataset, 0.5, "train")
 ```
