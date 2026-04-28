@@ -39,7 +39,7 @@ gold_descriptor = GoldDescriptor(
 
 # Create a selector to select the samples
 selection_tool = GoldGreedyKCenterSelectionTool(
-  distance: DistanceType = DistanceType.EUCLIDEAN
+  distance=DistanceType.EUCLIDEAN
 )
 gold_selector = GoldSelector(
   table_path="my_table_for_selection",
@@ -183,7 +183,7 @@ In [Goldener](https://github.com/goldener-data/goldener), `GoldSelector` is call
 ```python
 # Create a selection tool to select the samples
 selection_tool = GoldGreedyKCenterSelectionTool(
-  distance: DistanceType = DistanceType.EUCLIDEAN
+  distance=DistanceType.EUCLIDEAN
 )
 
 # Select the samples and store the result
