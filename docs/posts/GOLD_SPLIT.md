@@ -1,15 +1,15 @@
 # GOLDENER <br> Smart data split from embeddings and coreset selection
 
-[**Introduction**](#introduction) |
-[**Components**](#components) |
-[**Smart split**](#smart-split) |
-[**Bibliography**](#bibliography) |
-[**Authors**](#authors)|
-[**Miscellaneous**](#miscellaneous)
+[**Introduction**](#1-introduction) |
+[**Components**](#2-components) |
+[**Smart split**](#3-smart-split) |
+[**Bibliography**](#4-bibliography) |
+[**Authors**](#5-authors)|
+[**Miscellaneous**](#6-miscellaneous)
 
 ## TLDR
 
-In [Goldener](https://github.com/goldener-data/goldener), pretrained models and coresubset selection algorithms can be leveraged to make smart splits (as opposed to the usual random split).
+In [Goldener](https://github.com/goldener-data/goldener), pretrained models and coreset selection algorithms can be leveraged to make smart splits (as opposed to the usual random split).
 
 ```python
 # Create an embedder to access the semantic representation
@@ -71,7 +71,7 @@ val_indices = splits["val"]
 [Goldener](https://github.com/goldener-data/goldener) is an open source Python library focusing on data orchestration for efficient Machine Learning (ML).
 It provides features to sample, split, organize, annotate, and curate data based on embeddings/features in order to make the full ML lifecycle more efficient, from training to monitoring.
 
-In this post, we introduce how [Goldener](https://github.com/goldener-data/goldener) gives access to smarter data splits by leveraging pretrained networks and coresubset selection algorithms. We start by detailing the different components of Goldener involved in its smart data split feature. Then, we describe the internal process of a `GoldSplitter`, the Goldener class responsible for orchestrating the split of data among different sets.
+In this post, we introduce how [Goldener](https://github.com/goldener-data/goldener) gives access to smarter data splits by leveraging pretrained networks and coreset selection algorithms. We start by detailing the different components of Goldener involved in its smart data split feature. Then, we describe the internal process of a `GoldSplitter`, the Goldener class responsible for orchestrating the split of data among different sets.
 
 ## 2. Components
 
@@ -161,10 +161,10 @@ gold_vectorizer = GoldVectorizer(
   label_key="label",
   vectorized_key="vectorized",
 )
-vectorized_table = gold_descriptor.vectorize_in_table(my_dataset)
+vectorized_table = gold_vectorizer.vectorize_in_table(my_dataset)
 ```
 
-### 2.4. Data selection with coresubset
+### 2.4. Data selection with coreset
 
 The main entry point in the code is [GoldSelector](https://github.com/goldener-data/goldener/blob/main/goldener/select.py).
 
