@@ -12,7 +12,7 @@
 In [Goldener](https://github.com/goldener-data/goldener), pretrained models and coreset selection algorithms can be leveraged to make smart splits (as opposed to the usual random split).
 
 ```python
-# Create an embedder to access the semantic representation
+# Create a descriptor to access the semantic representation
 embedder_config = GoldTorchEmbeddingToolConfig(
     model=my_model,
     layers=my_layers,
