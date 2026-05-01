@@ -1,8 +1,11 @@
-from typing import Callable, Any
+from typing import Callable, Any, TypeVar
 
 import numpy as np
 import torch
 from torch.utils.data import IterableDataset, Dataset
+
+
+T = TypeVar("T")
 
 
 def make_2d_tensor(x: torch.Tensor) -> torch.Tensor:
@@ -223,3 +226,17 @@ def get_unique_values_in_tensor(tensor: torch.Tensor, dim: int = 1) -> torch.Ten
         A tensor with all the unique values of the input tensor for teh specified dimension.
     """
     return torch.unique(tensor.movedim(dim, -1).reshape(-1, tensor.shape[dim]), dim=0)
+
+
+def shuffle_list(items: list[T], generator: torch.Generator) -> list[T]:
+    """Shuffle the given items in a list.
+
+    Args:
+        items: The list of items to shuffle.
+        generator: A torch generator to manage the random shuffling.
+
+    Returns: A list of shuffled items.
+    """
+    return [
+        items[int(i)] for i in torch.randperm(len(items), generator=generator).tolist()
+    ]
