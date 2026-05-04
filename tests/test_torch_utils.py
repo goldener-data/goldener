@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 import pytest
+from collections import Counter
 from goldener.torch_utils import (
     torch_tensor_to_numpy_vectors,
     numpy_vectors_to_torch_tensor,
@@ -8,6 +9,7 @@ from goldener.torch_utils import (
     make_2d_tensor,
     ResetableTorchIterableDataset,
     get_unique_values_in_tensor,
+    shuffle_list,
 )
 
 
@@ -200,3 +202,36 @@ class TestGetUniqueValuesInTensor:
         out = get_unique_values_in_tensor(t, dim=0)
         expected = torch.tensor([3, 0], dtype=torch.uint8)
         assert (out == expected).all()
+
+
+class TestShuffleList:
+    def test_same_seed_same_shuffle(self):
+        items = list(range(20))
+        gen_a = torch.Generator().manual_seed(123)
+        gen_b = torch.Generator().manual_seed(123)
+
+        out_a = shuffle_list(items, generator=gen_a)
+        out_b = shuffle_list(items, generator=gen_b)
+
+        assert out_a == out_b
+
+    def test_same_elements(self):
+        items = list(range(20))
+        out = shuffle_list(items, generator=torch.Generator().manual_seed(123))
+        assert Counter(items) == Counter(out)
+
+    def test_does_not_mutate_input_list(self):
+        items = [10, 11, 12, 13]
+        items_before = list(items)
+
+        shuffle_list(items, generator=torch.Generator().manual_seed(1))
+
+        assert items == items_before
+
+    def test_empty_list(self):
+        out = shuffle_list([], generator=torch.Generator().manual_seed(0))
+        assert out == []
+
+    def test_singleton_list(self):
+        out = shuffle_list([42], generator=torch.Generator().manual_seed(0))
+        assert out == [42]
