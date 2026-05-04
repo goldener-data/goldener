@@ -93,6 +93,18 @@ class DummyMultiSizesClusteringTool(GoldClusteringTool):
         raise NotImplementedError
 
 
+class DummyEmptySizesClusteringTool(GoldClusteringTool):
+    def fit(self, x: torch.Tensor, n_clusters: int) -> torch.Tensor:
+        cluster_assignment = []
+        for assignment_idx in range(len(x) // (n_clusters - 1)):
+            cluster_assignment.extend(list(range(n_clusters - 1)))
+
+        return torch.tensor(cluster_assignment)
+
+    def predict(self, x: torch.Tensor) -> torch.Tensor:
+        raise NotImplementedError
+
+
 class TestGoldClusterizedBatchSampler:
     def setup_method(self):
         pxt.drop_dir("unit_test", force=True)
@@ -235,11 +247,12 @@ class TestGoldClusterizedBatchSampler:
             descriptor=None,
             vectorizer=None,
             force_same_size=True,
-            shuffle=False,
+            shuffle=True,
             generator=generator,
         )
         shuffled_batches_1 = [batch for batch in batch_sampler]
 
+        generator = torch.Generator().manual_seed(42)
         batch_sampler = GoldClusterizedBatchSampler(
             dataset=dataset,
             clusterizer=clusterizer,
@@ -247,9 +260,34 @@ class TestGoldClusterizedBatchSampler:
             descriptor=None,
             vectorizer=None,
             force_same_size=True,
-            shuffle=False,
+            shuffle=True,
             generator=generator,
         )
         shuffled_batches_2 = [batch for batch in batch_sampler]
 
         assert shuffled_batches_1 == shuffled_batches_2
+
+    def test_empty_cluster_failure(self):
+        table_path = "unit_test.clusterizer_batcher"
+        dataset = DummyDataset(
+            [{"vectorized": torch.rand(4), "idx": idx} for idx in range(20)]
+        )
+        clusterizer = GoldClusterizer(
+            table_path=table_path,
+            clustering_tool=DummyEmptySizesClusteringTool(),
+            allow_existing=False,
+        )
+        with pytest.raises(
+            ValueError,
+            match="Some clusters are empty. Please check the clusterizer configuration",
+        ):
+            GoldClusterizedBatchSampler(
+                dataset=dataset,
+                clusterizer=clusterizer,
+                batch_size=5,
+                descriptor=None,
+                vectorizer=None,
+                force_same_size=False,
+                shuffle=False,
+                generator=None,
+            )

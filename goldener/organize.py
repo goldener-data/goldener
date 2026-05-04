@@ -10,19 +10,29 @@ from goldener.vectorize import GoldVectorizer
 class GoldClusterizedBatchSampler(Sampler):
     """Batch sampler forcing the presence of all clusters in each batch.
 
+    With a random batcher, the content distribution within the batches might vary a lot.
+    During the training of a model, this variation can influence badly its convergence
+    leading to an underperforming model.
+
+    In this batcher, the data is first clustered in order to gather together the samples showing a similar content.
+    Then, every batch is forced to contain at least 1 element of each cluster.
+
+    The randomness is still available in the process of selection among the elements of all clusters.
+
     Args:
         dataset: dataset to sample from.
-        batch_size: batch size specifying the size of each batch and the number of clusters to create.
-        clusterizer: clusterizer to use to create clusters.
-        descriptor: optional descriptor to use to describe the dataset before clusterization.
-        vectorizer: optional vectorizer to use to vectorize the dataset before clusterization.
+        batch_size: batch size specifying the size of each batch. This is as well the number of clusters to create.
+        clusterizer: clusterizer to cluster the data into `batch_size` clusters.
+        descriptor: optional descriptor to describe the dataset before clusterization.
+        vectorizer: optional vectorizer to vectorize the dataset before clusterization.
         force_same_size: if True, all the clusters are required to have the same size.
-            If False, the sampler will cycle through the clusters until all the samples are exhausted.
+            If False, the sampler will cycle through the clusters until all the samples are exhausted. It will
+            then oversample the smallest clusters.
         shuffle: if True, the order of the samples of all clusters will be shuffled before sampling,
             the batch is shuffled to change the cluster order, and once exhausted a cluster is shuffled again.
             If False, the order of the samples and clusters will be preserved.
-        generator: optional generator to manager the random shuffling. If None, a new generator will be created with a random seed.
-
+        generator: optional generator to manage the random shuffling.
+            If None, a new generator will be created with a random seed.
     """
 
     def __init__(
@@ -39,6 +49,7 @@ class GoldClusterizedBatchSampler(Sampler):
         self.shuffle = shuffle
         self.generator = generator
 
+        # clusterize the dataset
         description = (
             dataset if descriptor is None else descriptor.describe_in_table(dataset)
         )
@@ -56,10 +67,16 @@ class GoldClusterizedBatchSampler(Sampler):
             )
             for cluster_idx in range(batch_size)
         }
+
+        # validate the cluster sizes and compute the max cluster size to know how many batches to draw
         cluster_sizes = [len(c) for c in self._indices_per_cluster.values()]
         if force_same_size and len(set(cluster_sizes)) != 1:
             raise ValueError(
                 "All the clusters are required to have the same size when `force_same_size=True`"
+            )
+        if any(cluster_size == 0 for cluster_size in cluster_sizes):
+            raise ValueError(
+                "Some clusters are empty. Please check the clusterizer configuration."
             )
 
         self._max_cluster_size = max(cluster_sizes)
@@ -72,7 +89,7 @@ class GoldClusterizedBatchSampler(Sampler):
         else:
             generator = self.generator
 
-        # order the indices of each cluster and keep track of the next index to add in the batch with a pointer
+        # order the indices of each cluster and initialize the tracking for the next index to sample for each cluster
         indices_buckets: dict[int, list[int]] = {}  # keep the order of indices
         pointers: dict[int, int] = {}  # to select the next sample to add in the batch
         for cluster_idx, cluster_set in self._indices_per_cluster.items():
@@ -94,7 +111,7 @@ class GoldClusterizedBatchSampler(Sampler):
                 ptr = pointers[cluster_idx]
                 batch.append(pool[ptr])
 
-                # Increment pointer. If it exceeds pool size, wrap around (Cycle)
+                # Increment the pointer. If it exceeds the pool size, wrap around (Cycle)
                 new_pointer = (ptr + 1) % len(pool)
                 pointers[cluster_idx] = new_pointer
 
@@ -102,6 +119,7 @@ class GoldClusterizedBatchSampler(Sampler):
                 if new_pointer == 0 and self.shuffle:
                     indices_buckets[cluster_idx] = shuffle_list(cluster_list, generator)
 
+            # the batch is shuffled to obtain different cluster orders across batches
             if self.shuffle:
                 batch = shuffle_list(batch, generator)
 
