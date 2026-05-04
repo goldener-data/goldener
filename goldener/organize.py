@@ -64,6 +64,7 @@ class GoldClusterizedBatchSampler(Sampler):
                 table=clusterized,
                 cluster_idx=cluster_idx,
                 cluster_key=clusterizer.cluster_key,
+                idx_key="idx",
             )
             for cluster_idx in range(batch_size)
         }
