@@ -25,13 +25,14 @@ def get_indices_per_cluster_for_subset(
     in the output list of indices for each cluster.
 
     Args:
-        indices_per_cluster: The set of indices pointing toward samples in the initial dataset for each cluster.
+        indices_per_cluster: The list of indices pointing toward samples in the initial dataset for each cluster.
         indices_in_subset: The indices specifying the subset of the initial dataset.
 
     Returns: The converted indices_per_cluster mapping the cluster with the indices in the subset
     """
     # build a mapping from the dataset indices to their positions in the subset
     dataset_pos_in_subset = {}
+
     for subset_pos, subset_index in enumerate(indices_in_subset):
         if subset_index not in dataset_pos_in_subset:
             dataset_pos_in_subset[subset_index] = [subset_pos]

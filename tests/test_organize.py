@@ -319,10 +319,10 @@ class TestGoldClusterizedBatchSampler:
         assert batcher_indices == list(range(5))
 
 
-class TestGetSubsetIndicesForIndices:
+class TestGetIndicesPerClusterForSubset:
     def test_basic(self):
         result = get_indices_per_cluster_for_subset(
-            indices_per_cluster={0: {10, 20}, 1: {30}},
+            indices_per_cluster={0: [10, 20], 1: [30]},
             indices_in_subset=[10, 20, 30],
         )
         assert sorted(result[0]) == [0, 1]
@@ -333,7 +333,7 @@ class TestGetSubsetIndicesForIndices:
     def test_multiple_duplicates_in_subset(self):
         result = get_indices_per_cluster_for_subset(
             indices_per_cluster={
-                0: {5, 7},
+                0: [5, 7],
             },
             indices_in_subset=[5, 7, 7, 5],
         )
@@ -345,7 +345,7 @@ class TestGetSubsetIndicesForIndices:
         ):
             get_indices_per_cluster_for_subset(
                 indices_per_cluster={
-                    0: {5},
+                    0: [5],
                 },
                 indices_in_subset=[0, 1, 2],
             )
@@ -353,7 +353,7 @@ class TestGetSubsetIndicesForIndices:
     def test_empty_dataset_indices(self):
         result = get_indices_per_cluster_for_subset(
             indices_per_cluster={
-                0: set(),
+                0: [],
             },
             indices_in_subset=[0, 1, 2],
         )
