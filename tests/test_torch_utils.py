@@ -10,7 +10,6 @@ from goldener.torch_utils import (
     ResetableTorchIterableDataset,
     get_unique_values_in_tensor,
     shuffle_list,
-    get_subset_indices_for_indices,
 )
 
 
@@ -236,36 +235,3 @@ class TestShuffleList:
     def test_singleton_list(self):
         out = shuffle_list([42], generator=torch.Generator().manual_seed(0))
         assert out == [42]
-
-
-class TestGetSubsetIndicesForIndices:
-    def test_basic(self):
-        result = get_subset_indices_for_indices(
-            indices_in_dataset={10, 20},
-            indices_in_subset=[10, 20, 30],
-        )
-        assert sorted(result) == [0, 1]
-
-    def test_multiple_duplicates_in_subset(self):
-        result = get_subset_indices_for_indices(
-            indices_in_dataset={5, 7},
-            indices_in_subset=[5, 7, 7, 5],
-        )
-        assert sorted(result) == [0, 1, 2, 3]
-
-    def test_raises_when_dataset_index_not_in_subset(self):
-        with pytest.raises(
-            ValueError,
-            match="The indices from the dataset are required to be all present in the subset",
-        ):
-            get_subset_indices_for_indices(
-                indices_in_dataset={99},
-                indices_in_subset=[0, 1, 2],
-            )
-
-    def test_empty_dataset_indices(self):
-        result = get_subset_indices_for_indices(
-            indices_in_dataset=set(),
-            indices_in_subset=[0, 1, 2],
-        )
-        assert result == []

@@ -10,7 +10,10 @@ from goldener import (
     GoldTorchEmbeddingToolConfig,
     GoldTorchEmbeddingTool,
 )
-from goldener.organize import GoldClusterizedBatchSampler
+from goldener.organize import (
+    GoldClusterizedBatchSampler,
+    get_indices_per_cluster_for_subset,
+)
 from goldener.pxt_utils import pxt_torch_dataset_collate_fn
 from goldener.vectorize import GoldVectorizer, TensorVectorizer
 
@@ -314,3 +317,44 @@ class TestGoldClusterizedBatchSampler:
 
         batcher_indices = [idx for batch in batches for idx in batch]
         assert batcher_indices == list(range(5))
+
+
+class TestGetSubsetIndicesForIndices:
+    def test_basic(self):
+        result = get_indices_per_cluster_for_subset(
+            indices_per_cluster={0: {10, 20}, 1: {30}},
+            indices_in_subset=[10, 20, 30],
+        )
+        assert sorted(result[0]) == [0, 1]
+        assert sorted(result[1]) == [
+            2,
+        ]
+
+    def test_multiple_duplicates_in_subset(self):
+        result = get_indices_per_cluster_for_subset(
+            indices_per_cluster={
+                0: {5, 7},
+            },
+            indices_in_subset=[5, 7, 7, 5],
+        )
+        assert sorted(result[0]) == [0, 1, 2, 3]
+
+    def test_raises_when_dataset_index_not_in_subset(self):
+        with pytest.raises(
+            KeyError,
+        ):
+            get_indices_per_cluster_for_subset(
+                indices_per_cluster={
+                    0: {5},
+                },
+                indices_in_subset=[0, 1, 2],
+            )
+
+    def test_empty_dataset_indices(self):
+        result = get_indices_per_cluster_for_subset(
+            indices_per_cluster={
+                0: set(),
+            },
+            indices_in_subset=[0, 1, 2],
+        )
+        assert result[0] == []
