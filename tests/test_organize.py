@@ -1,6 +1,6 @@
 import pytest
 import torch
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, Subset
 import pixeltable as pxt
 
 from goldener import (
@@ -10,7 +10,10 @@ from goldener import (
     GoldTorchEmbeddingToolConfig,
     GoldTorchEmbeddingTool,
 )
-from goldener.organize import GoldClusterizedBatchSampler
+from goldener.organize import (
+    GoldClusterizedBatchSampler,
+    get_indices_per_cluster_for_subset,
+)
 from goldener.pxt_utils import pxt_torch_dataset_collate_fn
 from goldener.vectorize import GoldVectorizer, TensorVectorizer
 
@@ -291,3 +294,67 @@ class TestGoldClusterizedBatchSampler:
                 shuffle=False,
                 generator=None,
             )
+
+    def test_with_subset(self, clusterizer):
+        dataset = DummyDataset(
+            [{"vectorized": torch.rand(4), "idx": idx} for idx in range(20)]
+        )
+        subset = Subset(dataset, [0, 4, 9, 14, 19])
+        batch_sampler = GoldClusterizedBatchSampler(
+            dataset=subset,
+            clusterizer=clusterizer,
+            batch_size=5,
+            descriptor=None,
+            vectorizer=None,
+            force_same_size=True,
+            shuffle=False,
+            generator=None,
+        )
+        batches = [batch for batch in batch_sampler]
+        assert len(batch_sampler) == 1
+        for batch in batches:
+            assert len(batch) == 5
+
+        batcher_indices = [idx for batch in batches for idx in batch]
+        assert batcher_indices == list(range(5))
+
+
+class TestGetIndicesPerClusterForSubset:
+    def test_basic(self):
+        result = get_indices_per_cluster_for_subset(
+            indices_per_cluster={0: [10, 20], 1: [30]},
+            indices_in_subset=[10, 20, 30],
+        )
+        assert sorted(result[0]) == [0, 1]
+        assert sorted(result[1]) == [
+            2,
+        ]
+
+    def test_multiple_duplicates_in_subset(self):
+        result = get_indices_per_cluster_for_subset(
+            indices_per_cluster={
+                0: [5, 7],
+            },
+            indices_in_subset=[5, 7, 7, 5],
+        )
+        assert sorted(result[0]) == [0, 1, 2, 3]
+
+    def test_raises_when_dataset_index_not_in_subset(self):
+        with pytest.raises(
+            KeyError,
+        ):
+            get_indices_per_cluster_for_subset(
+                indices_per_cluster={
+                    0: [5],
+                },
+                indices_in_subset=[0, 1, 2],
+            )
+
+    def test_empty_dataset_indices(self):
+        result = get_indices_per_cluster_for_subset(
+            indices_per_cluster={
+                0: [],
+            },
+            indices_in_subset=[0, 1, 2],
+        )
+        assert result[0] == []

@@ -1,10 +1,52 @@
+from logging import getLogger
+from typing import Sequence
+
 import torch
-from torch.utils.data import Dataset, Sampler
+from torch.utils.data import Dataset, Sampler, Subset
 from torch import Generator
 from goldener.describe import GoldDescriptor
 from goldener.clusterize import GoldClusterizer
 from goldener.torch_utils import shuffle_list
 from goldener.vectorize import GoldVectorizer
+
+
+logger = getLogger(__name__)
+
+
+def get_indices_per_cluster_for_subset(
+    indices_per_cluster: dict[int, list[int]],
+    indices_in_subset: Sequence[int],
+) -> dict[int, list[int]]:
+    """Get the indices per cluster corresponding to the subset of a dataset.
+
+    The initial dataset does not have any duplicate indices. A Subset of a dataset is storing the dataset
+    and the sequence of indices corresponding to the subset. The same dataset index can be present multiple
+    times in the subset. This function is adapted to this situation and include all the subset locations
+    in the output list of indices for each cluster.
+
+    Args:
+        indices_per_cluster: The list of indices pointing toward samples in the initial dataset for each cluster.
+        indices_in_subset: The indices specifying the subset of the initial dataset.
+
+    Returns: The converted indices_per_cluster mapping the cluster with the indices in the subset
+    """
+    # build a mapping from the dataset indices to their positions in the subset
+    dataset_pos_in_subset = {}
+
+    for subset_pos, subset_index in enumerate(indices_in_subset):
+        if subset_index not in dataset_pos_in_subset:
+            dataset_pos_in_subset[subset_index] = [subset_pos]
+        else:
+            dataset_pos_in_subset[subset_index].append(subset_pos)
+
+    return {
+        cluster_idx: [
+            subset_pos
+            for cluster_index in cluster_indices
+            for subset_pos in dataset_pos_in_subset[cluster_index]
+        ]
+        for cluster_idx, cluster_indices in indices_per_cluster.items()
+    }
 
 
 class GoldClusterizedBatchSampler(Sampler):
@@ -50,6 +92,7 @@ class GoldClusterizedBatchSampler(Sampler):
         self.generator = generator
 
         # clusterize the dataset
+        logger.info("Computing the clusters for the GoldClusterizedBatchSampler")
         description = (
             dataset if descriptor is None else descriptor.describe_in_table(dataset)
         )
@@ -59,15 +102,23 @@ class GoldClusterizedBatchSampler(Sampler):
             else vectorizer.vectorize_in_table(description)
         )
         clusterized = clusterizer.cluster_in_table(vectorized, batch_size)
-        self._indices_per_cluster = {
-            cluster_idx: clusterizer.get_cluster_indices(
-                table=clusterized,
-                cluster_idx=cluster_idx,
-                cluster_key=clusterizer.cluster_key,
-                idx_key="idx",
+
+        self._indices_per_cluster: dict[int, list[int]] = {
+            cluster_idx: list(
+                clusterizer.get_cluster_indices(
+                    table=clusterized,
+                    cluster_idx=cluster_idx,
+                    cluster_key=clusterizer.cluster_key,
+                    idx_key="idx",
+                )
             )
             for cluster_idx in range(batch_size)
         }
+        if isinstance(dataset, Subset):
+            self._indices_per_cluster = get_indices_per_cluster_for_subset(
+                self._indices_per_cluster,
+                dataset.indices,
+            )
 
         # validate the cluster sizes and compute the max cluster size to know how many batches to draw
         cluster_sizes = [len(c) for c in self._indices_per_cluster.values()]
@@ -93,9 +144,9 @@ class GoldClusterizedBatchSampler(Sampler):
         # order the indices of each cluster and initialize the tracking for the next index to sample for each cluster
         indices_buckets: dict[int, list[int]] = {}  # keep the order of indices
         pointers: dict[int, int] = {}  # to select the next sample to add in the batch
-        for cluster_idx, cluster_set in self._indices_per_cluster.items():
+        for cluster_idx, cluster_indices in self._indices_per_cluster.items():
             pool = sorted(
-                cluster_set
+                cluster_indices
             )  # without shuffle the samples are ordered by index
             if self.shuffle:
                 pool = shuffle_list(pool, generator)
