@@ -248,9 +248,9 @@ def get_subset_indices_for_indices(
 ) -> list[int]:
     """Get the indices corresponding to the subset for some samples of the initial dataset.
 
-    The initial dataset does not have any duplicate indices. A Subset of a dataset is storing the dataset
+    The initial dataset does not have any duplicate indices. A Subset of a dataset stores the dataset
     and the sequence of indices corresponding to the subset. The same dataset index can be present multiple
-    times in the subset. This function is adapted to this situation and include all the subset locations
+    times in the subset. This function is adapted to this situation and includes all the subset locations
     in the output list of indices.
 
     Args:
