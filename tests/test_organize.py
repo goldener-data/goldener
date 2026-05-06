@@ -1,6 +1,6 @@
 import pytest
 import torch
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, Subset
 import pixeltable as pxt
 
 from goldener import (
@@ -291,3 +291,26 @@ class TestGoldClusterizedBatchSampler:
                 shuffle=False,
                 generator=None,
             )
+
+    def test_with_subset(self, clusterizer):
+        dataset = DummyDataset(
+            [{"vectorized": torch.rand(4), "idx": idx} for idx in range(20)]
+        )
+        subset = Subset(dataset, [0, 4, 9, 14, 19])
+        batch_sampler = GoldClusterizedBatchSampler(
+            dataset=subset,
+            clusterizer=clusterizer,
+            batch_size=5,
+            descriptor=None,
+            vectorizer=None,
+            force_same_size=True,
+            shuffle=False,
+            generator=None,
+        )
+        batches = [batch for batch in batch_sampler]
+        assert len(batch_sampler) == 1
+        for batch in batches:
+            assert len(batch) == 5
+
+        batcher_indices = [idx for batch in batches for idx in batch]
+        assert batcher_indices == list(range(5))

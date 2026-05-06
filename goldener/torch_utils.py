@@ -257,24 +257,16 @@ def get_subset_indices_for_indices(
         indices_in_dataset: The set of indices pointing toward samples in the initial dataset.
         indices_in_subset: The indices specifying the subset of the initial dataset.
 
-    Returns: A list of indices corresponding to the subset for the samples specified by `indices_in_dataset`.
-        It allows querying the subset to find back the initial dataset samples from it
+    Returns: A list of indices corresponding to the subset position for the samples specified by `indices_in_dataset`.
+        It allows querying the subset to find back the initial dataset samples from it.
     """
     if not indices_in_dataset.issubset(set(indices_in_subset)):
         raise ValueError(
             "The indices from the dataset are required to be all present in the subset."
         )
 
-    # store the locations within the subset for a given initial sample
-    initial_locations_in_subset = {}
-    for subset_pos, initial_index in enumerate(indices_in_subset):
-        if initial_index not in initial_locations_in_subset:
-            initial_locations_in_subset[initial_index] = [subset_pos]
-        else:
-            initial_locations_in_subset[initial_index].append(subset_pos)
-
     return [
-        subset_index
-        for dataset_index in indices_in_dataset
-        for subset_index in initial_locations_in_subset[dataset_index]
+        subset_pos
+        for subset_pos, subset_index in enumerate(indices_in_subset)
+        if subset_index in indices_in_dataset
     ]

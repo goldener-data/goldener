@@ -65,6 +65,7 @@ class GoldClusterizedBatchSampler(Sampler):
             else vectorizer.vectorize_in_table(description)
         )
         clusterized = clusterizer.cluster_in_table(vectorized, batch_size)
+
         self._indices_per_cluster: dict[int, set[int] | list[int]] = {
             cluster_idx: clusterizer.get_cluster_indices(
                 table=clusterized,
