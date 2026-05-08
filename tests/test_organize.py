@@ -131,7 +131,7 @@ class TestGoldClusterizedBatchSampler:
             generator=None,
         )
         not_shuffled_batches = [batch for batch in batch_sampler]
-        assert len(batch_sampler) == 4
+        assert len(not_shuffled_batches) == 4
         for batch in not_shuffled_batches:
             assert len(batch) == 5
 
@@ -168,7 +168,7 @@ class TestGoldClusterizedBatchSampler:
             generator=None,
         )
         not_shuffled_batches = [batch for batch in batch_sampler]
-        assert len(batch_sampler) == 8
+        assert len(not_shuffled_batches) == 8
         for batch in not_shuffled_batches:
             assert len(batch) == 5
 
@@ -206,7 +206,7 @@ class TestGoldClusterizedBatchSampler:
             generator=None,
         )
         not_shuffled_batches = [batch for batch in batch_sampler]
-        assert len(batch_sampler) == 4
+        assert len(not_shuffled_batches) == 4
         for batch in not_shuffled_batches:
             assert len(batch) == 5
 
@@ -270,31 +270,6 @@ class TestGoldClusterizedBatchSampler:
 
         assert shuffled_batches_1 == shuffled_batches_2
 
-    def test_empty_cluster_failure(self):
-        table_path = "unit_test.clusterizer_batcher"
-        dataset = DummyDataset(
-            [{"vectorized": torch.rand(4), "idx": idx} for idx in range(20)]
-        )
-        clusterizer = GoldClusterizer(
-            table_path=table_path,
-            clustering_tool=DummyEmptySizesClusteringTool(),
-            allow_existing=False,
-        )
-        with pytest.raises(
-            ValueError,
-            match="Some clusters are empty. Please check the clusterizer configuration",
-        ):
-            GoldClusterizedBatchSampler(
-                dataset=dataset,
-                clusterizer=clusterizer,
-                batch_size=5,
-                descriptor=None,
-                vectorizer=None,
-                force_same_size=False,
-                shuffle=False,
-                generator=None,
-            )
-
     def test_with_subset(self, clusterizer):
         dataset = DummyDataset(
             [{"vectorized": torch.rand(4), "idx": idx} for idx in range(20)]
@@ -311,7 +286,7 @@ class TestGoldClusterizedBatchSampler:
             generator=None,
         )
         batches = [batch for batch in batch_sampler]
-        assert len(batch_sampler) == 1
+        assert len(batches) == 1
         for batch in batches:
             assert len(batch) == 5
 

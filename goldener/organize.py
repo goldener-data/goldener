@@ -1,3 +1,4 @@
+from enum import Enum
 from logging import getLogger
 from typing import Sequence
 
@@ -49,6 +50,27 @@ def get_indices_per_cluster_for_subset(
     }
 
 
+class ExhaustedClusterStrategy(Enum):
+    """Strategy to adopt when a cluster is exhausted within a clusterized Batch sampler.
+
+    Inside the batch sampler with clustering, the clusters might be of different size. Thus, some clusters might be
+    exhausted before the others. Here the different strategy for the batch sampler:
+    -  RESTART: The exhausted cluster is reinitialized and still used for next batch sampling.
+        This means that the samples of the exhausted cluster will be oversampled compared to the other clusters.
+    - STOP: The batch sampler is stopped when a cluster is exhausted.
+        This means that not all the samples of the other clusters will be used.
+    - EXCLUDE: The exhausted cluster is excluded from the next batch sampling. This means that the samples
+        of the exhausted cluster will be used only once, and that the batches will contain less
+        and less clusters until all the clusters are exhausted.
+
+
+    """
+
+    RESTART = "restart"
+    STOP = "stop"
+    EXCLUDE = "exclude"
+
+
 class GoldClusterizedBatchSampler(Sampler):
     """Batch sampler forcing the presence of all clusters in each batch.
 
@@ -61,35 +83,54 @@ class GoldClusterizedBatchSampler(Sampler):
 
     The randomness is still available in the process of selection among the elements of all clusters.
 
-    Args:
-        dataset: dataset to sample from.
+    Attributes:
         batch_size: batch size specifying the size of each batch. This is as well the number of clusters to create.
-        clusterizer: clusterizer to cluster the data into `batch_size` clusters.
-        descriptor: optional descriptor to describe the dataset before clusterization.
-        vectorizer: optional vectorizer to vectorize the dataset before clusterization.
-        force_same_size: if True, all the clusters are required to have the same size.
-            If False, the sampler will cycle through the clusters until all the samples are exhausted. It will
-            then oversample the smallest clusters.
         shuffle: if True, the order of the samples of all clusters will be shuffled before sampling,
             the batch is shuffled to change the cluster order, and once exhausted a cluster is shuffled again.
             If False, the order of the samples and clusters will be preserved.
         generator: optional generator to manage the random shuffling.
             If None, a new generator will be created with a random seed.
+        strategy: strategy to apply when a cluster is exhausted. See ExhaustedClusterStrategy for more details.
     """
 
     def __init__(
         self,
         dataset: Dataset,
-        clusterizer: GoldClusterizer,
         batch_size: int,
+        clusterizer: GoldClusterizer,
+        n_clusters: int | None = None,
         descriptor: GoldDescriptor | None = None,
         vectorizer: GoldVectorizer | None = None,
         force_same_size: bool = False,
         shuffle: bool = True,
         generator: Generator | None = None,
+        strategy: ExhaustedClusterStrategy = ExhaustedClusterStrategy.RESTART,
     ):
+        """Initialize the batch sampler based on clustering results.
+
+        Args:
+            dataset: dataset to sample from.
+            batch_size: batch size specifying the size of each batch. This is as well the number of clusters to create.
+            clusterizer: clusterizer to cluster the data into `batch_size` clusters.
+            n_clusters: Number of clusters to create. If None, it is set to the batch size.
+                It can be different from the batch size if we want to have more clusters
+                than the batch size, and thus not all the clusters are present in each batch.
+            descriptor: optional descriptor to describe the dataset before clusterization.
+            vectorizer: optional vectorizer to vectorize the dataset before clusterization.
+            force_same_size: if True, all the clusters are required to have the same size.
+                If False, the sampler will cycle through the clusters until all the samples are exhausted. It will
+                then oversample the smallest clusters.
+            shuffle: if True, the order of the samples of all clusters will be shuffled before sampling,
+                the batch is shuffled to change the cluster order, and once exhausted a cluster is shuffled again.
+                If False, the order of the samples and clusters will be preserved.
+            generator: optional generator to manage the random shuffling.
+                If None, a new generator will be created with a random seed.
+            strategy: strategy to apply when a cluster is exhausted. See ExhaustedClusterStrategy for more details.
+        """
         self.shuffle = shuffle
         self.generator = generator
+        self.batch_size = batch_size
+        self.strategy = strategy
 
         # clusterize the dataset
         logger.info("Computing the clusters for the GoldClusterizedBatchSampler")
@@ -101,7 +142,11 @@ class GoldClusterizedBatchSampler(Sampler):
             if vectorizer is None
             else vectorizer.vectorize_in_table(description)
         )
-        clusterized = clusterizer.cluster_in_table(vectorized, batch_size)
+        clusterized = clusterizer.cluster_in_table(
+            vectorized, n_clusters if n_clusters is not None else batch_size
+        )
+        if clusterized.count() == 0:
+            raise ValueError("No samples are present in the dataset.")
 
         self._indices_per_cluster: dict[int, list[int]] = {
             cluster_idx: list(
@@ -120,18 +165,12 @@ class GoldClusterizedBatchSampler(Sampler):
                 dataset.indices,
             )
 
-        # validate the cluster sizes and compute the max cluster size to know how many batches to draw
         cluster_sizes = [len(c) for c in self._indices_per_cluster.values()]
+        self._total_samples = sum(cluster_sizes)
         if force_same_size and len(set(cluster_sizes)) != 1:
             raise ValueError(
                 "All the clusters are required to have the same size when `force_same_size=True`"
             )
-        if any(cluster_size == 0 for cluster_size in cluster_sizes):
-            raise ValueError(
-                "Some clusters are empty. Please check the clusterizer configuration."
-            )
-
-        self._max_cluster_size = max(cluster_sizes)
 
     def __iter__(self):
         if self.generator is None:
@@ -142,41 +181,120 @@ class GoldClusterizedBatchSampler(Sampler):
             generator = self.generator
 
         # order the indices of each cluster and initialize the tracking for the next index to sample for each cluster
-        indices_buckets: dict[int, list[int]] = {}  # keep the order of indices
-        pointers: dict[int, int] = {}  # to select the next sample to add in the batch
+        cluster_pools: dict[int, list[int]] = {}  # to set the ordering for each cluster
+        cluster_pointers: dict[
+            int, int
+        ] = {}  # to select the next sample to add in the batch for each cluster
+        remaining_clusters: list[
+            int
+        ] = []  # to track the clusters that are not exhausted yet
         for cluster_idx, cluster_indices in self._indices_per_cluster.items():
+            if not cluster_indices:
+                continue
+
             pool = sorted(
                 cluster_indices
             )  # without shuffle the samples are ordered by index
             if self.shuffle:
                 pool = shuffle_list(pool, generator)
-            indices_buckets[cluster_idx] = pool
-            pointers[cluster_idx] = 0
+            cluster_pools[cluster_idx] = pool
+            cluster_pointers[cluster_idx] = 0
+            remaining_clusters.append(cluster_idx)
 
-        # draw the samples ensuring all clusters are present in the batch
-        for _ in range(self._max_cluster_size):
-            batch = []
-            for cluster_idx, cluster_list in indices_buckets.items():
-                # the next item to add to the batch is the one corresponding to
-                # the pointer
-                pool = cluster_list
-                ptr = pointers[cluster_idx]
-                batch.append(pool[ptr])
+        # define the drawing process
+        def draw_samples(
+            to_sample_from: list[int],
+            to_sample_size: int,
+        ):
+            """Closure drawing the next samples for the batch.
 
-                # Increment the pointer. If it exceeds the pool size, wrap around (Cycle)
-                new_pointer = (ptr + 1) % len(pool)
-                pointers[cluster_idx] = new_pointer
+            It defines from which cluster the samples are drawn. The samples are drawn from the pointer status of
+            every cluster and this pointer is updated in place. Depending on the exhaustion strategy,
+            the exhausted clusters can as well be shuffled in place.
+            """
+            assert to_sample_size <= len(to_sample_from)
 
-                # if the pointer is exhausted, randomize again the corresponding pool
-                if new_pointer == 0 and self.shuffle:
-                    indices_buckets[cluster_idx] = shuffle_list(cluster_list, generator)
+            if to_sample_size == len(to_sample_from):
+                cluster_samples = cluster_pools
+            else:
+                # when too much clusters, some of them are selected
+                if self.shuffle:
+                    to_sample_from = shuffle_list(
+                        items=to_sample_from, generator=generator
+                    )
+                to_sample_from = to_sample_from[: self.batch_size]
 
-            # the batch is shuffled to obtain different cluster orders across batches
-            if self.shuffle:
-                batch = shuffle_list(batch, generator)
+                cluster_samples = {
+                    cluster_idx: cluster_pool
+                    for cluster_idx, cluster_pool in cluster_pools.items()
+                    if cluster_idx in to_sample_from
+                }
 
+            samples = []
+
+            for cluster_idx, cluster_pool in cluster_samples.items():
+                # the next item to add to the batch is the one corresponding to the pointer
+                ptr = cluster_pointers[cluster_idx]
+                samples.append(cluster_pool[ptr])
+
+                # the pointer is updated depending on the exhaustion strategy
+                new_pointer = ptr + 1
+                if self.strategy is ExhaustedClusterStrategy.RESTART:
+                    new_pointer = new_pointer % len(cluster_pool)
+
+                    # if the pointer is exhausted, randomize again the corresponding pool
+                    if new_pointer == 0 and self.shuffle:
+                        cluster_pools[cluster_idx] = shuffle_list(
+                            cluster_pool, generator
+                        )
+                else:
+                    # Stop and remove strategies are based on -1 value for exhausted clustered
+                    new_pointer = -1
+
+                cluster_pointers[cluster_idx] = new_pointer
+
+            return samples
+
+        # draw the different batches successively
+        # all the samples must be drawn at least once
+        # number of batches depends on the batch size, cluster number and composition, and the exhaustion strategy
+        already_sampled = set()
+        while len(already_sampled) < self._total_samples:
+            if self.batch_size > len(remaining_clusters):
+                # requires to select multiple times from remaining clusters
+                batch = []
+                while len(batch) < self.batch_size and len(remaining_clusters) > 0:
+                    still_to_get = self.batch_size - len(batch)
+                    batch.extend(
+                        draw_samples(
+                            to_sample_from=remaining_clusters,
+                            to_sample_size=min(still_to_get, len(remaining_clusters)),
+                        )
+                    )
+
+                    remaining_clusters = [
+                        cluster_idx
+                        for cluster_idx, ptr in cluster_pointers.items()
+                        if ptr != -1
+                    ]
+            else:
+                # get all samples at once
+                batch = draw_samples(
+                    to_sample_from=remaining_clusters,
+                    to_sample_size=self.batch_size,
+                )
+
+            already_sampled.update(batch)
             yield batch
 
-    def __len__(self):
-        # Length is dictated by the largest cluster to ensure full coverage
-        return self._max_cluster_size
+            if self.strategy is ExhaustedClusterStrategy.STOP and any(
+                ptr == -1 for ptr in cluster_pointers.values()
+            ):
+                # if the strategy is to stop at exhaustion, the batch sampling is stopped when a cluster is exhausted
+                break
+
+            remaining_clusters = [
+                cluster_idx
+                for cluster_idx, ptr in cluster_pointers.items()
+                if ptr != -1
+            ]
