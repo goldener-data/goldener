@@ -84,13 +84,11 @@ class GoldClusterizedBatchSampler(Sampler):
     The randomness is still available in the process of selection among the elements of all clusters.
 
     Attributes:
-        batch_size: batch size specifying the size of each batch. This is as well the number of clusters to create.
         shuffle: if True, the order of the samples of all clusters will be shuffled before sampling,
             the batch is shuffled to change the cluster order, and once exhausted a cluster is shuffled again.
             If False, the order of the samples and clusters will be preserved.
         generator: optional generator to manage the random shuffling.
             If None, a new generator will be created with a random seed.
-        strategy: strategy to apply when a cluster is exhausted. See ExhaustedClusterStrategy for more details.
     """
 
     def __init__(
@@ -129,8 +127,9 @@ class GoldClusterizedBatchSampler(Sampler):
         """
         self.shuffle = shuffle
         self.generator = generator
-        self.batch_size = batch_size
-        self.strategy = strategy
+
+        self._batch_size = batch_size
+        self._strategy = strategy
 
         # clusterize the dataset
         logger.info("Computing the clusters for the GoldClusterizedBatchSampler")
@@ -142,13 +141,13 @@ class GoldClusterizedBatchSampler(Sampler):
             if vectorizer is None
             else vectorizer.vectorize_in_table(description)
         )
-        clusterized = clusterizer.cluster_in_table(
-            vectorized, n_clusters if n_clusters is not None else batch_size
-        )
+        if n_clusters is None:
+            n_clusters = batch_size
+        clusterized = clusterizer.cluster_in_table(vectorized, n_clusters)
         if clusterized.count() == 0:
             raise ValueError("No samples are present in the dataset.")
 
-        self._indices_per_cluster: dict[int, list[int]] = {
+        indices_per_cluster = {
             cluster_idx: list(
                 clusterizer.get_cluster_indices(
                     table=clusterized,
@@ -157,16 +156,21 @@ class GoldClusterizedBatchSampler(Sampler):
                     idx_key="idx",
                 )
             )
-            for cluster_idx in range(batch_size)
+            for cluster_idx in range(n_clusters)
         }
         if isinstance(dataset, Subset):
-            self._indices_per_cluster = get_indices_per_cluster_for_subset(
-                self._indices_per_cluster,
+            indices_per_cluster = get_indices_per_cluster_for_subset(
+                indices_per_cluster,
                 dataset.indices,
             )
 
+        self._indices_per_cluster = {
+            cluster_idx: cluster_indices
+            for cluster_idx, cluster_indices in indices_per_cluster.items()
+            if len(cluster_indices) > 0
+        }
+
         cluster_sizes = [len(c) for c in self._indices_per_cluster.values()]
-        self._total_samples = sum(cluster_sizes)
         if force_same_size and len(set(cluster_sizes)) != 1:
             raise ValueError(
                 "All the clusters are required to have the same size when `force_same_size=True`"
@@ -188,10 +192,9 @@ class GoldClusterizedBatchSampler(Sampler):
         remaining_clusters: list[
             int
         ] = []  # to track the clusters that are not exhausted yet
+        exhausted_once: set[int] = set()  # to stop batching
+        sampled_clusters: set[int] = set()
         for cluster_idx, cluster_indices in self._indices_per_cluster.items():
-            if not cluster_indices:
-                continue
-
             pool = sorted(
                 cluster_indices
             )  # without shuffle the samples are ordered by index
@@ -206,7 +209,7 @@ class GoldClusterizedBatchSampler(Sampler):
             to_sample_from: list[int],
             to_sample_size: int,
         ):
-            """Closure drawing the next samples for the batch.
+            """Closure drawing the next samples for the batch (one per remaining clusters).
 
             It defines from which cluster the samples are drawn. The samples are drawn from the pointer status of
             every cluster and this pointer is updated in place. Depending on the exhaustion strategy,
@@ -214,21 +217,51 @@ class GoldClusterizedBatchSampler(Sampler):
             """
             assert to_sample_size <= len(to_sample_from)
 
-            if to_sample_size == len(to_sample_from):
-                cluster_samples = cluster_pools
-            else:
-                # when too much clusters, some of them are selected
-                if self.shuffle:
-                    to_sample_from = shuffle_list(
-                        items=to_sample_from, generator=generator
-                    )
-                to_sample_from = to_sample_from[: self.batch_size]
+            if to_sample_size < len(to_sample_from):
+                # start by sampling in clusters not yet in the current sampled ones
+                prioritized_to_sample_from = [
+                    cluster_idx
+                    for cluster_idx in to_sample_from
+                    if cluster_idx not in sampled_clusters
+                ]
 
-                cluster_samples = {
-                    cluster_idx: cluster_pool
-                    for cluster_idx, cluster_pool in cluster_pools.items()
-                    if cluster_idx in to_sample_from
-                }
+                if len(prioritized_to_sample_from) > to_sample_size:
+                    # remove clusters if still too many samples
+                    if self.shuffle:
+                        prioritized_to_sample_from = shuffle_list(
+                            items=prioritized_to_sample_from, generator=generator
+                        )
+                    prioritized_to_sample_from = prioritized_to_sample_from[
+                        :to_sample_size
+                    ]
+                elif len(prioritized_to_sample_from) < to_sample_size:
+                    # if not enough samples take from already sampled cluster
+                    still_to_sample_size = to_sample_size - len(
+                        prioritized_to_sample_from
+                    )
+                    already_sampled_to_sample_from = [
+                        cluster_idx
+                        for cluster_idx in to_sample_from
+                        if cluster_idx in sampled_clusters
+                    ]
+                    if still_to_sample_size < len(already_sampled_to_sample_from):
+                        if self.shuffle:
+                            already_sampled_to_sample_from = shuffle_list(
+                                items=prioritized_to_sample_from, generator=generator
+                            )
+                        already_sampled_to_sample_from = already_sampled_to_sample_from[
+                            :still_to_sample_size
+                        ]
+                    prioritized_to_sample_from.extend(already_sampled_to_sample_from)
+
+                to_sample_from = prioritized_to_sample_from
+
+            sampled_clusters.update(to_sample_from)
+            cluster_samples = {
+                cluster_idx: cluster_pool
+                for cluster_idx, cluster_pool in cluster_pools.items()
+                if cluster_idx in to_sample_from
+            }
 
             samples = []
 
@@ -239,17 +272,21 @@ class GoldClusterizedBatchSampler(Sampler):
 
                 # the pointer is updated depending on the exhaustion strategy
                 new_pointer = ptr + 1
-                if self.strategy is ExhaustedClusterStrategy.RESTART:
+                if self._strategy is ExhaustedClusterStrategy.RESTART:
                     new_pointer = new_pointer % len(cluster_pool)
 
                     # if the pointer is exhausted, randomize again the corresponding pool
-                    if new_pointer == 0 and self.shuffle:
-                        cluster_pools[cluster_idx] = shuffle_list(
-                            cluster_pool, generator
-                        )
+                    if new_pointer == 0:
+                        exhausted_once.add(cluster_idx)
+                        if self.shuffle:
+                            cluster_pools[cluster_idx] = shuffle_list(
+                                cluster_pool, generator
+                            )
                 else:
-                    # Stop and remove strategies are based on -1 value for exhausted clustered
-                    new_pointer = -1
+                    if new_pointer >= len(cluster_pool):
+                        # Stop and remove strategies are based on -1 value for exhausted clustered
+                        new_pointer = -1
+                        exhausted_once.add(cluster_idx)
 
                 cluster_pointers[cluster_idx] = new_pointer
 
@@ -258,13 +295,12 @@ class GoldClusterizedBatchSampler(Sampler):
         # draw the different batches successively
         # all the samples must be drawn at least once
         # number of batches depends on the batch size, cluster number and composition, and the exhaustion strategy
-        already_sampled = set()
-        while len(already_sampled) < self._total_samples:
-            if self.batch_size > len(remaining_clusters):
+        while len(exhausted_once) < len(cluster_pools):
+            if self._batch_size > len(remaining_clusters):
                 # requires to select multiple times from remaining clusters
                 batch = []
-                while len(batch) < self.batch_size and len(remaining_clusters) > 0:
-                    still_to_get = self.batch_size - len(batch)
+                while len(batch) < self._batch_size and len(remaining_clusters) > 0:
+                    still_to_get = self._batch_size - len(batch)
                     batch.extend(
                         draw_samples(
                             to_sample_from=remaining_clusters,
@@ -281,13 +317,15 @@ class GoldClusterizedBatchSampler(Sampler):
                 # get all samples at once
                 batch = draw_samples(
                     to_sample_from=remaining_clusters,
-                    to_sample_size=self.batch_size,
+                    to_sample_size=self._batch_size,
                 )
 
-            already_sampled.update(batch)
+            if sampled_clusters.issuperset(set(remaining_clusters)):
+                sampled_clusters = set()
+
             yield batch
 
-            if self.strategy is ExhaustedClusterStrategy.STOP and any(
+            if self._strategy is ExhaustedClusterStrategy.STOP and any(
                 ptr == -1 for ptr in cluster_pointers.values()
             ):
                 # if the strategy is to stop at exhaustion, the batch sampling is stopped when a cluster is exhausted

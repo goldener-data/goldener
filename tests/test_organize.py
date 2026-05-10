@@ -11,6 +11,7 @@ from goldener import (
     GoldTorchEmbeddingTool,
 )
 from goldener.organize import (
+    ExhaustedClusterStrategy,
     GoldClusterizedBatchSampler,
     get_indices_per_cluster_for_subset,
 )
@@ -292,6 +293,84 @@ class TestGoldClusterizedBatchSampler:
 
         batcher_indices = [idx for batch in batches for idx in batch]
         assert batcher_indices == list(range(5))
+
+    def test_n_clusters_above_batch_size(self):
+        dataset = DummyDataset(
+            [{"vectorized": torch.rand(4), "idx": idx} for idx in range(20)]
+        )
+        clusterizer = GoldClusterizer(
+            table_path="unit_test.clusterizer_batcher_n_clusters_above_batch_size",
+            clustering_tool=DummySingleSizeClusteringTool(),
+            allow_existing=False,
+        )
+        batch_sampler = GoldClusterizedBatchSampler(
+            dataset=dataset,
+            clusterizer=clusterizer,
+            batch_size=5,
+            n_clusters=10,
+            descriptor=None,
+            vectorizer=None,
+            shuffle=False,
+            generator=None,
+        )
+
+        batches = list(batch_sampler)
+        assert len(batches) == 4
+        for batch in batches:
+            assert len(batch) == 5
+
+        batches_indices = [idx for batch in batches for idx in batch]
+        assert batches_indices == list(range(20))
+
+    def test_n_clusters_below_batch_size_with_stop_strategy(self):
+        dataset = DummyDataset(
+            [{"vectorized": torch.rand(4), "idx": idx} for idx in range(20)]
+        )
+        clusterizer = GoldClusterizer(
+            table_path="unit_test.clusterizer_batcher_n_clusters_below_batch_size",
+            clustering_tool=DummySingleSizeClusteringTool(),
+            allow_existing=False,
+        )
+        batch_sampler = GoldClusterizedBatchSampler(
+            dataset=dataset,
+            clusterizer=clusterizer,
+            batch_size=5,
+            n_clusters=4,
+            descriptor=None,
+            vectorizer=None,
+            shuffle=False,
+            generator=None,
+            strategy=ExhaustedClusterStrategy.STOP,
+        )
+
+        batches = list(batch_sampler)
+        assert (
+            len(batches) == 3
+        )  # 1st cluster is always drawn twice per batch and is exhausted after the 3rd one
+
+    def test_n_clusters_below_batch_size_with_exclude_strategy(self):
+        dataset = DummyDataset(
+            [{"vectorized": torch.rand(4), "idx": idx} for idx in range(20)]
+        )
+        clusterizer = GoldClusterizer(
+            table_path="unit_test.clusterizer_batcher_n_clusters_below_batch_size",
+            clustering_tool=DummySingleSizeClusteringTool(),
+            allow_existing=False,
+        )
+        batch_sampler = GoldClusterizedBatchSampler(
+            dataset=dataset,
+            clusterizer=clusterizer,
+            batch_size=5,
+            n_clusters=4,
+            descriptor=None,
+            vectorizer=None,
+            shuffle=False,
+            generator=None,
+            strategy=ExhaustedClusterStrategy.EXCLUDE,
+        )
+
+        batches = list(batch_sampler)
+        assert len(batches) == 4
 
 
 class TestGetIndicesPerClusterForSubset:
