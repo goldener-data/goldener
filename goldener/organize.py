@@ -108,8 +108,9 @@ class GoldClusterizedBatchSampler(Sampler):
 
         Args:
             dataset: dataset to sample from.
-            batch_size: batch size specifying the size of each batch. This is as well the number of clusters to create.
-            clusterizer: clusterizer to cluster the data into `batch_size` clusters.
+            batch_size: batch size specifying the size of each batch. Fix the number of clusters if
+                n_clusters is None.
+            clusterizer: clusterizer to cluster the data into clusters.
             n_clusters: Number of clusters to create. If None, it is set to the batch size.
                 It can be different from the batch size if we want to have more clusters
                 than the batch size, and thus not all the clusters are present in each batch.
@@ -119,8 +120,8 @@ class GoldClusterizedBatchSampler(Sampler):
                 If False, the sampler will cycle through the clusters until all the samples are exhausted. It will
                 then oversample the smallest clusters.
             shuffle: if True, the order of the samples of all clusters will be shuffled before sampling,
-                the batch is shuffled to change the cluster order, and once exhausted a cluster is shuffled again.
-                If False, the order of the samples and clusters will be preserved.
+                and once exhausted a cluster is shuffled again. If False, the order of the samples
+                and clusters will be preserved.
             generator: optional generator to manage the random shuffling.
                 If None, a new generator will be created with a random seed.
             strategy: strategy to apply when a cluster is exhausted. See ExhaustedClusterStrategy for more details.
@@ -247,7 +248,8 @@ class GoldClusterizedBatchSampler(Sampler):
                     if still_to_sample_size < len(already_sampled_to_sample_from):
                         if self.shuffle:
                             already_sampled_to_sample_from = shuffle_list(
-                                items=prioritized_to_sample_from, generator=generator
+                                items=already_sampled_to_sample_from,
+                                generator=generator,
                             )
                         already_sampled_to_sample_from = already_sampled_to_sample_from[
                             :still_to_sample_size
