@@ -1,7 +1,7 @@
 # GOLDENER <br> Smart sampling from embeddings and coreset selection
 
 [**Introduction**](#1-introduction) |
-[**Components**](#2-semantic-extraction) |
+[**Semantics extraction**](#2-semantics-extraction) |
 [**Smart split**](#3-smart-sampling) |
 [**Bibliography**](#4-bibliography) |
 [**Authors**](#5-authors)|
@@ -22,7 +22,7 @@ embedder_config = GoldTorchEmbeddingToolConfig(
 )
 embedder = GoldTorchEmbeddingTool(embedder_config)
 vectorizer = TensorVectorizer(
-    keep=keep,
+    keep=True,
     fusion_strategy=EmbeddingFusionStrategy.AVERAGE,
     transform_y=None,
     channel_pos=1
@@ -71,9 +71,9 @@ In the ML lifecycle, data sampling can be done at different steps:
 In all cases, a random selection process can skew both actual performance (suboptimal model training) and the perception of that performance (over- or under-confidence in the model). In this post, we introduce how [Goldener](https://github.com/goldener-data/goldener) gives access to smarter data sampling by leveraging pretrained networks and coreset selection algorithms. This semantics aware sampling aims to optimize both the capacity and the understanding of the real behavior of the deployed model.
 
 
-## 2. Semantics Extraction
+## 2. Semantics extraction
 
-[Goldener](https://github.com/goldener-data/goldener) is designed to process datasets of any size.To accommodate this, Goldener utilizes a local internal storage managed by [Pixeltable](https://www.pixeltable.com/). With this open source Python library, Goldener locally saves its output but also the different objects required to run/restart a task.
+[Goldener](https://github.com/goldener-data/goldener) is designed to process datasets of any size. To accommodate this, Goldener utilizes a local internal storage managed by [Pixeltable](https://www.pixeltable.com/). With this open source Python library, Goldener locally saves its output but also the different objects required to run/restart a task.
 
 In Goldener, the smart sampling is based on the semantics description of the data provided by the embeddings computed from pretrained networks. In order to be data and task agnostic, the selection/sampling tools in [Goldener](https://github.com/goldener-data/goldener) are all designed to process vectors. Thus, Goldener provides tools to describe data semantics, vectorize this information, and, when necessary, filter for targeted elements.
 
