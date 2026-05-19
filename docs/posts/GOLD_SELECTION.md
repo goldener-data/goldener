@@ -73,7 +73,7 @@ In all cases, a random selection process can skew both actual performance (subop
 
 ## 2. Semantics Extraction
 
-[Goldener](https://github.com/goldener-data/goldener) is designed to process datasets of any size.To accomodate this, Goldener utilizes a local internal storage managed by [Pixeltable](https://www.pixeltable.com/). With this open source Python library, Goldener locally saves its output but also the different objects required to run/restart a task.
+[Goldener](https://github.com/goldener-data/goldener) is designed to process datasets of any size.To accommodate this, Goldener utilizes a local internal storage managed by [Pixeltable](https://www.pixeltable.com/). With this open source Python library, Goldener locally saves its output but also the different objects required to run/restart a task.
 
 In Goldener, the smart sampling is based on the semantics description of the data provided by the embeddings computed from pretrained networks. In order to be data and task agnostic, the selection/sampling tools in [Goldener](https://github.com/goldener-data/goldener) are all designed to process vectors. Thus, Goldener provides tools to describe data semantics, vectorize this information, and, when necessary, filter for targeted elements.
 
