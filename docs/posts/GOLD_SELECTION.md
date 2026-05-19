@@ -79,7 +79,7 @@ In Goldener, the smart sampling is based on the semantics description of the dat
 
 More details about the different building blocks are available in this [article](https://huggingface.co/blog/Yann-CV/goldener-smart-split#2-components).
 
-'''python
+```python
 embedder_config = GoldTorchEmbeddingToolConfig(
     model=my_model,
     layers=my_layers,
@@ -104,7 +104,7 @@ gold_descriptor = GoldDescriptor(
     description_key="embeddings",
 )
 description_table = gold_descriptor.describe_in_table(dataset)
-'''
+```
 
 ## 3. Smart sampling
 
