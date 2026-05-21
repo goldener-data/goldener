@@ -47,6 +47,7 @@ gold_clusterizer = GoldClusterizer(
             random_state=42,
         )
     ),
+  vectorized_key="embeddings",
 )
 
 # Create a semantics aware batch sampler
@@ -137,7 +138,7 @@ In [Goldener](https://github.com/goldener-data/goldener), the `GoldClusterizer` 
 
 Depending on the dataset and `Description`, multiple vectors can come from the same sample. Thus, in [Goldener](https://github.com/goldener-data/goldener), the clustering algorithm might be applied multiple times on the same samples, and this single sample may be assigned to multiple clusters. The target number of clusters is specified during the function call. The indices of the vectors are used to populate the cluster column with the cluster index returned by the clustering algorithm.
 
-In [Goldener](https://github.com/goldener-data/goldener), `GoldClusterizer` is callable from either a PyTorch `Dataset` or a Pixeltable `Table`. If a `Dataset` is provided, each sample is expected to be accessible as a dictionary containing the keys defined in `vectorized_key`, and `label_key` attributes (if it is not initially in this format, a custom collate function must be provided). During the initialization of the clustering `Table`, the input data is processed sequentially batch by batch using a PyTorch `DataLoader`. Then, the data is clustered from the internal Pixeltable `Table`, label by label if the `label_key` is provided, and chunk by chunk if required. Finally, the `GoldClusterizer` returns a PyTorch `Dataset` via `cluster_in_dataset` or a Pixeltable `Table` via `cluster_in_table`. At the end, the clustering indices are stored within the column defined by the `cluster_key` attribute. The output also includes the `idx` and `idx_vector` fields, with `idx` storing the index of the sample and `idx_vector` the index of the vector (each sample might be described by multiple vectors).
+In [Goldener](https://github.com/goldener-data/goldener), `GoldClusterizer` is callable from either a PyTorch `Dataset` or a Pixeltable `Table`. If a `Dataset` is provided, each sample is expected to be accessible as a dictionary containing the keys defined in `vectorized_key`, and `label_key` attributes (if it is not initially in this format, a custom collate function must be provided). During the initialization of the clustering `Table`, the input data is processed sequentially batch by batch using a PyTorch `DataLoader`. Then, the data is clustered from the internal Pixeltable `Table`, label by label if the `label_key` is provided, and chunk by chunk if required. Finally, the `GoldClusterizer` returns a PyTorch `Dataset` via `cluster_in_dataset` or a Pixeltable `Table` via `cluster_in_table`. At the end, the clustering indices are stored within the column defined by the `clusterized_key` attribute. The output also includes the `idx` and `idx_vector` fields, with `idx` storing the index of the sample and `idx_vector` the index of the vector (each sample might be described by multiple vectors).
 
 ```python
 # Create a clusterizer to organize the samples
@@ -159,20 +160,20 @@ clusterized = gold_clusterizer.cluster_in_dataset(
 
 The main entry point in the code is [GoldClusterizedBatchSampler](https://github.com/goldener-data/goldener/blob/main/goldener/organize.py)
 
-In [Goldener](https://github.com/goldener-data/goldener), smart batching is implemented as a custom batch sampler (sampler returning the list of index per batch) based on:
+In [Goldener](https://github.com/goldener-data/goldener), In Goldener, smart batching is implemented as a custom batch sampler (sampler returning the list of index per batch) based on:
 * Vectors characterizing the samples/elements from both local and global semantics.
 * A clustering algorithm relying on vectors to gather together samples sharing the same distribution of features.
 
 Unlike traditional random shuffling, smart batching optimizes batch composition to maintain a steady, representative feature distribution across batches.
 
-In [Goldener](https://github.com/goldener-data/goldener), the vectors characterizing the data can be obtained from a `GoldDescriptor` object and the clustering of the samples from a `GoldClusterizer` class. The `GoldClusterizedBatchSampler` class leverages these two objects during its initialization to access the cluster index of all samples. Like the usual batch sampler from PyTorch, the `__iter__` method is returning a list of size `batch_size` corresponding to the next sample to draw. For each iteration, a new batch of indices is drawn to ensure samples are distributed across different clusters. If the number of clusters is greater than the batch size, some clusters are selected randomly. When it is lower, the random sampling is done multiple times among the clusters.
+In [Goldener](https://github.com/goldener-data/goldener), the vectors characterizing the data can be obtained from a `GoldDescriptor` object and the clustering of the samples from a `GoldClusterizer` class. The `GoldClusterizedBatchSampler` class leverages these two objects during its initialization to access the cluster index of all samples. Like the usual batch sampler from Pytorch, the `__iter__` method is returning a list of size `batch_size` corresponding to the next sample to draw. For each iteration, a new batch of indices is drawn to ensure samples are distributed across different clusters. If the number of clusters is greater than the batch size, some clusters are selected randomly. When it is lower, the random sampling is done multiple times among the clusters.
 
 Depending on the clustering algorithm, the size of the clusters can be different. The `strategy` argument handles this variance with three distinct policies for exhausted clusters (i.e., those whose samples have been fully consumed):
 - The cluster is reset, meaning its samples can be drawn again before the iterator exhaustion (all samples have been consumed at least once).
-- The cluster is excluded, forcing subsequent iterations to sample exclusively from the non exhausted clusters until the iterator exhaustion.
+- The cluster is excluded, forcing subsequent iterations to sample exclusively from the non-exhausted clusters until the iterator exhaustion.
 - The iterator stops early as exhausted, meaning some samples in larger clusters may not be sampled during the epoch.
 
-As the PyTorch batch sampler, `GoldClusterizedBatchSampler` can be provided to a PyTorch DataLoader in order to iterate over the dataset during the training of the model.
+As the PyTorch batch sampler, `GoldClusterizedBatchSampler` can be provided to a Pytorch DataLoader in order to iterate over the dataset during the training of the model.
 
 ```python
 gold_descriptor = GoldDescriptor(...) # descriptor with vectorizer included
