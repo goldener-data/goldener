@@ -22,7 +22,11 @@ embedder_config = GoldTorchEmbeddingToolConfig(
 )
 embedder = GoldTorchEmbeddingTool(embedder_config)
 vectorizer = TensorVectorizer(
-    keep=Filter2DWithCount(),
+    keep=Filter2DWithCount(
+        filter_count=1,
+        filter_location=FilterLocation.START,
+        keep=True,
+    ),
     fusion_strategy=EmbeddingFusionStrategy.AVERAGE,
     transform_y=None,
     channel_pos=1
@@ -89,7 +93,11 @@ embedder_config = GoldTorchEmbeddingToolConfig(
 )
 embedder = GoldTorchEmbeddingTool(embedder_config)
 vectorizer = TensorVectorizer(
-    kkeep=Filter2DWithCount(),
+    keep=Filter2DWithCount(
+        filter_count=1,
+        filter_location=FilterLocation.START,
+        keep=True,
+    ),
     fusion_strategy=EmbeddingFusionStrategy.AVERAGE,
     transform_y=None,
     channel_pos=1
