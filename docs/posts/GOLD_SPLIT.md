@@ -22,7 +22,11 @@ embedder_config = GoldTorchEmbeddingToolConfig(
 )
 embedder = GoldTorchEmbeddingTool(embedder_config)
 vectorizer = TensorVectorizer(
-    keep=keep,
+    keep=Filter2DWithCount(
+        filter_count=1,
+        filter_location=FilterLocation.START,
+        keep=True,
+    ),
     fusion_strategy=EmbeddingFusionStrategy.AVERAGE,
     transform_y=None,
     channel_pos=1
@@ -47,7 +51,7 @@ gold_selector = GoldSelector(
     selection_tool=selection_tool,
     selection_key="selected",
     label_key="label",
-    vectorized_key="vectorized",
+    vectorized_key="embeddings",
 )
 
 # Create a splitter to orchestrate the split
@@ -179,7 +183,7 @@ In [Goldener](https://github.com/goldener-data/goldener), the `GoldSelector` cla
 
 Depending on the dataset and `Description`, multiple vectors can come from the same sample. Thus, in [Goldener](https://github.com/goldener-data/goldener), the selection algorithm might be applied multiple times before reaching the requested number of samples. This selection target can be specified as a fixed integer value or a float corresponding to a ratio of the full dataset. The indices of the selected vectors are used to populate the selection column with the specified value. Once a vector of a sample is selected, its other vectors are removed from the next selection round.
 
-In [Goldener](https://github.com/goldener-data/goldener), `GoldSelector` is callable from either a PyTorch `Dataset` or a Pixeltable `Table`. If a `Dataset` is provided, each sample is expected to be accessible as a dictionary containing the keys defined in `vectorized_key`, `label_key`, `idx`, and `idx_vector` attributes (if it is not initially in this format, a custom collate function must be provided). During the initialization of the selection `Table`, the input data is processed sequentially batch by batch using a PyTorch `DataLoader`. Then, the data is selected from the internal Pixeltable `Table`, label by label if the `label_key` is provided, and chunk by chunk if required. Finally, the `GoldSelector` returns a PyTorch `Dataset` via `select_in_dataset` or a Pixeltable `Table` via `select_in_table`. At the end, the selection status is stored within the column defined by the `selection_key` attribute. The output also includes the `idx` and `idx_vector` fields, with `idx` storing the index of the sample and `idx_vector` the index of the vector (each sample might be described by multiple vectors).
+In [Goldener](https://github.com/goldener-data/goldener), `GoldSelector` is callable from either a PyTorch `Dataset` or a Pixeltable `Table`. If a `Dataset` is provided, each sample is expected to be accessible as a dictionary containing the keys defined in `vectorized_key`, and `label_key` attributes (if it is not initially in this format, a custom collate function must be provided). During the initialization of the selection `Table`, the input data is processed sequentially batch by batch using a PyTorch `DataLoader`. Then, the data is selected from the internal Pixeltable `Table`, label by label if the `label_key` is provided, and chunk by chunk if required. Finally, the `GoldSelector` returns a PyTorch `Dataset` via `select_in_dataset` or a Pixeltable `Table` via `select_in_table`. At the end, the selection status is stored within the column defined by the `selection_key` attribute. The output also includes the `idx` and `idx_vector` fields, with `idx` storing the index of the sample and `idx_vector` the index of the vector (each sample might be described by multiple vectors).
 
 ```python
 # Create a selection tool to select the samples
