@@ -138,6 +138,36 @@ class TestGetRandomChunkAssignment:
         ):
             get_random_chunk_assignment([], max_chunk_size=10, random_state=0)
 
+    def test_with_negative_max_chunk_size(self):
+        with pytest.raises(
+            ValueError, match="max_chunk_size must be a positive integer"
+        ):
+            get_random_chunk_assignment(
+                list(range(15)), max_chunk_size=-3, random_state=0
+            )
+
+    def test_exact_division_produces_no_spurious_extra_chunk(self):
+        # 12 / 4 divides evenly -- math.ceil should not create a 4th, tiny chunk.
+        to_chunk = list(range(12))
+        max_chunk_size = 4
+
+        chunks = get_random_chunk_assignment(
+            to_chunk, max_chunk_size=max_chunk_size, random_state=0
+        )
+
+        assert len(chunks) == 3
+        assert all(len(ch) == max_chunk_size for ch in chunks)
+
+    def test_max_chunk_size_of_1_splits_every_index_into_its_own_chunk(self):
+        to_chunk = list(range(5))
+
+        chunks = get_random_chunk_assignment(to_chunk, max_chunk_size=1, random_state=0)
+
+        assert len(chunks) == len(to_chunk)
+        assert all(len(ch) == 1 for ch in chunks)
+        flattened = [idx for ch in chunks for idx in ch]
+        assert sorted(flattened) == sorted(to_chunk)
+
 
 class TestGoldSKLearnClusteringTool:
     def test_init_raises_when_tool_has_no_predict(self):
