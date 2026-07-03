@@ -1,3 +1,5 @@
+import logging
+
 import numpy as np
 import pytest
 import torch
@@ -754,6 +756,46 @@ class TestGoldSplitter:
         assert len(splitted) == 2
         # Only 2 items total (1 batch with batch_size=2)
         assert len(splitted["train"]) + len(splitted["val"]) == 10
+
+        pxt.drop_dir("unit_test", if_not_exists="ignore", force=True)
+
+    def test_last_set_count_uses_distinct_idx_not_row_count(
+        self, basic_splitter, caplog
+    ):
+        """Regression test for #164.
+
+        The last set's expected-vs-actual count check previously counted
+        rows instead of distinct `idx` values, so any sample described by
+        multiple vectors (same `idx`, different `idx_vector`) inflated the
+        row count and triggered a spurious mismatch warning even when the
+        split itself was correct.
+        """
+        pxt.drop_dir("unit_test", force=True)
+
+        basic_splitter.descriptor = None
+        basic_splitter.vectorizer = None
+
+        # 10 distinct samples, each described by 2 vectors (rows) -- 20 items total.
+        items = [
+            {"vectorized": torch.rand(4), "idx": idx, "label": "dummy"}
+            for idx in range(10)
+            for _ in range(2)
+        ]
+
+        with caplog.at_level(logging.WARNING, logger="goldener.split"):
+            split_table = basic_splitter.split_in_table(to_split=DummyDataset(items))
+
+        splitted = basic_splitter.get_split_indices(
+            split_table,
+            selection_key=basic_splitter.selector.selection_key,
+            idx_key="idx",
+        )
+
+        assert len(splitted["train"]) == 5
+        assert len(splitted["val"]) == 5
+        assert not any(
+            "expected count was" in record.message for record in caplog.records
+        )
 
         pxt.drop_dir("unit_test", if_not_exists="ignore", force=True)
 
