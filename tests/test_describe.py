@@ -718,6 +718,51 @@ class TestGoldDescriptor:
             assert row["idx"] in (0, 1)
             assert row["embeddings"].shape == (4,)
 
+    def test_describe_in_table_with_plain_multilabel_and_default_collate(
+        self, embedder, vectorizer
+    ):
+        """Regression test for #202.
+
+        When collate_fn is left at its default (None), PyTorch's own
+        default_collate transposes list-valued batch fields (like a
+        multi-label list) across the batch dimension instead of keeping
+        one list per sample. Each sample then silently loses all but one
+        of its labels.
+        """
+
+        class MultiLabelDataset:
+            def __len__(self):
+                return 2
+
+            def __getitem__(self, idx):
+                return {
+                    "data": torch.zeros(3, 8, 8),
+                    "idx": idx,
+                    "label": ["class_1", "class_2"],
+                }
+
+        desc = GoldDescriptor(
+            table_path="unit_test.test_describe_multilabel",
+            embedder=embedder,
+            vectorizer=vectorizer,
+            label_key="label",
+            to_keep_schema={"label": pxt.String},
+            batch_size=2,
+            collate_fn=None,
+            device=torch.device("cpu"),
+            allow_existing=False,
+            drop_table=True,
+        )
+
+        description = desc.describe_in_table(MultiLabelDataset())
+
+        labels_by_idx = defaultdict(set)
+        for row in description.collect():
+            labels_by_idx[row["idx"]].add(row["label"])
+
+        assert labels_by_idx[0] == {"class_1", "class_2"}
+        assert labels_by_idx[1] == {"class_1", "class_2"}
+
     def test_describe_in_table_after_restart_with_vectorizer(self, embedder):
         desc = GoldDescriptor(
             table_path="unit_test.test_describe",

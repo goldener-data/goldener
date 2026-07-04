@@ -129,8 +129,11 @@ def pxt_torch_dataset_collate_fn(batch: list[dict[str, Any]]) -> dict[str, Any]:
         batch: A list of samples, where each sample is a dictionary.
 
     Returns:
-        A single dictionary with collated values. The numpy arrays and integers
-        are stacked into torch tensors. All other types are kept as lists.
+        A single dictionary with collated values. The numpy arrays, integers, and
+        torch tensors are stacked into torch tensors. All other types (including
+        list-valued fields such as multi-label lists) are kept as one list entry
+        per sample, unlike `torch.utils.data.default_collate`, which transposes
+        list-valued fields across the batch instead of preserving them per sample.
     """
     value_list_dict = defaultdict(list)
     conversion_dict: dict[str, Callable[[Sequence[Any]], torch.Tensor]] = {}
@@ -141,11 +144,16 @@ def pxt_torch_dataset_collate_fn(batch: list[dict[str, Any]]) -> dict[str, Any]:
     def stack_int_as_torch(ints: Sequence[int]) -> torch.Tensor:
         return torch.tensor(ints, dtype=torch.int64)
 
+    def stack_tensors(tensors: Sequence[torch.Tensor]) -> torch.Tensor:
+        return torch.stack(list(tensors), dim=0)
+
     for idx_sample, sample in enumerate(batch):
         for key, value in sample.items():
             value_list_dict[key].append(value)
             if idx_sample == 0:
-                if isinstance(value, np.ndarray):
+                if isinstance(value, torch.Tensor):
+                    conversion_dict[key] = stack_tensors
+                elif isinstance(value, np.ndarray):
                     conversion_dict[key] = stack_arrays_and_convert_to_torch
                 elif isinstance(value, int):
                     conversion_dict[key] = stack_int_as_torch
