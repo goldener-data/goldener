@@ -223,6 +223,30 @@ class TestPxtTorchDatasetCollateFn:
         result = pxt_torch_dataset_collate_fn(batch)
         assert result == {}
 
+    def test_collate_booleans(self):
+        batch = [{"is_valid": True}, {"is_valid": False}]
+
+        result = pxt_torch_dataset_collate_fn(batch)
+
+        assert result["is_valid"].dtype == torch.bool
+        assert torch.equal(result["is_valid"], torch.tensor([True, False]))
+
+    def test_collate_floats(self):
+        batch = [{"score": 0.5}, {"score": 1.5}]
+
+        result = pxt_torch_dataset_collate_fn(batch)
+
+        assert result["score"].dtype == torch.float64
+        assert torch.equal(result["score"], torch.tensor([0.5, 1.5], dtype=torch.float64))
+
+    def test_collate_numpy_scalars(self):
+        batch = [{"value": np.float32(1.0)}, {"value": np.float32(2.0)}]
+
+        result = pxt_torch_dataset_collate_fn(batch)
+
+        assert result["value"].dtype == torch.float32
+        assert torch.equal(result["value"], torch.tensor([1.0, 2.0], dtype=torch.float32))
+
 
 class TestGetDistinctValueAndCountInColumn:
     def test_get_distinct_values(self):
