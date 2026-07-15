@@ -175,6 +175,31 @@ reducer = GoldSKLearnReductionTool(PCA(n_components=2))
 x_reduced = reducer.fit_transform(x)  # shape: (50, 2)
 ```
 
+## Balancing batches during training
+
+When training with randomly sampled batches, the content distribution within each batch can vary a lot — 
+some batches may end up overrepresenting certain types of data while barely including others. This imbalance 
+can hurt how well a model learns to recognize the underrepresented cases.
+
+Goldener proposes a batch sampler grouping data into groups of similar content, and then drawing samples so each batch is spread across clusters as evenly as possible.
+
+```python
+from goldener.organize import GoldClusterizedBatchSampler
+from goldener import GoldClusterizer, GoldDescriptor, GoldSKLearnClusteringTool
+from sklearn.cluster import KMeans
+
+gd = GoldDescriptor(...)  # reuse the descriptor used for smart sampling
+gc = GoldClusterizer(...)  # reuse the clusterizer used for annotation guidelines
+
+batch_sampler = GoldClusterizedBatchSampler(
+    dataset=my_dataset,
+    batch_size=32,
+    clusterizer=gc,
+    descriptor=gd,
+    n_clusters=10,
+)
+```
+
 # Installation
 
 Installing Goldener is as simple as running the following command:
