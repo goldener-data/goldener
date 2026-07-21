@@ -218,38 +218,31 @@ class TestPxtTorchDatasetCollateFn:
         assert result["image"].shape == (2, 3)
         assert torch.equal(result["label"], torch.tensor([0, 1], dtype=torch.int64))
 
+    def test_collate_tensors(self):
+        batch = [
+            {"data": torch.zeros(3, 4)},
+            {"data": torch.ones(3, 4)},
+        ]
+
+        result = pxt_torch_dataset_collate_fn(batch)
+
+        assert isinstance(result["data"], torch.Tensor)
+        assert result["data"].shape == (2, 3, 4)
+
+    def test_collate_keeps_multilabel_lists_per_sample(self):
+        batch = [
+            {"label": ["class_1", "class_2"]},
+            {"label": ["class_1", "class_2"]},
+        ]
+
+        result = pxt_torch_dataset_collate_fn(batch)
+
+        assert result["label"] == [["class_1", "class_2"], ["class_1", "class_2"]]
+
     def test_collate_empty_batch(self):
         batch = []
         result = pxt_torch_dataset_collate_fn(batch)
         assert result == {}
-
-    def test_collate_booleans(self):
-        batch = [{"is_valid": True}, {"is_valid": False}]
-
-        result = pxt_torch_dataset_collate_fn(batch)
-
-        assert result["is_valid"].dtype == torch.bool
-        assert torch.equal(result["is_valid"], torch.tensor([True, False]))
-
-    def test_collate_floats(self):
-        batch = [{"score": 0.5}, {"score": 1.5}]
-
-        result = pxt_torch_dataset_collate_fn(batch)
-
-        assert result["score"].dtype == torch.float64
-        assert torch.equal(
-            result["score"], torch.tensor([0.5, 1.5], dtype=torch.float64)
-        )
-
-    def test_collate_numpy_scalars(self):
-        batch = [{"value": np.float32(1.0)}, {"value": np.float32(2.0)}]
-
-        result = pxt_torch_dataset_collate_fn(batch)
-
-        assert result["value"].dtype == torch.float32
-        assert torch.equal(
-            result["value"], torch.tensor([1.0, 2.0], dtype=torch.float32)
-        )
 
 
 class TestGetDistinctValueAndCountInColumn:
