@@ -42,9 +42,14 @@ class DummyDataset(Dataset):
 
 
 class TestGoldSelector:
-    def test_selection_table_creation_from_table(self):
+    def setup_method(self):
+        pxt.drop_dir("unit_test", force=True)
+        pxt.create_dir("unit_test", if_exists="ignore")
+
+    def teardown_method(self):
         pxt.drop_dir("unit_test", force=True)
 
+    def test_selection_table_creation_from_table(self):
         src_path = "unit_test.src_table_input"
         desc_path = "unit_test.test_select_from_table"
 
@@ -63,7 +68,6 @@ class TestGoldSelector:
             },
         ]
 
-        pxt.create_dir("unit_test", if_exists="ignore")
         src_table = pxt.create_table(
             src_path, source=source_rows, if_exists="replace_force"
         )
@@ -85,14 +89,8 @@ class TestGoldSelector:
         ]
         assert set(row_indices) == {0, 1}
 
-        pxt.drop_dir("unit_test", force=True)
-
     def test_selection_table_from_table_when_missing_vectorized(self):
-        pxt.drop_dir("unit_test", force=True)
-
         src_path = "unit_test.src_table_invalid"
-        pxt.create_dir("unit_test", if_exists="ignore")
-
         src_table = pxt.create_table(
             src_path,
             source=[{"idx": 0, "notvec": [1, 2, 3]}],
@@ -106,14 +104,8 @@ class TestGoldSelector:
                 select_from=src_table, old_selection_table=None
             )
 
-        pxt.drop_dir("unit_test", force=True)
-
     def test_selection_table_from_table_when_invalid_old(self):
-        pxt.drop_dir("unit_test", force=True)
-
         src_path = "unit_test.src_table_invalid"
-        pxt.create_dir("unit_test", if_exists="ignore")
-
         src_table = pxt.create_table(
             src_path,
             source=[
@@ -131,11 +123,7 @@ class TestGoldSelector:
                 select_from=src_table, old_selection_table=src_table
             )
 
-        pxt.drop_dir("unit_test", force=True)
-
     def test_selection_table_from_dataset(self):
-        pxt.drop_dir("unit_test", force=True)
-
         table_path = "unit_test.test_select_initialize"
 
         sample = {
@@ -162,11 +150,7 @@ class TestGoldSelector:
         ]
         assert set(row_indices) == {0, 1}
 
-        pxt.drop_dir("unit_test", force=True)
-
     def test_select_in_table_from_dataset(self):
-        pxt.drop_dir("unit_test", force=True)
-
         table_path = "unit_test.test_select_from_dataset"
 
         dataset = DummyDataset(
@@ -192,11 +176,7 @@ class TestGoldSelector:
         # validate running with already filled work
         selector.select_in_table(dataset, select_size=10, value="train")
 
-        pxt.drop_dir("unit_test", force=True)
-
     def test_select_in_table_with_new_idx_vector(self):
-        pxt.drop_dir("unit_test", force=True)
-
         table_path = "unit_test.test_select_from_dataset"
 
         dataset = DummyDataset(
@@ -234,11 +214,7 @@ class TestGoldSelector:
         assert len(selected_indices_2) == 20
         assert selected_indices_1.issubset(selected_indices_2)
 
-        pxt.drop_dir("unit_test", force=True)
-
     def test_select_in_table_with_wrong_size(self):
-        pxt.drop_dir("unit_test", force=True)
-
         table_path = "unit_test.test_select_from_dataset"
 
         dataset = DummyDataset(
@@ -257,11 +233,7 @@ class TestGoldSelector:
         with pytest.raises(ValueError, match="select_size must be a positive integer"):
             selector.select_in_table(dataset, select_size=0, value="train")
 
-        pxt.drop_dir("unit_test", force=True)
-
     def test_select_in_table_from_dataset_with_ratio(self):
-        pxt.drop_dir("unit_test", force=True)
-
         table_path = "unit_test.test_select_from_dataset"
 
         dataset = DummyDataset(
@@ -284,11 +256,7 @@ class TestGoldSelector:
             == 10
         )
 
-        pxt.drop_dir("unit_test", force=True)
-
     def test_select_in_table_from_dataset_with_small_ratio(self):
-        pxt.drop_dir("unit_test", force=True)
-
         table_path = "unit_test.test_select_from_dataset"
 
         dataset = DummyDataset(
@@ -311,11 +279,7 @@ class TestGoldSelector:
             == 1
         )
 
-        pxt.drop_dir("unit_test", force=True)
-
     def test_select_in_table_from_dataset_with_class(self):
-        pxt.drop_dir("unit_test", force=True)
-
         table_path = "unit_test.test_select_from_dataset"
 
         dataset = DummyDataset(
@@ -370,11 +334,7 @@ class TestGoldSelector:
             == 50
         )
 
-        pxt.drop_dir("unit_test", force=True)
-
     def test_select_in_table_from_dataset_with_excluded_labels(self):
-        pxt.drop_dir("unit_test", force=True)
-
         table_path = "unit_test.test_select_from_dataset"
 
         dataset = DummyDataset(
@@ -407,8 +367,6 @@ class TestGoldSelector:
         for row in selection_table.collect():
             assert row["label"] == "kept"
 
-        pxt.drop_dir("unit_test", force=True)
-
     def test_select_with_exclude_labels_without_label_key_raises(self):
         with pytest.raises(
             ValueError,
@@ -420,8 +378,6 @@ class TestGoldSelector:
             )
 
     def test_select_in_table_with_chunk(self):
-        pxt.drop_dir("unit_test", force=True)
-
         table_path = "unit_test.test_select_chunk"
 
         dataset = DummyDataset(
@@ -452,11 +408,7 @@ class TestGoldSelector:
             == 10
         )
 
-        pxt.drop_dir("unit_test", force=True)
-
     def test_select_in_table_with_reducer(self):
-        pxt.drop_dir("unit_test", force=True)
-
         table_path = "unit_test.test_select_reducer"
 
         dataset = DummyDataset(
@@ -482,11 +434,7 @@ class TestGoldSelector:
             == 10
         )
 
-        pxt.drop_dir("unit_test", force=True)
-
     def test_select_in_table_with_max_batches(self):
-        pxt.drop_dir("unit_test", force=True)
-
         table_path = "unit_test.test_select_max_batches"
 
         dataset = DummyDataset(
@@ -509,11 +457,7 @@ class TestGoldSelector:
             == 10
         )
 
-        pxt.drop_dir("unit_test", force=True)
-
     def test_select_in_table_with_restart_and_reducer(self):
-        pxt.drop_dir("unit_test", force=True)
-
         table_path = "unit_test.test_select_max_batches"
 
         dataset = DummyDataset(
@@ -543,11 +487,7 @@ class TestGoldSelector:
             == 20
         )
 
-        pxt.drop_dir("unit_test", force=True)
-
     def test_select_in_table_with_restart(self):
-        pxt.drop_dir("unit_test", force=True)
-
         table_path = "unit_test.test_select_max_batches"
 
         dataset = DummyDataset(
@@ -573,11 +513,7 @@ class TestGoldSelector:
             == 20
         )
 
-        pxt.drop_dir("unit_test", force=True)
-
     def test_select_in_table_with_restart_disallowed(self):
-        pxt.drop_dir("unit_test", force=True)
-
         table_path = "unit_test.test_select_max_batches"
 
         dataset = DummyDataset(
@@ -598,11 +534,7 @@ class TestGoldSelector:
         ):
             selector.select_in_table(dataset, select_size=20, value="train")
 
-        pxt.drop_dir("unit_test", force=True)
-
     def test_select_in_table_with_not_enough_sample(self):
-        pxt.drop_dir("unit_test", force=True)
-
         table_path = "unit_test.test_select_not_enough"
         dataset = DummyDataset(
             [{"vectorized": torch.rand(5), "idx": idx} for idx in range(100)]
@@ -618,14 +550,9 @@ class TestGoldSelector:
         ):
             selector.select_in_table(dataset, select_size=21, value="train")
 
-        pxt.drop_dir("unit_test", force=True)
-
     def test_select_in_table_from_table(self):
-        pxt.drop_dir("unit_test", force=True)
-
         src_path = "unit_test.test_select_in_table"
 
-        pxt.create_dir("unit_test", if_exists="ignore")
         src_table = pxt.create_table(
             src_path,
             source=[
@@ -664,14 +591,9 @@ class TestGoldSelector:
             == 6
         )
 
-        pxt.drop_dir("unit_test", force=True)
-
     def test_select_in_table_from_table_with_vectorized_included(self):
-        pxt.drop_dir("unit_test", force=True)
-
         src_path = "unit_test.test_select_in_table"
 
-        pxt.create_dir("unit_test", if_exists="ignore")
         src_table = pxt.create_table(
             src_path,
             source=[
@@ -708,11 +630,7 @@ class TestGoldSelector:
             == 6
         )
 
-        pxt.drop_dir("unit_test", force=True)
-
     def test_select_in_dataset_from_dataset(self):
-        pxt.drop_dir("unit_test", force=True)
-
         table_path = "unit_test.test_select_from_dataset"
 
         dataset = DummyDataset(
@@ -741,11 +659,7 @@ class TestGoldSelector:
 
         dataset.keep_cache = False
 
-        pxt.drop_dir("unit_test", force=True)
-
     def test_select_in_table_from_dataset_with_already_selected(self):
-        pxt.drop_dir("unit_test", force=True)
-
         table_path = "unit_test.test_select_from_dataset"
 
         dataset = DummyDataset(
@@ -769,11 +683,7 @@ class TestGoldSelector:
         ):
             selector.select_in_table(dataset, select_size=15, value="train")
 
-        pxt.drop_dir("unit_test", force=True)
-
     def test_select_in_dataset_with_drop_table(self):
-        pxt.drop_dir("unit_test", force=True)
-
         table_path = "unit_test.test_select_from_dataset"
 
         dataset = DummyDataset(
@@ -798,14 +708,9 @@ class TestGoldSelector:
 
         dataset.keep_cache = False
 
-        pxt.drop_dir("unit_test", force=True)
-
     def test_get_selected_indices(self):
-        pxt.drop_dir("unit_test", force=True)
-
         src_path = "unit_test.test_select"
 
-        pxt.create_dir("unit_test", if_exists="ignore")
         src_table = pxt.create_table(
             src_path,
             source=[
@@ -877,8 +782,6 @@ class TestGoldSelector:
                 label_key=None,
                 label_value="other",
             )
-
-        pxt.drop_dir("unit_test", force=True)
 
 
 class TestGoldGreedyClosestPointSelectionTool:
