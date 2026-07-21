@@ -383,10 +383,14 @@ class DummyDataset:
 
 
 class TestGoldVectorizer:
-    def test_vectorize_in_table_from_dataset(self):
+    def setup_method(self):
+        pxt.drop_dir("unit_test", force=True)
+        pxt.create_dir("unit_test", if_exists="ignore")
+
+    def teardown_method(self):
         pxt.drop_dir("unit_test", force=True)
 
-        pxt.create_dir("unit_test", if_exists="ignore")
+    def test_vectorize_in_table_from_dataset(self):
         table_path = "unit_test.vectorize_from_dataset"
 
         dataset = DummyDataset(dataset_len=2)
@@ -412,11 +416,7 @@ class TestGoldVectorizer:
             assert row["vectorized"].shape == (3,)
             assert row["label"] == "dummy"
 
-        pxt.drop_dir("unit_test", force=True)
-
     def test_vectorize_in_table_from_table(self):
-        pxt.drop_dir("unit_test", force=True)
-
         src_path = "unit_test.src_table_vectorize"
         desc_path = "unit_test.vectorize_from_table"
 
@@ -425,7 +425,6 @@ class TestGoldVectorizer:
             {"idx": 1, "embeddings": torch.zeros(4, 3).numpy(), "label": "dummy"},
         ]
 
-        pxt.create_dir("unit_test", if_exists="ignore")
         src_table = pxt.create_table(
             src_path, source=source_rows, if_exists="replace_force"
         )
@@ -449,11 +448,7 @@ class TestGoldVectorizer:
             assert row["vectorized"].shape == (4,)
             assert row["label"] == "dummy"
 
-        pxt.drop_dir("unit_test", force=True)
-
     def test_vectorize_in_table_with_target(self):
-        pxt.drop_dir("unit_test", force=True)
-
         src_path = "unit_test.src_table_vectorize"
         desc_path = "unit_test.vectorize_from_table"
 
@@ -472,7 +467,6 @@ class TestGoldVectorizer:
             },
         ]
 
-        pxt.create_dir("unit_test", if_exists="ignore")
         src_table = pxt.create_table(
             src_path, source=source_rows, if_exists="replace_force"
         )
@@ -496,11 +490,7 @@ class TestGoldVectorizer:
             assert row["vectorized"].shape == (4,)
             assert row["label"] == "dummy"
 
-        pxt.drop_dir("unit_test", force=True)
-
     def test_vectorize_in_table_with_multitarget(self):
-        pxt.drop_dir("unit_test", force=True)
-
         src_path = "unit_test.src_table_vectorize"
         desc_path = "unit_test.vectorize_from_table"
 
@@ -523,7 +513,6 @@ class TestGoldVectorizer:
             },
         ]
 
-        pxt.create_dir("unit_test", if_exists="ignore")
         src_table = pxt.create_table(
             src_path, source=source_rows, if_exists="replace_force"
         )
@@ -549,11 +538,7 @@ class TestGoldVectorizer:
             assert row["vectorized"].shape == (4,)
             assert row["label"] == "class_0" or row["label"] == "class_1"
 
-        pxt.drop_dir("unit_test", force=True)
-
     def test_vectorize_in_table_with_multitarget_and_merge_multilabels(self):
-        pxt.drop_dir("unit_test", force=True)
-
         src_path = "unit_test.src_table_vectorize"
         desc_path = "unit_test.vectorize_from_table"
 
@@ -576,7 +561,6 @@ class TestGoldVectorizer:
             },
         ]
 
-        pxt.create_dir("unit_test", if_exists="ignore")
         src_table = pxt.create_table(
             src_path, source=source_rows, if_exists="replace_force"
         )
@@ -603,11 +587,7 @@ class TestGoldVectorizer:
             assert row["vectorized"].shape == (4,)
             assert row["label"] == "class_0_class_1"
 
-        pxt.drop_dir("unit_test", force=True)
-
     def test_vectorize_in_table_with_multitarget_and_zero_excluded(self):
-        pxt.drop_dir("unit_test", force=True)
-
         src_path = "unit_test.src_table_vectorize"
         desc_path = "unit_test.vectorize_from_table"
 
@@ -632,7 +612,6 @@ class TestGoldVectorizer:
             },
         ]
 
-        pxt.create_dir("unit_test", if_exists="ignore")
         src_table = pxt.create_table(
             src_path, source=source_rows, if_exists="replace_force"
         )
@@ -658,11 +637,7 @@ class TestGoldVectorizer:
             assert (row["vectorized"] == torch.ones((4,))).all()
             assert row["label"] == "class_1"
 
-        pxt.drop_dir("unit_test", force=True)
-
     def test_vectorize_in_table_with_excluded_labels(self):
-        pxt.drop_dir("unit_test", force=True)
-
         src_path = "unit_test.src_table_vectorize"
         desc_path = "unit_test.vectorize_from_table"
 
@@ -687,7 +662,6 @@ class TestGoldVectorizer:
             },
         ]
 
-        pxt.create_dir("unit_test", if_exists="ignore")
         src_table = pxt.create_table(
             src_path, source=source_rows, if_exists="replace_force"
         )
@@ -713,13 +687,9 @@ class TestGoldVectorizer:
             assert (row["vectorized"] == torch.ones((4,))).all()
             assert row["label"] == "class_1"
 
-        pxt.drop_dir("unit_test", force=True)
-
     def test_vectorize_in_table_without_idx(
         self,
     ):
-        pxt.drop_dir("unit_test", force=True)
-
         def collate_fn(batch):
             data = torch.stack([b["embeddings"] for b in batch], dim=0)
             return {"embeddings": data}
@@ -748,13 +718,9 @@ class TestGoldVectorizer:
         assert idx == {0, 1}
         assert idx_vector == set(range(128))
 
-        pxt.drop_dir("unit_test", force=True)
-
     def test_vectorize_in_table_with_non_dict_item(
         self,
     ):
-        pxt.drop_dir("unit_test", force=True)
-
         gv = GoldVectorizer(
             table_path="unit_test.vectorize",
             vectorizer=TensorVectorizer(),
@@ -768,13 +734,9 @@ class TestGoldVectorizer:
         with pytest.raises(ValueError, match="Sample must be a dictionary"):
             gv.vectorize_in_table(DummyDataset())
 
-        pxt.drop_dir("unit_test", force=True)
-
     def test_vectorize_in_table_with_missing_data_key(
         self,
     ):
-        pxt.drop_dir("unit_test", force=True)
-
         gv = GoldVectorizer(
             table_path="unit_test.vectorize",
             vectorizer=TensorVectorizer(),
@@ -788,13 +750,9 @@ class TestGoldVectorizer:
         with pytest.raises(ValueError, match="Sample is missing expected keys"):
             gv.vectorize_in_table(DummyDataset())
 
-        pxt.drop_dir("unit_test", force=True)
-
     def test_vectorize_in_table_with_max_batches(
         self,
     ):
-        pxt.drop_dir("unit_test", force=True)
-
         gv = GoldVectorizer(
             table_path="unit_test.vectorize",
             vectorizer=TensorVectorizer(),
@@ -814,12 +772,7 @@ class TestGoldVectorizer:
         for i, row in enumerate(table.collect()):
             assert row["idx_vector"] == i
 
-        pxt.drop_dir("unit_test", force=True)
-
     def test_vectorize_in_dataset(self):
-        pxt.drop_dir("unit_test", force=True)
-
-        pxt.create_dir("unit_test", if_exists="ignore")
         table_path = "unit_test.vectorize_dataset"
 
         dataset = DummyDataset(dataset_len=2)
@@ -845,11 +798,7 @@ class TestGoldVectorizer:
 
         assert count == 128
 
-        pxt.drop_dir("unit_test", force=True)
-
     def test_vectorize_in_dataset_from_table(self):
-        pxt.drop_dir("unit_test", force=True)
-
         src_path = "unit_test.src_table_vectorize"
         desc_path = "unit_test.vectorize_from_table"
 
@@ -857,7 +806,6 @@ class TestGoldVectorizer:
             {"idx": 0, "embeddings": torch.zeros(3, 8, 8).numpy()},
             {"idx": 1, "embeddings": torch.zeros(3, 8, 8).numpy()},
         ]
-        pxt.create_dir("unit_test", if_exists="ignore")
         src_table = pxt.create_table(
             src_path, source=source_rows, if_exists="replace_force"
         )
@@ -883,13 +831,9 @@ class TestGoldVectorizer:
 
         assert count == 128
 
-        pxt.drop_dir("unit_test", force=True)
-
     def test_vectorize_in_table_after_restart(
         self,
     ):
-        pxt.drop_dir("unit_test", force=True)
-
         gv = GoldVectorizer(
             table_path="unit_test.vectorize",
             vectorizer=TensorVectorizer(),
@@ -916,13 +860,9 @@ class TestGoldVectorizer:
             assert row["idx_vector"] == i
             assert row["vectorized"].shape == (3,)
 
-        pxt.drop_dir("unit_test", force=True)
-
     def test_vectorize_in_table_after_restart_with_restart_disallowed(
         self,
     ):
-        pxt.drop_dir("unit_test", force=True)
-
         gv = GoldVectorizer(
             table_path="unit_test.vectorize",
             vectorizer=TensorVectorizer(),
@@ -941,8 +881,6 @@ class TestGoldVectorizer:
             ValueError, match="already exists and allow_existing is set to False"
         ):
             gv.vectorize_in_table(dataset)
-
-        pxt.drop_dir("unit_test", force=True)
 
 
 @pytest.fixture

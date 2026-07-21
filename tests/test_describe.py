@@ -65,8 +65,14 @@ class DummyMultiSizeDataset:
 
 
 class TestGoldDescriptor:
-    def test_simple_describe_in_table(self, embedder):
+    def setup_method(self):
         pxt.drop_dir("unit_test", force=True)
+        pxt.create_dir("unit_test", if_exists="ignore")
+
+    def teardown_method(self):
+        pxt.drop_dir("unit_test", force=True)
+
+    def test_simple_describe_in_table(self, embedder):
         desc = GoldDescriptor(
             table_path="unit_test.test_describe",
             embedder=embedder,
@@ -84,11 +90,7 @@ class TestGoldDescriptor:
             assert row["embeddings"].shape == (4, 8, 8)
             assert row["label"] == "dummy"
 
-        pxt.drop_dir("unit_test", force=True)
-
     def test_describe_in_table_without_idx(self, embedder):
-        pxt.drop_dir("unit_test", force=True)
-
         def collate_fn(batch):
             data = torch.stack([b["data"] for b in batch], dim=0)
             return {"data": data}
@@ -110,11 +112,7 @@ class TestGoldDescriptor:
             assert row["idx"] == i
             assert row["embeddings"].shape == (4, 8, 8)
 
-        pxt.drop_dir("unit_test", force=True)
-
     def test_describe_in_table_with_non_dict_item(self, embedder):
-        pxt.drop_dir("unit_test", force=True)
-
         desc = GoldDescriptor(
             table_path="unit_test.test_describe",
             embedder=embedder,
@@ -125,11 +123,7 @@ class TestGoldDescriptor:
         with pytest.raises(ValueError, match="Sample must be a dictionary"):
             desc.describe_in_table(DummyDataset())
 
-        pxt.drop_dir("unit_test", force=True)
-
     def test_describe_in_table_with_missing_data_key(self, embedder):
-        pxt.drop_dir("unit_test", force=True)
-
         desc = GoldDescriptor(
             table_path="unit_test.test_describe",
             embedder=embedder,
@@ -142,11 +136,7 @@ class TestGoldDescriptor:
                 DummyDataset(),
             )
 
-        pxt.drop_dir("unit_test", force=True)
-
     def test_describe_in_table_with_collate_fn(self, embedder):
-        pxt.drop_dir("unit_test", force=True)
-
         def collate_fn(batch):
             data = torch.stack([b["data"] for b in batch], dim=0)
             idxs = [b["idx"] for b in batch]
@@ -178,11 +168,7 @@ class TestGoldDescriptor:
             elif col_name == "idx":
                 assert col_dict["type_"] == "Required[Int]"
 
-        pxt.drop_dir("unit_test", force=True)
-
     def test_describe_in_table_with_max_batches(self, embedder):
-        pxt.drop_dir("unit_test", force=True)
-
         desc = GoldDescriptor(
             table_path="unit_test.test_describe",
             embedder=embedder,
@@ -199,11 +185,7 @@ class TestGoldDescriptor:
         for i, row in enumerate(table.collect()):
             assert row["idx"] == i
 
-        pxt.drop_dir("unit_test", force=True)
-
     def test_describe_in_table_with_table_input(self, embedder):
-        pxt.drop_dir("unit_test", force=True)
-
         src_path = "unit_test.src_table_input"
         desc_path = "unit_test.test_describe_from_table"
 
@@ -212,7 +194,6 @@ class TestGoldDescriptor:
             {"idx": 1, "data": torch.zeros(3, 8, 8).numpy(), "label": "dummy"},
         ]
 
-        pxt.create_dir("unit_test", if_exists="ignore")
         src_table = pxt.create_table(
             src_path, source=source_rows, if_exists="replace_force"
         )
@@ -236,11 +217,7 @@ class TestGoldDescriptor:
             assert row["embeddings"].shape == (4, 8, 8)
             assert row["label"] == "dummy"
 
-        pxt.drop_dir("unit_test", force=True)
-
     def test_describe_in_table_after_restart(self, embedder):
-        pxt.drop_dir("unit_test", force=True)
-
         desc = GoldDescriptor(
             table_path="unit_test.test_describe",
             embedder=embedder,
@@ -264,11 +241,7 @@ class TestGoldDescriptor:
             assert row["idx"] == i
             assert row["embeddings"].shape == (4, 8, 8)
 
-        pxt.drop_dir("unit_test", force=True)
-
     def test_describe_in_table_after_restart_with_restart_disallowed(self, embedder):
-        pxt.drop_dir("unit_test", force=True)
-
         desc = GoldDescriptor(
             table_path="unit_test.test_describe",
             embedder=embedder,
@@ -286,11 +259,7 @@ class TestGoldDescriptor:
         ):
             desc.describe_in_table(dataset)
 
-        pxt.drop_dir("unit_test", force=True)
-
     def test_describe_in_dataset(self, embedder):
-        pxt.drop_dir("unit_test", force=True)
-
         desc = GoldDescriptor(
             table_path="unit_test.test_describe",
             embedder=embedder,
@@ -309,11 +278,7 @@ class TestGoldDescriptor:
 
         dataset.keep_cache = False
 
-        pxt.drop_dir("unit_test", force=True)
-
     def test_describe_in_dataset_from_table(self, embedder):
-        pxt.drop_dir("unit_test", force=True)
-
         src_path = "unit_test.src_table_input"
 
         source_rows = [
@@ -321,7 +286,6 @@ class TestGoldDescriptor:
             {"idx": 1, "data": torch.zeros(3, 8, 8).numpy(), "label": "dummy"},
         ]
 
-        pxt.create_dir("unit_test", if_exists="ignore")
         src_table = pxt.create_table(
             src_path, source=source_rows, if_exists="replace_force"
         )
@@ -344,13 +308,9 @@ class TestGoldDescriptor:
 
         dataset.keep_cache = False
 
-        pxt.drop_dir("unit_test", force=True)
-
     def test_simple_describe_in_table_from_dataset_with_target(
         self, embedder, vectorizer
     ):
-        pxt.drop_dir("unit_test", force=True)
-
         desc = GoldDescriptor(
             table_path="unit_test.test_describe",
             embedder=embedder,
@@ -369,13 +329,9 @@ class TestGoldDescriptor:
             assert row["embeddings"].shape == (4,)
             assert row["label"] == "dummy"
 
-        pxt.drop_dir("unit_test", force=True)
-
     def test_simple_describe_in_table_from_dataset_with_target_and_collatefn(
         self, embedder, vectorizer
     ):
-        pxt.drop_dir("unit_test", force=True)
-
         def collate_fn(batch):
             data = torch.stack([b["data"] for b in batch], dim=0)
             idxs = [b["idx"] for b in batch]
@@ -401,10 +357,7 @@ class TestGoldDescriptor:
             assert row["embeddings"].shape == (4,)
             assert row["label"] == "dummy"
 
-        pxt.drop_dir("unit_test", force=True)
-
     def test_describe_in_table_from_table_with_vectorizer(self, embedder, vectorizer):
-        pxt.drop_dir("unit_test", force=True)
         desc = GoldDescriptor(
             table_path="unit_test.test_describe",
             embedder=embedder,
@@ -425,11 +378,7 @@ class TestGoldDescriptor:
 
         assert set([row["idx"] for row in table.collect()]) == {0, 1}
 
-        pxt.drop_dir("unit_test", force=True)
-
     def test_describe_in_dataset_from_table_with_vectorizer(self, embedder, vectorizer):
-        pxt.drop_dir("unit_test", force=True)
-
         src_path = "unit_test.src_table_input"
 
         source_rows = [
@@ -437,7 +386,6 @@ class TestGoldDescriptor:
             {"idx": 1, "data": torch.zeros(3, 8, 8).numpy(), "label": "dummy"},
         ]
 
-        pxt.create_dir("unit_test", if_exists="ignore")
         src_table = pxt.create_table(
             src_path, source=source_rows, if_exists="replace_force"
         )
@@ -461,13 +409,9 @@ class TestGoldDescriptor:
 
         dataset.keep_cache = False
 
-        pxt.drop_dir("unit_test", force=True)
-
     def test_describe_in_dataset_from_table_with_vectorizer_and_target(
         self, embedder, vectorizer
     ):
-        pxt.drop_dir("unit_test", force=True)
-
         src_path = "unit_test.src_table_input"
 
         source_rows = [
@@ -485,7 +429,6 @@ class TestGoldDescriptor:
             },
         ]
 
-        pxt.create_dir("unit_test", if_exists="ignore")
         src_table = pxt.create_table(
             src_path, source=source_rows, if_exists="replace_force"
         )
@@ -509,13 +452,9 @@ class TestGoldDescriptor:
 
         dataset.keep_cache = False
 
-        pxt.drop_dir("unit_test", force=True)
-
     def test_describe_in_dataset_from_table_with_excluded_label(
         self, embedder, vectorizer
     ):
-        pxt.drop_dir("unit_test", force=True)
-
         src_path = "unit_test.src_table_input"
 
         source_rows = [
@@ -533,7 +472,6 @@ class TestGoldDescriptor:
             },
         ]
 
-        pxt.create_dir("unit_test", if_exists="ignore")
         src_table = pxt.create_table(
             src_path, source=source_rows, if_exists="replace_force"
         )
@@ -560,19 +498,14 @@ class TestGoldDescriptor:
 
         dataset.keep_cache = False
 
-        pxt.drop_dir("unit_test", force=True)
-
     def test_describe_in_dataset_from_table_with_vectorizer_and_multitarget(
         self, embedder, vectorizer
     ):
-        pxt.drop_dir("unit_test", force=True)
-
         src_path = "unit_test.src_table_input"
 
         target = torch.zeros(1, 8, 8).numpy()
         target[0, 0, 0] = 25
 
-        pxt.create_dir("unit_test", if_exists="ignore")
         src_table = pxt.create_table(
             src_path,
             schema={
@@ -649,19 +582,14 @@ class TestGoldDescriptor:
             assert row["embeddings"].shape == (4,)
             assert row["label"] in ("class_1", "class_2")
 
-        pxt.drop_dir("unit_test", force=True)
-
     def test_describe_in_dataset_from_table_with_vectorizer_and_merge_multilabel(
         self, embedder, vectorizer
     ):
-        pxt.drop_dir("unit_test", force=True)
-
         src_path = "unit_test.src_table_input"
 
         target = torch.zeros(1, 8, 8).numpy()
         target[0, 0, 0] = 25
 
-        pxt.create_dir("unit_test", if_exists="ignore")
         src_table = pxt.create_table(
             src_path,
             schema={
@@ -739,13 +667,9 @@ class TestGoldDescriptor:
             assert row["embeddings"].shape == (4,)
             assert row["label"] == "class_1_class_2"
 
-        pxt.drop_dir("unit_test", force=True)
-
     def test_describe_in_dataset_from_table_with_vectorizer_and_multitarget_without_zeros(
         self, embedder, vectorizer
     ):
-        pxt.drop_dir("unit_test", force=True)
-
         src_path = "unit_test.src_table_input"
 
         target = torch.zeros(1, 8, 8).numpy()
@@ -770,7 +694,6 @@ class TestGoldDescriptor:
             },
         ]
 
-        pxt.create_dir("unit_test", if_exists="ignore")
         src_table = pxt.create_table(
             src_path, source=source_rows, if_exists="replace_force"
         )
@@ -795,11 +718,7 @@ class TestGoldDescriptor:
             assert row["idx"] in (0, 1)
             assert row["embeddings"].shape == (4,)
 
-        pxt.drop_dir("unit_test", force=True)
-
     def test_describe_in_table_after_restart_with_vectorizer(self, embedder):
-        pxt.drop_dir("unit_test", force=True)
-
         desc = GoldDescriptor(
             table_path="unit_test.test_describe",
             embedder=embedder,
@@ -824,10 +743,7 @@ class TestGoldDescriptor:
             assert row["idx_vector"] == i
             assert row["embeddings"].shape == (4,)
 
-        pxt.drop_dir("unit_test", force=True)
-
     def test_describe_with_force_fix_description_false(self, embedder):
-        pxt.drop_dir("unit_test", force=True)
         desc = GoldDescriptor(
             table_path="unit_test.test_describe",
             embedder=embedder,
@@ -841,5 +757,3 @@ class TestGoldDescriptor:
         assert table.count() == 2
         rows = table.collect()
         assert rows[0]["embeddings"].shape != rows[1]["embeddings"].shape
-
-        pxt.drop_dir("unit_test", force=True)
