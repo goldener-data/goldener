@@ -11,7 +11,7 @@ from goldener.clusterize import (
     get_random_chunk_assignment,
 )
 from goldener.reduce import GoldSKLearnReductionTool
-from goldener.pxt_utils import GoldPxtTorchDataset
+from goldener.pxt_utils import GoldPxtTorchDataset, pxt_torch_dataset_collate_fn
 
 
 class DummyDataset(Dataset):
@@ -242,6 +242,23 @@ class TestGoldClusterizer:
 
     def teardown_method(self):
         pxt.drop_dir("unit_test", force=True)
+
+    def test_collate_fn_defaults_to_pxt_torch_dataset_collate_fn(self):
+        clusterizer = GoldClusterizer(
+            table_path="unit_test.cluster_default_collate",
+            clustering_tool=GoldRandomClusteringTool(),
+        )
+        assert clusterizer.collate_fn is pxt_torch_dataset_collate_fn
+
+        def custom_collate_fn(batch):
+            return batch
+
+        clusterizer = GoldClusterizer(
+            table_path="unit_test.cluster_default_collate",
+            clustering_tool=GoldRandomClusteringTool(),
+            collate_fn=custom_collate_fn,
+        )
+        assert clusterizer.collate_fn is custom_collate_fn
 
     def _make_src_table(self, path: str, n: int = 10, with_class: bool = False):
         source_rows = []

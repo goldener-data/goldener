@@ -94,6 +94,22 @@ class TestGoldSplitter:
     def teardown_method(self):
         pxt.drop_dir("unit_test", force=True)
 
+    def test_get_split_indices_from_dataset_with_default_collate_fn(self):
+        splitted = GoldSplitter.get_split_indices(
+            DummyDataset(
+                [
+                    {"idx": 0, "selected": "train"},
+                    {"idx": 1, "selected": "val"},
+                    {"idx": 2, "selected": None},
+                ]
+            ),
+            selection_key="selected",
+            idx_key="idx",
+            batch_size=3,
+        )
+
+        assert splitted == {"train": {0}, "val": {1}}
+
     def test_split_in_table_from_dataset(self, basic_splitter):
         split_table = basic_splitter.split_in_table(
             to_split=DummyDataset(

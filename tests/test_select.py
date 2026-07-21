@@ -11,7 +11,7 @@ from sklearn.decomposition import PCA
 import pixeltable as pxt
 from torch.utils.data import Dataset
 
-from goldener.pxt_utils import GoldPxtTorchDataset
+from goldener.pxt_utils import GoldPxtTorchDataset, pxt_torch_dataset_collate_fn
 from goldener.reduce import GoldSKLearnReductionTool
 from goldener.select import (
     GoldSelector,
@@ -48,6 +48,19 @@ class TestGoldSelector:
 
     def teardown_method(self):
         pxt.drop_dir("unit_test", force=True)
+
+    def test_collate_fn_defaults_to_pxt_torch_dataset_collate_fn(self):
+        selector = GoldSelector(table_path="unit_test.select_default_collate")
+        assert selector.collate_fn is pxt_torch_dataset_collate_fn
+
+        def custom_collate_fn(batch):
+            return batch
+
+        selector = GoldSelector(
+            table_path="unit_test.select_default_collate",
+            collate_fn=custom_collate_fn,
+        )
+        assert selector.collate_fn is custom_collate_fn
 
     def test_selection_table_creation_from_table(self):
         src_path = "unit_test.src_table_input"

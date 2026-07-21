@@ -1,6 +1,7 @@
 import torch
 import pytest
 import pixeltable as pxt
+from goldener.pxt_utils import pxt_torch_dataset_collate_fn
 from goldener.vectorize import (
     TensorVectorizer,
     Filter2DWithCount,
@@ -389,6 +390,23 @@ class TestGoldVectorizer:
 
     def teardown_method(self):
         pxt.drop_dir("unit_test", force=True)
+
+    def test_collate_fn_defaults_to_pxt_torch_dataset_collate_fn(self):
+        gv = GoldVectorizer(
+            table_path="unit_test.vectorize_default_collate",
+            vectorizer=TensorVectorizer(),
+        )
+        assert gv.collate_fn is pxt_torch_dataset_collate_fn
+
+        def custom_collate_fn(batch):
+            return batch
+
+        gv = GoldVectorizer(
+            table_path="unit_test.vectorize_default_collate",
+            vectorizer=TensorVectorizer(),
+            collate_fn=custom_collate_fn,
+        )
+        assert gv.collate_fn is custom_collate_fn
 
     def test_vectorize_in_table_from_dataset(self):
         table_path = "unit_test.vectorize_from_dataset"

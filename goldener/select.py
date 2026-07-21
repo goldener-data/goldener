@@ -30,6 +30,7 @@ from goldener.pxt_utils import (
     make_batch_ready_for_table,
     check_pxt_table_has_primary_key,
     get_sample_row_from_idx,
+    pxt_torch_dataset_collate_fn,
 )
 from goldener.reduce import GoldReductionTool, GoldReductionToolWithFit
 from goldener.torch_utils import get_dataset_sample_dict
@@ -651,7 +652,8 @@ class GoldSelector:
         chunk: Optional chunk size for processing data in chunks to reduce memory consumption.
         collate_fn: Optional function to collate dataset samples into batches composed of
             dictionaries with at least the key specified by `vectorized_key` returning a PyTorch Tensor.
-            If None, the dataset is expected to directly provide such batches.
+            If None, `pxt_torch_dataset_collate_fn` is used, which preserves list-valued
+            fields as one list per sample.
         vectorized_key: Key in the batch dictionary that contains the vectorized data for selection. Default is "vectorized".
         include_vectorized_in_table: Whether to include the vectorized data in the selection table. Defaults to False.
         It is only applied if the cluster table is created from a Table (it is forced anyway for Dataset).
@@ -708,6 +710,7 @@ class GoldSelector:
             reducer: Optional GoldReductionTool instance for dimensionality reduction before selection.
             chunk: Optional chunk size for processing data in chunks.
             collate_fn: Optional collate function for the DataLoader.
+                If None, `pxt_torch_dataset_collate_fn` is used.
             vectorized_key: Key pointing to the vector for selection. Defaults to "vectorized".
             include_vectorized_in_table: Whether to include the vectorized data in the selection table. Defaults to False.
                 It is only applied if the selection table is created from a Table (it is forced anyway for Dataset).
@@ -731,7 +734,9 @@ class GoldSelector:
         self.selection_tool = selection_tool
         self.reducer = reducer
         self.chunk = chunk
-        self.collate_fn = collate_fn
+        self.collate_fn = (
+            collate_fn if collate_fn is not None else pxt_torch_dataset_collate_fn
+        )
         self.vectorized_key = vectorized_key
         self.include_vectorized_in_table = include_vectorized_in_table
         self.selection_key = selection_key
@@ -757,7 +762,6 @@ class GoldSelector:
         Args:
             select_from: Dataset or Table to select from. If a Dataset is provided, each item should be a
                 dictionary with at least the `vectorized_key` and `idx` keys after applying the collate_fn.
-                If the collate_fn is None, the dataset is expected to directly provide such batches.
                 If a Table is provided, it should contain at least the `vectorized_key`,
                 `idx` and `idx_vector` columns.
 
@@ -823,7 +827,6 @@ class GoldSelector:
         Args:
             select_from: Dataset or Table to select from. If a Dataset is provided, each item should be a
                 dictionary with at least the `vectorized_key` and `idx` keys after applying the collate_fn.
-                If the collate_fn is None, the dataset is expected to directly provide such batches.
                 If a Table is provided, it should contain at least the `vectorized_key`, `idx` and `idx_vector` columns.
             select_size: Number or ratio (between 0 and 1) of data points to select
             value: Value to set in the `selection_key` column for selected samples.
@@ -873,7 +876,6 @@ class GoldSelector:
         Args:
             select_from: Dataset or Table to select from. If a Dataset is provided, each item should be a
                 dictionary with at least the `vectorized_key` and `idx` keys after applying the collate_fn.
-                If the collate_fn is None, the dataset is expected to directly provide such batches.
                 If a Table is provided, it should contain at least the `vectorized_key`, `idx` and `idx_vector` columns.
             select_size: Number or ratio (between 0 and 1) of data points to select.
             value: Value to set in the `selection_key` column for selected samples.
@@ -1059,7 +1061,7 @@ class GoldSelector:
                 expected_keys=[self.vectorized_key],
             )
 
-            vectorized_value = sample[self.vectorized_key]
+            vectorized_value = sample[self.vectorized_key].squeeze(0)
             selection_table.add_column(
                 **{
                     self.vectorized_key: pxt.Array[  # type: ignore[misc]

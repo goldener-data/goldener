@@ -298,6 +298,7 @@ class GoldSplitter:
             num_workers: Number of workers to use when processing the input as dataset.
             collate_fn: Collate function to use when processing the input as dataset. It should
                 return a dictionary with at least the keys specified by `idx_key` and `selection_key`.
+                If None, `pxt_torch_dataset_collate_fn` is used.
 
         Returns:
             A dictionary mapping each set name to a set of sample indices.
@@ -310,7 +311,11 @@ class GoldSplitter:
                 split_data,
                 batch_size=batch_size,
                 num_workers=num_workers,
-                collate_fn=collate_fn,
+                collate_fn=(
+                    collate_fn
+                    if collate_fn is not None
+                    else pxt_torch_dataset_collate_fn
+                ),
             )
 
             for batch in dataloader:
@@ -360,7 +365,7 @@ class GoldSplitter:
         Args:
             to_split: Dataset or Table to be split. If a Dataset is provided, each item should be a
             dictionary with at least the key specified by descriptor `data_key` after applying the collate_fn.
-            If the collate_fn is None, the dataset is expected to directly provide such batches. If a Table is provided,
+            If a Table is provided,
             it should contain both 'idx' and `data_key` column for the descriptor.
 
         Returns:
@@ -395,7 +400,7 @@ class GoldSplitter:
         Args:
             to_split: Dataset or Table to be split. If a Dataset is provided, each item should be a
             dictionary with at least the key specified by descriptor `data_key` after applying the collate_fn.
-            If the collate_fn is None, the dataset is expected to directly provide such batches. If a Table is provided,
+            If a Table is provided,
             it should contain both 'idx' and `data_key` column for the descriptor.
 
         Returns:

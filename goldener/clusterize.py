@@ -21,6 +21,7 @@ from goldener.pxt_utils import (
     make_batch_ready_for_table,
     check_pxt_table_has_primary_key,
     get_sample_row_from_idx,
+    pxt_torch_dataset_collate_fn,
 )
 from goldener.reduce import GoldReductionTool, GoldReductionToolWithFit
 from goldener.torch_utils import get_dataset_sample_dict
@@ -234,7 +235,8 @@ class GoldClusterizer:
         chunk: Optional chunk size for processing data in chunks to reduce memory consumption.
         collate_fn: Optional function to collate dataset samples into batches composed of
             dictionaries with at least the key specified by `vectorized_key` returning a PyTorch Tensor.
-            If None, the dataset is expected to directly provide such batches.
+            If None, `pxt_torch_dataset_collate_fn` is used, which preserves list-valued
+            fields as one list per sample.
         vectorized_key: Key in the batch dictionary that contains the vectorized data for the clustering. Default is "vectorized".
         include_vectorized_in_table: Whether to keep the vectorized data in the cluster table.
             It is only applied if the cluster table is created from a Table (it is forced anyway for Dataset). Default is False.
@@ -288,7 +290,8 @@ class GoldClusterizer:
             chunk: Optional chunk size for processing data in chunks to reduce memory consumption.
             collate_fn: Optional function to collate dataset samples into batches composed of
                 dictionaries with at least the key specified by `vectorized_key` returning a PyTorch Tensor.
-                If None, the dataset is expected to directly provide such batches.
+                If None, `pxt_torch_dataset_collate_fn` is used, which preserves list-valued
+                fields as one list per sample.
             vectorized_key: Key in the batch dictionary that contains the vectorized data for the clustering. Default is "vectorized".
             include_vectorized_in_table: Whether to keep the vectorized data in the cluster table. Defaults to False.
                     It is only applied if the cluster table is created from a Table (it is forced anyway for Dataset).
@@ -315,7 +318,9 @@ class GoldClusterizer:
         if chunk is not None and chunk <= 0:
             raise ValueError("chunk must be a positive integer or None.")
         self.chunk = chunk
-        self.collate_fn = collate_fn
+        self.collate_fn = (
+            collate_fn if collate_fn is not None else pxt_torch_dataset_collate_fn
+        )
         self.vectorized_key = vectorized_key
         self.include_vectorized_in_table = include_vectorized_in_table
         self.cluster_key = cluster_key
@@ -348,7 +353,6 @@ class GoldClusterizer:
         Args:
             cluster_from: Dataset or Table to cluster. If a Dataset is provided, each item should be a
                 dictionary with at least the `vectorized_key`, `idx_vector` and `idx` keys after applying the collate_fn.
-                If the collate_fn is None, the dataset is expected to directly provide such batches.
                 If a Table is provided, it should contain at least the `vectorized_key` and `idx` columns.
             n_clusters: Number of clusters to create.
         Returns:
@@ -380,7 +384,6 @@ class GoldClusterizer:
         Args:
             cluster_from: Dataset or Table to select from. If a Dataset is provided, each item should be a
                 dictionary with at least the `vectorized_key` and `idx` keys after applying the collate_fn.
-                If the collate_fn is None, the dataset is expected to directly provide such batches.
                 If a Table is provided, it should contain at least the `vectorized_key`, `idx` and `idx_vector` columns.
             n_clusters: Number of clusters to create.
 
@@ -509,7 +512,7 @@ class GoldClusterizer:
                 expected_keys=[self.vectorized_key],
             )
 
-            vectorized_value = sample[self.vectorized_key]
+            vectorized_value = sample[self.vectorized_key].squeeze(0)
             cluster_table.add_column(
                 **{
                     self.vectorized_key: pxt.Array[  # type: ignore[misc]
@@ -605,7 +608,9 @@ class GoldClusterizer:
                 expected=[self.vectorized_key],
             )
 
-            vectorized_value = sample[self.vectorized_key].detach().cpu().numpy()
+            vectorized_value = (
+                sample[self.vectorized_key].squeeze(0).detach().cpu().numpy()
+            )
             cluster_table.add_column(
                 **{
                     self.vectorized_key: pxt.Array[  # type: ignore[misc]

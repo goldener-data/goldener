@@ -8,6 +8,7 @@ import pixeltable as pxt
 
 from goldener.describe import GoldDescriptor
 from goldener.embed import GoldTorchEmbeddingToolConfig, GoldTorchEmbeddingTool
+from goldener.pxt_utils import pxt_torch_dataset_collate_fn
 from goldener.vectorize import TensorVectorizer
 
 
@@ -762,6 +763,23 @@ class TestGoldDescriptor:
 
         assert labels_by_idx[0] == {"class_1", "class_2"}
         assert labels_by_idx[1] == {"class_1", "class_2"}
+
+    def test_collate_fn_defaults_to_pxt_torch_dataset_collate_fn(self, embedder):
+        desc = GoldDescriptor(
+            table_path="unit_test.test_describe",
+            embedder=embedder,
+        )
+        assert desc.collate_fn is pxt_torch_dataset_collate_fn
+
+        def custom_collate_fn(batch):
+            return batch
+
+        desc = GoldDescriptor(
+            table_path="unit_test.test_describe",
+            embedder=embedder,
+            collate_fn=custom_collate_fn,
+        )
+        assert desc.collate_fn is custom_collate_fn
 
     def test_describe_in_table_after_restart_with_vectorizer(self, embedder):
         desc = GoldDescriptor(
