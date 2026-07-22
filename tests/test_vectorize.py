@@ -151,6 +151,26 @@ class TestTensorVectorizer:
         with pytest.raises(ValueError, match="in_selection"):
             TensorVectorizer(in_selection_tool=tool, in_selection_count=count)
 
+    def test_input_selection_preserves_existing_positional_arguments(self):
+        from goldener.embed import EmbeddingFusionStrategy
+
+        def transform_y(y):
+            return y
+
+        vectorizer = TensorVectorizer(
+            None,
+            None,
+            None,
+            EmbeddingFusionStrategy.AVERAGE,
+            transform_y,
+            2,
+        )
+
+        assert vectorizer.fusion_strategy is EmbeddingFusionStrategy.AVERAGE
+        assert vectorizer.transform_y is transform_y
+        assert vectorizer.channel_pos == 2
+        assert vectorizer.in_selection_tool is None
+
     def test_vectorize_with_transform_y(self):
         x = self.make_tensor()
         shape = x.shape

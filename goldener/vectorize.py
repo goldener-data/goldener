@@ -232,12 +232,12 @@ class TensorVectorizer:
         remove: Filter2DWithCount instance to remove specific rows in the input `x` of `filter`.
         random: Random Filter2DWithCount instance to randomly filter vectors after
         applying `keep`, `remove` and the target `y` on the input `x` of filter.
-        in_selection_tool: Optional smart selection tool applied after all other input filters.
-        in_selection_count: Number of vectors to keep with `in_selection_tool`.
         fusion_strategy: Optional strategy to fuse vectors when more than 1 vector is kept
             for a sample after all filtering steps.
         transform_y: Optional callable to transform the target tensor before transforming it to 2D.
         channel_pos: position of the channel dimension in the input tensor to vectorize.
+        in_selection_tool: Optional smart selection tool applied after all other input filters.
+        in_selection_count: Number of vectors to keep with `in_selection_tool`.
     """
 
     def __init__(
@@ -245,11 +245,11 @@ class TensorVectorizer:
         keep: Filter2DWithCount | None = None,
         remove: Filter2DWithCount | None = None,
         random: Filter2DWithCount | None = None,
-        in_selection_tool: "GoldSelectionTool | None" = None,
-        in_selection_count: int | None = None,
         fusion_strategy: EmbeddingFusionStrategy | None = None,
         transform_y: Callable[[torch.Tensor], torch.Tensor] | None = None,
         channel_pos: int = 1,
+        in_selection_tool: "GoldSelectionTool | None" = None,
+        in_selection_count: int | None = None,
     ) -> None:
         """Initialize the TensorVectorizer.
 
@@ -257,12 +257,12 @@ class TensorVectorizer:
             keep: Optional filter to keep specific rows in the input.
             remove: Optional filter to remove specific rows from the input.
             random: Optional random filter to apply after keep/remove filters.
-            in_selection_tool: Optional selection tool to choose the most useful remaining vectors.
-            in_selection_count: Number of vectors for `in_selection_tool` to keep.
             fusion_strategy: Optional strategy to fuse vectors when more than 1 vector is kept
                 for a sample after all filtering steps.
             transform_y: Optional transformation to apply to the target tensor.
             channel_pos: Position of the channel dimension in the input tensor. Defaults to 1.
+            in_selection_tool: Optional selection tool to choose the most useful remaining vectors.
+            in_selection_count: Number of vectors for `in_selection_tool` to keep.
 
         Raises:
             ValueError: If keep, remove and random filters are not having the expected properties.
