@@ -218,6 +218,27 @@ class TestPxtTorchDatasetCollateFn:
         assert result["image"].shape == (2, 3)
         assert torch.equal(result["label"], torch.tensor([0, 1], dtype=torch.int64))
 
+    def test_collate_tensors(self):
+        batch = [
+            {"data": torch.zeros(3, 4)},
+            {"data": torch.ones(3, 4)},
+        ]
+
+        result = pxt_torch_dataset_collate_fn(batch)
+
+        assert isinstance(result["data"], torch.Tensor)
+        assert result["data"].shape == (2, 3, 4)
+
+    def test_collate_keeps_multilabel_lists_per_sample(self):
+        batch = [
+            {"label": ["class_1", "class_2"]},
+            {"label": ["class_1", "class_2"]},
+        ]
+
+        result = pxt_torch_dataset_collate_fn(batch)
+
+        assert result["label"] == [["class_1", "class_2"], ["class_1", "class_2"]]
+
     def test_collate_empty_batch(self):
         batch = []
         result = pxt_torch_dataset_collate_fn(batch)

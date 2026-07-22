@@ -53,7 +53,8 @@ class GoldDescriptor:
             applied by the `collate_fn`.
         collate_fn: Optional function to collate dataset samples into batches composed of
             dictionaries with at least the key specified by `data_key` returning a PyTorch Tensor.
-            If None, the dataset is expected to directly provide such batches. It should format
+            If None, `pxt_torch_dataset_collate_fn` is used, which preserves list-valued
+            fields as one list per sample. It should format
             the value at `data_key` in the format expected by the embedder.
         data_key: Key in the batch dictionary that contains the data to compute embeddings from. Default is "data".
         target_key: Key in the batch dictionary that contains the target/label information. Default is "target".
@@ -118,6 +119,7 @@ class GoldDescriptor:
             vectorizer: Optional TensorVectorizer to further vectorize the computed embeddings.
             transform: Optional transformation to apply before embedding computation.
             collate_fn: Optional function to collate dataset samples into batches.
+                If None, `pxt_torch_dataset_collate_fn` is used.
             data_key: Key in the batch dictionary containing the data. Defaults to "data".
             target_key: Key in the batch dictionary containing the target/label. Defaults to "target".
             label_key: Optional key for labels in the batch dictionary. Default is None.
@@ -143,7 +145,9 @@ class GoldDescriptor:
         self.embedder = embedder
         self.vectorizer = vectorizer
         self.transform = transform
-        self.collate_fn = collate_fn
+        self.collate_fn = (
+            collate_fn if collate_fn is not None else pxt_torch_dataset_collate_fn
+        )
         self.data_key = data_key
         self.target_key = target_key
         self.label_key = label_key
@@ -184,7 +188,7 @@ class GoldDescriptor:
         Args:
             to_describe: Dataset or Table to be described. If a Dataset is provided, each item should be a
                 dictionary with at least the key specified by `data_key` after applying the collate_fn.
-                If the collate_fn is None, the dataset is expected to directly provide such batches. If a Table is provided,
+                If a Table is provided,
                 it should contain both 'idx' and `data_key` columns.
 
         Returns:
@@ -218,7 +222,7 @@ class GoldDescriptor:
         Args:
             to_describe: Dataset or Table to be described. If a Dataset is provided, each item should be a
                 dictionary with at least the key specified by `data_key` after applying the collate_fn.
-                If the collate_fn is None, the dataset is expected to directly provide such batches. If a Table is provided,
+                If a Table is provided,
                 it should contain both 'idx' and `data_key` columns.
 
         Returns:

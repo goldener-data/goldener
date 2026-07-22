@@ -1,6 +1,9 @@
+from collections import defaultdict
+
 import torch
 import pytest
 import pixeltable as pxt
+from goldener.pxt_utils import pxt_torch_dataset_collate_fn
 from goldener.vectorize import (
     TensorVectorizer,
     Filter2DWithCount,
@@ -389,6 +392,63 @@ class TestGoldVectorizer:
 
     def teardown_method(self):
         pxt.drop_dir("unit_test", force=True)
+
+    def test_collate_fn_defaults_to_pxt_torch_dataset_collate_fn(self):
+        gv = GoldVectorizer(
+            table_path="unit_test.vectorize_default_collate",
+            vectorizer=TensorVectorizer(),
+        )
+        assert gv.collate_fn is pxt_torch_dataset_collate_fn
+
+        def custom_collate_fn(batch):
+            return batch
+
+        gv = GoldVectorizer(
+            table_path="unit_test.vectorize_default_collate",
+            vectorizer=TensorVectorizer(),
+            collate_fn=custom_collate_fn,
+        )
+        assert gv.collate_fn is custom_collate_fn
+
+    def test_vectorize_in_table_with_plain_multilabel_and_default_collate(self):
+        """Regression test for #202 (GoldVectorizer flavor).
+
+        When collate_fn is left at its default (None), PyTorch's own
+        default_collate transposes list-valued batch fields (like a
+        multi-label list) across the batch dimension instead of keeping
+        one list per sample. Each sample then silently loses all but one
+        of its labels.
+        """
+
+        class MultiLabelDataset:
+            def __len__(self):
+                return 2
+
+            def __getitem__(self, idx):
+                return {
+                    "embeddings": torch.zeros(4, 3),
+                    "idx": idx,
+                    "label": ["class_1", "class_2"],
+                }
+
+        gv = GoldVectorizer(
+            table_path="unit_test.vectorize_multilabel",
+            vectorizer=TensorVectorizer(),
+            data_key="embeddings",
+            label_key="label",
+            to_keep_schema={"label": pxt.String},
+            batch_size=2,
+            allow_existing=False,
+        )
+
+        out_table = gv.vectorize_in_table(MultiLabelDataset())
+
+        labels_by_idx = defaultdict(set)
+        for row in out_table.collect():
+            labels_by_idx[row["idx"]].add(row["label"])
+
+        assert labels_by_idx[0] == {"class_1", "class_2"}
+        assert labels_by_idx[1] == {"class_1", "class_2"}
 
     def test_vectorize_in_table_from_dataset(self):
         table_path = "unit_test.vectorize_from_dataset"

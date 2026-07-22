@@ -448,7 +448,8 @@ class GoldVectorizer:
         vectorizer: TensorVectorizer instance for transforming batched inputs into vectors.
         collate_fn: Optional function to collate dataset samples into batches composed of
             dictionaries with at least the key specified by `data_key` returning a PyTorch Tensor.
-            If None, the dataset is expected to directly provide such batches.
+            If None, `pxt_torch_dataset_collate_fn` is used, which preserves list-valued
+            fields as one list per sample.
         data_key: Key in the batch dictionary that contains the data to vectorize. Default is "embeddings".
         target_key: Optional key in the batch dictionary containing the target used to filter vectors. Default is "target".
         vectorized_key: Column name to store the resulting vectors in the PixelTable table. Default is "vectorized".
@@ -503,6 +504,7 @@ class GoldVectorizer:
             table_path: Path to the PixelTable table for storing vectors.
             vectorizer: TensorVectorizer instance for transforming tensors.
             collate_fn: Optional collate function for preparing batches.
+                If None, `pxt_torch_dataset_collate_fn` is used.
             data_key: Key for data in the batch dictionary. Defaults to "embeddings".
             target_key: Key for target in the batch dictionary. Defaults to "target".
             vectorized_key: Column name for storing vectors. Defaults to "vectorized".
@@ -523,7 +525,9 @@ class GoldVectorizer:
         """
         self.table_path = table_path
         self.vectorizer = vectorizer
-        self.collate_fn = collate_fn
+        self.collate_fn = (
+            collate_fn if collate_fn is not None else pxt_torch_dataset_collate_fn
+        )
         self.data_key = data_key
         self.target_key = target_key
         self.label_key = label_key
@@ -559,7 +563,7 @@ class GoldVectorizer:
         Args:
             to_vectorize: Dataset or Table to be vectorized. If a Dataset is provided, each item should be a
                 dictionary with at least the key specified by `data_key` after applying the collate_fn.
-                If the collate_fn is None, the dataset is expected to directly provide such batches. If a Table is provided,
+                If a Table is provided,
                 it should contain both 'idx' and `data_key` columns.
 
         Returns:
@@ -592,7 +596,7 @@ class GoldVectorizer:
         Args:
             to_vectorize: Dataset or Table to be vectorized. If a Dataset is provided, each item should be a
                 dictionary with at least the key specified by `data_key` after applying the collate_fn.
-                If the collate_fn is None, the dataset is expected to directly provide such batches. If a Table is provided,
+                If a Table is provided,
                 it should contain both 'idx' and `data_key` columns.
 
         Returns:
