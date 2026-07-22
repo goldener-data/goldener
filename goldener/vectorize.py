@@ -6,7 +6,7 @@ from pixeltable import Error
 from torch.utils.data import RandomSampler, Dataset, DataLoader
 from tqdm import tqdm
 from typing_extensions import assert_never
-from typing import Callable, Any
+from typing import TYPE_CHECKING, Callable, Any
 
 from enum import Enum
 
@@ -34,6 +34,9 @@ from goldener.utils import (
     transform_batch_from_multiple_to_binarized_targets,
     transform_batch_from_multilabel_to_independent_labels,
 )
+
+if TYPE_CHECKING:
+    from goldener.select import GoldSelectionTool
 
 logger = getLogger(__name__)
 
@@ -229,6 +232,8 @@ class TensorVectorizer:
         remove: Filter2DWithCount instance to remove specific rows in the input `x` of `filter`.
         random: Random Filter2DWithCount instance to randomly filter vectors after
         applying `keep`, `remove` and the target `y` on the input `x` of filter.
+        in_selection_tool: Optional smart selection tool applied after all other input filters.
+        in_selection_count: Number of vectors to keep with `in_selection_tool`.
         fusion_strategy: Optional strategy to fuse vectors when more than 1 vector is kept
             for a sample after all filtering steps.
         transform_y: Optional callable to transform the target tensor before transforming it to 2D.
@@ -240,6 +245,8 @@ class TensorVectorizer:
         keep: Filter2DWithCount | None = None,
         remove: Filter2DWithCount | None = None,
         random: Filter2DWithCount | None = None,
+        in_selection_tool: "GoldSelectionTool | None" = None,
+        in_selection_count: int | None = None,
         fusion_strategy: EmbeddingFusionStrategy | None = None,
         transform_y: Callable[[torch.Tensor], torch.Tensor] | None = None,
         channel_pos: int = 1,
@@ -250,6 +257,8 @@ class TensorVectorizer:
             keep: Optional filter to keep specific rows in the input.
             remove: Optional filter to remove specific rows from the input.
             random: Optional random filter to apply after keep/remove filters.
+            in_selection_tool: Optional selection tool to choose the most useful remaining vectors.
+            in_selection_count: Number of vectors for `in_selection_tool` to keep.
             fusion_strategy: Optional strategy to fuse vectors when more than 1 vector is kept
                 for a sample after all filtering steps.
             transform_y: Optional transformation to apply to the target tensor.
@@ -292,6 +301,15 @@ class TensorVectorizer:
                 )
 
         self.random = random
+
+        if (in_selection_tool is None) != (in_selection_count is None):
+            raise ValueError(
+                "'in_selection_tool' and 'in_selection_count' must be provided together."
+            )
+        if in_selection_count is not None and in_selection_count <= 0:
+            raise ValueError("'in_selection_count' must be greater than 0.")
+        self.in_selection_tool = in_selection_tool
+        self.in_selection_count = in_selection_count
 
         if (
             fusion_strategy is not None
@@ -355,6 +373,16 @@ class TensorVectorizer:
 
             if self.random is not None and len(x_sample) > self.random.filter_count:
                 x_sample = self._apply_filter(self.random.filter, x_sample)
+
+            if (
+                self.in_selection_tool is not None
+                and self.in_selection_count is not None
+                and len(x_sample) > self.in_selection_count
+            ):
+                selected_indices = self.in_selection_tool.select(
+                    x_sample, self.in_selection_count
+                )
+                x_sample = x_sample[selected_indices]
 
             if len(x_sample) > 1 and self.fusion_strategy is not None:
                 x_sample = GoldEmbeddingFusionTool.fuse_tensors(
