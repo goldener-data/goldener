@@ -108,7 +108,7 @@ class TestTensorVectorizer:
         selection_tool = FirstAndLastSelectionTool()
         v = TensorVectorizer(
             in_selection_tool=selection_tool,
-            in_selection_count=2,
+            in_selection_size=2,
         )
 
         vec = v.vectorize(x)
@@ -135,7 +135,7 @@ class TestTensorVectorizer:
                 generator=torch.Generator().manual_seed(7),
             ),
             in_selection_tool=selection_tool,
-            in_selection_count=2,
+            in_selection_size=2,
         )
 
         vec = v.vectorize(torch.arange(18).reshape(1, 3, 6))
@@ -143,13 +143,24 @@ class TestTensorVectorizer:
         assert selection_tool.input_count == 3
         assert vec.vectors.shape == (2, 3)
 
-    @pytest.mark.parametrize(
-        ("tool", "count"),
-        [(object(), None), (None, 2), (object(), 0)],
-    )
-    def test_input_selection_configuration_validation(self, tool, count):
-        with pytest.raises(ValueError, match="in_selection"):
-            TensorVectorizer(in_selection_tool=tool, in_selection_count=count)
+    @pytest.mark.parametrize("size", [0, -1, 0.0, 1.0, -0.5, 1.5])
+    def test_input_selection_size_validation(self, size):
+        with pytest.raises(ValueError, match="in_selection_size"):
+            TensorVectorizer(in_selection_size=size)
+
+    def test_input_selection_accepts_fractional_size(self):
+        class RecordingSelectionTool:
+            def select(self, x, k, anchors=None):
+                assert k == 2
+                return list(range(k))
+
+        vectorizer = TensorVectorizer(
+            in_selection_tool=RecordingSelectionTool(), in_selection_size=0.5
+        )
+
+        vec = vectorizer.vectorize(torch.arange(12).reshape(1, 3, 4))
+
+        assert vec.vectors.shape == (2, 3)
 
     def test_input_selection_preserves_existing_positional_arguments(self):
         from goldener.embed import EmbeddingFusionStrategy
