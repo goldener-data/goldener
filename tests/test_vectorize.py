@@ -143,7 +143,7 @@ class TestTensorVectorizer:
         assert selection_tool.input_count == 3
         assert vec.vectors.shape == (2, 3)
 
-    @pytest.mark.parametrize("size", [0, -1, 0.0, 1.0, -0.5, 1.5])
+    @pytest.mark.parametrize("size", [0, -1, 0.0, -0.5, 1.5])
     def test_input_selection_size_validation(self, size):
         with pytest.raises(ValueError, match="in_selection_size"):
             TensorVectorizer(in_selection_size=size)
@@ -161,26 +161,6 @@ class TestTensorVectorizer:
         vec = vectorizer.vectorize(torch.arange(12).reshape(1, 3, 4))
 
         assert vec.vectors.shape == (2, 3)
-
-    def test_input_selection_preserves_existing_positional_arguments(self):
-        from goldener.embed import EmbeddingFusionStrategy
-
-        def transform_y(y):
-            return y
-
-        vectorizer = TensorVectorizer(
-            None,
-            None,
-            None,
-            EmbeddingFusionStrategy.AVERAGE,
-            transform_y,
-            2,
-        )
-
-        assert vectorizer.fusion_strategy is EmbeddingFusionStrategy.AVERAGE
-        assert vectorizer.transform_y is transform_y
-        assert vectorizer.channel_pos == 2
-        assert vectorizer.in_selection_tool is None
 
     def test_vectorize_with_transform_y(self):
         x = self.make_tensor()

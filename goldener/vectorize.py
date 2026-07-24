@@ -235,7 +235,7 @@ class TensorVectorizer:
         transform_y: Optional callable to transform the target tensor before transforming it to 2D.
         channel_pos: position of the channel dimension in the input tensor to vectorize.
         in_selection_tool: Optional smart selection tool applied after all other input filters.
-        in_selection_count: Number of vectors to keep with `in_selection_tool`.
+        in_selection_size: Number or fraction of vectors to keep with `in_selection_tool`.
     """
 
     def __init__(
@@ -247,7 +247,7 @@ class TensorVectorizer:
         transform_y: Callable[[torch.Tensor], torch.Tensor] | None = None,
         channel_pos: int = 1,
         in_selection_tool: GoldSelectionTool | None = None,
-        in_selection_size: int | float = 1,
+        in_selection_size: int | float = 1.0,
     ) -> None:
         """Initialize the TensorVectorizer.
 
@@ -301,9 +301,9 @@ class TensorVectorizer:
         self.random = random
 
         if isinstance(in_selection_size, float):
-            if not 0 < in_selection_size < 1:
+            if not 0 < in_selection_size <= 1:
                 raise ValueError(
-                    "'in_selection_size' must be between 0 and 1 when provided as a float."
+                    "'in_selection_size' must be between 0 and 1 included when provided as a float."
                 )
         elif in_selection_size <= 0:
             raise ValueError("'in_selection_size' must be greater than 0.")
@@ -377,11 +377,10 @@ class TensorVectorizer:
                 selection_size = self.in_selection_size
                 if isinstance(selection_size, float):
                     selection_size = max(1, int(len(x_sample) * selection_size))
-                if len(x_sample) > selection_size:
-                    selected_indices = self.in_selection_tool.select(
-                        x_sample, selection_size
-                    )
-                    x_sample = x_sample[selected_indices]
+                selected_indices = self.in_selection_tool.select(
+                    x_sample, selection_size
+                )
+                x_sample = x_sample[selected_indices]
 
             if len(x_sample) > 1 and self.fusion_strategy is not None:
                 x_sample = GoldEmbeddingFusionTool.fuse_tensors(
