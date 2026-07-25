@@ -93,6 +93,75 @@ class TestTensorVectorizer:
         assert vec.vectors.shape == (2, 5)
         assert torch.equal(vec.batch_indices, torch.tensor([0, 1]))
 
+    def test_vectorize_with_input_selection_tool(self):
+        class FirstAndLastSelectionTool:
+            def __init__(self):
+                self.seen = None
+
+            def select(self, x, k, anchors=None):
+                self.seen = x.clone()
+                assert k == 2
+                assert anchors is None
+                return [0, len(x) - 1]
+
+        x = torch.arange(15).reshape(1, 3, 5)
+        selection_tool = FirstAndLastSelectionTool()
+        v = TensorVectorizer(
+            in_selection_tool=selection_tool,
+            in_selection_size=2,
+        )
+
+        vec = v.vectorize(x)
+
+        assert selection_tool.seen.shape == (5, 3)
+        assert torch.equal(vec.vectors, selection_tool.seen[[0, 4]])
+        assert torch.equal(vec.batch_indices, torch.tensor([0, 0]))
+
+    def test_input_selection_runs_after_random_filter(self):
+        class RecordingSelectionTool:
+            def __init__(self):
+                self.input_count = None
+
+            def select(self, x, k, anchors=None):
+                self.input_count = len(x)
+                return list(range(k))
+
+        selection_tool = RecordingSelectionTool()
+        v = TensorVectorizer(
+            random=Filter2DWithCount(
+                filter_count=3,
+                filter_location=FilterLocation.RANDOM,
+                keep=True,
+                generator=torch.Generator().manual_seed(7),
+            ),
+            in_selection_tool=selection_tool,
+            in_selection_size=2,
+        )
+
+        vec = v.vectorize(torch.arange(18).reshape(1, 3, 6))
+
+        assert selection_tool.input_count == 3
+        assert vec.vectors.shape == (2, 3)
+
+    @pytest.mark.parametrize("size", [0, -1, 0.0, -0.5, 1.5])
+    def test_input_selection_size_validation(self, size):
+        with pytest.raises(ValueError, match="in_selection_size"):
+            TensorVectorizer(in_selection_size=size)
+
+    def test_input_selection_accepts_fractional_size(self):
+        class RecordingSelectionTool:
+            def select(self, x, k, anchors=None):
+                assert k == 2
+                return list(range(k))
+
+        vectorizer = TensorVectorizer(
+            in_selection_tool=RecordingSelectionTool(), in_selection_size=0.5
+        )
+
+        vec = vectorizer.vectorize(torch.arange(12).reshape(1, 3, 4))
+
+        assert vec.vectors.shape == (2, 3)
+
     def test_vectorize_with_transform_y(self):
         x = self.make_tensor()
         shape = x.shape

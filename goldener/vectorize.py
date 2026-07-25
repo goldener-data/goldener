@@ -17,6 +17,7 @@ import pixeltable as pxt
 from pixeltable.catalog import Table
 
 from goldener.embed import EmbeddingFusionStrategy, GoldEmbeddingFusionTool
+from goldener.select import GoldSelectionTool
 from goldener.pxt_utils import (
     GoldPxtTorchDataset,
     get_valid_table,
@@ -233,6 +234,8 @@ class TensorVectorizer:
             for a sample after all filtering steps.
         transform_y: Optional callable to transform the target tensor before transforming it to 2D.
         channel_pos: position of the channel dimension in the input tensor to vectorize.
+        in_selection_tool: Optional smart selection tool applied after all other input filters.
+        in_selection_size: Number or fraction of vectors to keep with `in_selection_tool`.
     """
 
     def __init__(
@@ -243,6 +246,8 @@ class TensorVectorizer:
         fusion_strategy: EmbeddingFusionStrategy | None = None,
         transform_y: Callable[[torch.Tensor], torch.Tensor] | None = None,
         channel_pos: int = 1,
+        in_selection_tool: GoldSelectionTool | None = None,
+        in_selection_size: int | float = 1.0,
     ) -> None:
         """Initialize the TensorVectorizer.
 
@@ -254,6 +259,8 @@ class TensorVectorizer:
                 for a sample after all filtering steps.
             transform_y: Optional transformation to apply to the target tensor.
             channel_pos: Position of the channel dimension in the input tensor. Defaults to 1.
+            in_selection_tool: Optional selection tool to choose the most useful remaining vectors.
+            in_selection_size: Number or fraction of vectors for `in_selection_tool` to keep.
 
         Raises:
             ValueError: If keep, remove and random filters are not having the expected properties.
@@ -292,6 +299,16 @@ class TensorVectorizer:
                 )
 
         self.random = random
+
+        if isinstance(in_selection_size, float):
+            if not 0 < in_selection_size <= 1:
+                raise ValueError(
+                    "'in_selection_size' must be between 0 and 1 included when provided as a float."
+                )
+        elif in_selection_size <= 0:
+            raise ValueError("'in_selection_size' must be greater than 0.")
+        self.in_selection_tool = in_selection_tool
+        self.in_selection_size = in_selection_size
 
         if (
             fusion_strategy is not None
@@ -355,6 +372,15 @@ class TensorVectorizer:
 
             if self.random is not None and len(x_sample) > self.random.filter_count:
                 x_sample = self._apply_filter(self.random.filter, x_sample)
+
+            if self.in_selection_tool is not None:
+                selection_size = self.in_selection_size
+                if isinstance(selection_size, float):
+                    selection_size = max(1, int(len(x_sample) * selection_size))
+                selected_indices = self.in_selection_tool.select(
+                    x_sample, selection_size
+                )
+                x_sample = x_sample[selected_indices]
 
             if len(x_sample) > 1 and self.fusion_strategy is not None:
                 x_sample = GoldEmbeddingFusionTool.fuse_tensors(
