@@ -282,7 +282,7 @@ class GoldSplitter:
     @staticmethod
     def get_split_indices(
         split_data: Table | Dataset,
-        selection_key: str,
+        selection_key: str = "selected",
         idx_key: str = "idx",
         batch_size: int = 1024,
         num_workers: int = 0,

@@ -768,7 +768,7 @@ class GoldClusterizer:
     @staticmethod
     def get_cluster_indices(
         table: Table,
-        cluster_key: str,
+        cluster_key: str = "cluster",
         cluster_idx: int | None = None,
         label_key: str | None = None,
         label_value: str | None = None,

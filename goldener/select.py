@@ -1342,7 +1342,7 @@ class GoldSelector:
     def get_selection_indices(
         table: Table,
         value: str | None,
-        selection_key: str,
+        selection_key: str = "selected",
         label_key: str | None = None,
         label_value: str | None = None,
         idx_key: str = "idx",

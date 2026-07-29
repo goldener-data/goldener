@@ -177,8 +177,8 @@ x_reduced = reducer.fit_transform(x)  # shape: (50, 2)
 
 ## Balancing batches during training
 
-When training with randomly sampled batches, the content distribution within each batch can vary a lot — 
-some batches may end up overrepresenting certain types of data while barely including others. This imbalance 
+When training with randomly sampled batches, the content distribution within each batch can vary a lot —
+some batches may end up overrepresenting certain types of data while barely including others. This imbalance
 can hurt how well a model learns to recognize the underrepresented cases.
 
 Goldener proposes a batch sampler grouping data into groups of similar content, and then drawing samples so each batch is spread across clusters as evenly as possible.
