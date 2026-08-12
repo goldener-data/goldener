@@ -5,7 +5,7 @@ import pytest
 import pixeltable as pxt
 from goldener.pxt_utils import pxt_torch_dataset_collate_fn
 from goldener.vectorize import (
-    TensorVectorizer,
+    GoldTensorVectorizationTool,
     Filter2DWithCount,
     FilterLocation,
     GoldVectorizer,
@@ -15,20 +15,20 @@ from goldener.vectorize import (
 )
 
 
-class TestTensorVectorizer:
+class TestGoldTensorVectorizationTool:
     def make_tensor(self, shape=(2, 5, 2)):
         return torch.randint(0, 100, shape)
 
     def test_vectorize_no_y(self):
         x = self.make_tensor()
-        v = TensorVectorizer()
+        v = GoldTensorVectorizationTool()
         vec = v.vectorize(x)
         assert vec.vectors.shape == (4, 5)
         assert torch.equal(vec.batch_indices, torch.tensor([0, 0, 1, 1]))
 
     def test_vectorize_with_different_channel_pos(self):
         x = self.make_tensor((2, 2, 5))
-        v = TensorVectorizer(channel_pos=2)
+        v = GoldTensorVectorizationTool(channel_pos=2)
         vec = v.vectorize(x)
         assert vec.vectors.shape == (4, 5)
         assert torch.equal(vec.batch_indices, torch.tensor([0, 0, 1, 1]))
@@ -37,7 +37,7 @@ class TestTensorVectorizer:
         x = self.make_tensor()
         y = torch.ones(2, 1, 2)
         y[0, 0, 0] = 0
-        v = TensorVectorizer()
+        v = GoldTensorVectorizationTool()
         vec = v.vectorize(x, y)
         assert vec.vectors.shape == (3, 5)
         assert torch.equal(vec.batch_indices, torch.tensor([0, 1, 1]))
@@ -45,7 +45,7 @@ class TestTensorVectorizer:
     def test_vectorize_with_y_and_full_zero(self):
         x = self.make_tensor((2, 2, 5))
         y = torch.zeros(2, 2)
-        v = TensorVectorizer(channel_pos=2)
+        v = GoldTensorVectorizationTool(channel_pos=2)
         vec = v.vectorize(x, y)
         assert vec.vectors.shape == (4, 5)
 
@@ -54,7 +54,7 @@ class TestTensorVectorizer:
         keep = Filter2DWithCount(
             filter_count=1, filter_location=FilterLocation.START, keep=True
         )
-        v = TensorVectorizer(keep=keep)
+        v = GoldTensorVectorizationTool(keep=keep)
         vec = v.vectorize(x)
         assert vec.vectors.shape == (2, 5)
         assert torch.equal(vec.batch_indices, torch.tensor([0, 1]))
@@ -64,7 +64,7 @@ class TestTensorVectorizer:
         remove = Filter2DWithCount(
             filter_count=1, filter_location=FilterLocation.END, keep=False
         )
-        v = TensorVectorizer(remove=remove)
+        v = GoldTensorVectorizationTool(remove=remove)
         vec = v.vectorize(x)
         assert vec.vectors.shape == (2, 5)
         assert torch.equal(vec.batch_indices, torch.tensor([0, 1]))
@@ -77,14 +77,14 @@ class TestTensorVectorizer:
         remove = Filter2DWithCount(
             filter_count=1, filter_location=FilterLocation.END, keep=False
         )
-        v = TensorVectorizer(keep=keep, remove=remove)
+        v = GoldTensorVectorizationTool(keep=keep, remove=remove)
         vec = v.vectorize(x)
         assert vec.vectors.shape == (2, 5)
         assert torch.equal(vec.batch_indices, torch.tensor([0, 1]))
 
     def test_vectorize_with_random(self):
         x = self.make_tensor()
-        v = TensorVectorizer(
+        v = GoldTensorVectorizationTool(
             random=Filter2DWithCount(
                 filter_count=1, filter_location=FilterLocation.RANDOM, keep=True
             )
@@ -106,7 +106,7 @@ class TestTensorVectorizer:
 
         x = torch.arange(15).reshape(1, 3, 5)
         selection_tool = FirstAndLastSelectionTool()
-        v = TensorVectorizer(
+        v = GoldTensorVectorizationTool(
             in_selection_tool=selection_tool,
             in_selection_size=2,
         )
@@ -127,7 +127,7 @@ class TestTensorVectorizer:
                 return list(range(k))
 
         selection_tool = RecordingSelectionTool()
-        v = TensorVectorizer(
+        v = GoldTensorVectorizationTool(
             random=Filter2DWithCount(
                 filter_count=3,
                 filter_location=FilterLocation.RANDOM,
@@ -146,7 +146,7 @@ class TestTensorVectorizer:
     @pytest.mark.parametrize("size", [0, -1, 0.0, -0.5, 1.5])
     def test_input_selection_size_validation(self, size):
         with pytest.raises(ValueError, match="in_selection_size"):
-            TensorVectorizer(in_selection_size=size)
+            GoldTensorVectorizationTool(in_selection_size=size)
 
     def test_input_selection_accepts_fractional_size(self):
         class RecordingSelectionTool:
@@ -154,7 +154,7 @@ class TestTensorVectorizer:
                 assert k == 2
                 return list(range(k))
 
-        vectorizer = TensorVectorizer(
+        vectorizer = GoldTensorVectorizationTool(
             in_selection_tool=RecordingSelectionTool(), in_selection_size=0.5
         )
 
@@ -173,7 +173,7 @@ class TestTensorVectorizer:
             # Only keep rows where y > 5
             return (y > 5).to(torch.int64)
 
-        v = TensorVectorizer(transform_y=transform_y)
+        v = GoldTensorVectorizationTool(transform_y=transform_y)
         vec = v.vectorize(x, y)
         assert vec.vectors.shape == (2, 5)
         assert torch.equal(vec.batch_indices, torch.tensor([0, 1]))
@@ -181,13 +181,13 @@ class TestTensorVectorizer:
     def test_vectorize_shape_mismatch(self):
         x = self.make_tensor()
         y = torch.ones(2, 1, 3)
-        v = TensorVectorizer()
+        v = GoldTensorVectorizationTool()
         with pytest.raises(ValueError):
             v.vectorize(x, y)
 
     def test_vectorize_2d_input(self):
         x = self.make_tensor((4, 5))
-        v = TensorVectorizer()
+        v = GoldTensorVectorizationTool()
         with pytest.raises(ValueError):
             v.vectorize(x)
 
@@ -199,7 +199,7 @@ class TestTensorVectorizer:
             keep=True,
         )
         with pytest.raises(ValueError, match="keep"):
-            TensorVectorizer(keep=keep)
+            GoldTensorVectorizationTool(keep=keep)
 
     def test_vectorizer_invalid_keep_type_not_keeping(self):
         # keep filter must have keep=True
@@ -209,7 +209,7 @@ class TestTensorVectorizer:
             keep=False,
         )
         with pytest.raises(ValueError, match="keep"):
-            TensorVectorizer(keep=keep)
+            GoldTensorVectorizationTool(keep=keep)
 
     def test_vectorizer_invalid_remove_type_random(self):
         # remove filter cannot be random
@@ -219,7 +219,7 @@ class TestTensorVectorizer:
             keep=False,
         )
         with pytest.raises(ValueError, match="remove"):
-            TensorVectorizer(remove=remove)
+            GoldTensorVectorizationTool(remove=remove)
 
     def test_vectorizer_invalid_remove_type_not_removing(self):
         # remove filter must have keep=False
@@ -229,7 +229,7 @@ class TestTensorVectorizer:
             keep=True,
         )
         with pytest.raises(ValueError, match="remove"):
-            TensorVectorizer(remove=remove)
+            GoldTensorVectorizationTool(remove=remove)
 
     def test_vectorizer_invalid_random_type_not_random(self):
         # random filter must be random
@@ -239,7 +239,7 @@ class TestTensorVectorizer:
             keep=True,
         )
         with pytest.raises(ValueError, match="random"):
-            TensorVectorizer(random=rand)
+            GoldTensorVectorizationTool(random=rand)
 
     def test_vectorizer_invalid_random_type_not_keeping(self):
         # random filter must have keep=True so it selects indices to keep
@@ -249,7 +249,7 @@ class TestTensorVectorizer:
             keep=False,
         )
         with pytest.raises(ValueError, match="random"):
-            TensorVectorizer(random=rand)
+            GoldTensorVectorizationTool(random=rand)
 
     def test_vectorizer_valid_filters_combination(self):
         # Sanity check: valid combination should construct without errors
@@ -268,7 +268,7 @@ class TestTensorVectorizer:
             filter_location=FilterLocation.RANDOM,
             keep=True,
         )
-        v = TensorVectorizer(keep=keep, remove=remove, random=rand)
+        v = GoldTensorVectorizationTool(keep=keep, remove=remove, random=rand)
         x = self.make_tensor()
         _ = v.vectorize(x)
 
@@ -288,7 +288,7 @@ class TestTensorVectorizer:
 
         from goldener.embed import EmbeddingFusionStrategy
 
-        v = TensorVectorizer(fusion_strategy=EmbeddingFusionStrategy.AVERAGE)
+        v = GoldTensorVectorizationTool(fusion_strategy=EmbeddingFusionStrategy.AVERAGE)
         vec = v.vectorize(x)
 
         assert vec.vectors.shape[0] == 2
@@ -465,7 +465,7 @@ class TestGoldVectorizer:
     def test_collate_fn_defaults_to_pxt_torch_dataset_collate_fn(self):
         gv = GoldVectorizer(
             table_path="unit_test.vectorize_default_collate",
-            vectorizer=TensorVectorizer(),
+            vectorizer=GoldTensorVectorizationTool(),
         )
         assert gv.collate_fn is pxt_torch_dataset_collate_fn
 
@@ -474,7 +474,7 @@ class TestGoldVectorizer:
 
         gv = GoldVectorizer(
             table_path="unit_test.vectorize_default_collate",
-            vectorizer=TensorVectorizer(),
+            vectorizer=GoldTensorVectorizationTool(),
             collate_fn=custom_collate_fn,
         )
         assert gv.collate_fn is custom_collate_fn
@@ -502,7 +502,7 @@ class TestGoldVectorizer:
 
         gv = GoldVectorizer(
             table_path="unit_test.vectorize_multilabel",
-            vectorizer=TensorVectorizer(),
+            vectorizer=GoldTensorVectorizationTool(),
             data_key="embeddings",
             label_key="label",
             to_keep_schema={"label": pxt.String},
@@ -526,7 +526,7 @@ class TestGoldVectorizer:
 
         gv = GoldVectorizer(
             table_path=table_path,
-            vectorizer=TensorVectorizer(),
+            vectorizer=GoldTensorVectorizationTool(),
             collate_fn=None,
             data_key="embeddings",
             vectorized_key="vectorized",
@@ -560,7 +560,7 @@ class TestGoldVectorizer:
 
         gv = GoldVectorizer(
             table_path=desc_path,
-            vectorizer=TensorVectorizer(),
+            vectorizer=GoldTensorVectorizationTool(),
             collate_fn=None,
             data_key="embeddings",
             vectorized_key="vectorized",
@@ -602,7 +602,7 @@ class TestGoldVectorizer:
 
         gv = GoldVectorizer(
             table_path=desc_path,
-            vectorizer=TensorVectorizer(),
+            vectorizer=GoldTensorVectorizationTool(),
             collate_fn=None,
             data_key="embeddings",
             vectorized_key="vectorized",
@@ -648,7 +648,7 @@ class TestGoldVectorizer:
 
         gv = GoldVectorizer(
             table_path=desc_path,
-            vectorizer=TensorVectorizer(),
+            vectorizer=GoldTensorVectorizationTool(),
             collate_fn=None,
             data_key="embeddings",
             vectorized_key="vectorized",
@@ -696,7 +696,7 @@ class TestGoldVectorizer:
 
         gv = GoldVectorizer(
             table_path=desc_path,
-            vectorizer=TensorVectorizer(),
+            vectorizer=GoldTensorVectorizationTool(),
             collate_fn=None,
             data_key="embeddings",
             vectorized_key="vectorized",
@@ -747,7 +747,7 @@ class TestGoldVectorizer:
 
         gv = GoldVectorizer(
             table_path=desc_path,
-            vectorizer=TensorVectorizer(),
+            vectorizer=GoldTensorVectorizationTool(),
             collate_fn=None,
             data_key="embeddings",
             vectorized_key="vectorized",
@@ -797,7 +797,7 @@ class TestGoldVectorizer:
 
         gv = GoldVectorizer(
             table_path=desc_path,
-            vectorizer=TensorVectorizer(),
+            vectorizer=GoldTensorVectorizationTool(),
             collate_fn=None,
             data_key="embeddings",
             vectorized_key="vectorized",
@@ -825,7 +825,7 @@ class TestGoldVectorizer:
 
         gv = GoldVectorizer(
             table_path="unit_test.vectorize",
-            vectorizer=TensorVectorizer(),
+            vectorizer=GoldTensorVectorizationTool(),
             collate_fn=collate_fn,
             data_key="embeddings",
             vectorized_key="vectorized",
@@ -852,7 +852,7 @@ class TestGoldVectorizer:
     ):
         gv = GoldVectorizer(
             table_path="unit_test.vectorize",
-            vectorizer=TensorVectorizer(),
+            vectorizer=GoldTensorVectorizationTool(),
             collate_fn=lambda x: [d["embeddings"] for d in x],
             data_key="embeddings",
             vectorized_key="vectorized",
@@ -868,7 +868,7 @@ class TestGoldVectorizer:
     ):
         gv = GoldVectorizer(
             table_path="unit_test.vectorize",
-            vectorizer=TensorVectorizer(),
+            vectorizer=GoldTensorVectorizationTool(),
             collate_fn=None,
             data_key="not_present",
             vectorized_key="vectorized",
@@ -884,7 +884,7 @@ class TestGoldVectorizer:
     ):
         gv = GoldVectorizer(
             table_path="unit_test.vectorize",
-            vectorizer=TensorVectorizer(),
+            vectorizer=GoldTensorVectorizationTool(),
             collate_fn=None,
             data_key="embeddings",
             vectorized_key="vectorized",
@@ -908,7 +908,7 @@ class TestGoldVectorizer:
 
         gv = GoldVectorizer(
             table_path=table_path,
-            vectorizer=TensorVectorizer(),
+            vectorizer=GoldTensorVectorizationTool(),
             collate_fn=None,
             data_key="embeddings",
             vectorized_key="vectorized",
@@ -941,7 +941,7 @@ class TestGoldVectorizer:
 
         gv = GoldVectorizer(
             table_path=desc_path,
-            vectorizer=TensorVectorizer(),
+            vectorizer=GoldTensorVectorizationTool(),
             collate_fn=None,
             data_key="embeddings",
             vectorized_key="vectorized",
@@ -965,7 +965,7 @@ class TestGoldVectorizer:
     ):
         gv = GoldVectorizer(
             table_path="unit_test.vectorize",
-            vectorizer=TensorVectorizer(),
+            vectorizer=GoldTensorVectorizationTool(),
             collate_fn=None,
             data_key="embeddings",
             vectorized_key="vectorized",
@@ -994,7 +994,7 @@ class TestGoldVectorizer:
     ):
         gv = GoldVectorizer(
             table_path="unit_test.vectorize",
-            vectorizer=TensorVectorizer(),
+            vectorizer=GoldTensorVectorizationTool(),
             collate_fn=None,
             data_key="embeddings",
             vectorized_key="vectorized",
@@ -1066,8 +1066,8 @@ class TestUnwrapVectorsInBatch:
 
 
 @pytest.fixture
-def vectorizer() -> TensorVectorizer:
-    return TensorVectorizer(channel_pos=2)
+def vectorizer() -> GoldTensorVectorizationTool:
+    return GoldTensorVectorizationTool(channel_pos=2)
 
 
 class TestVectorizeAndUnwrapInBatch:

@@ -222,7 +222,7 @@ class Vectorized:
     batch_indices: torch.Tensor
 
 
-class TensorVectorizer:
+class GoldTensorVectorizationTool:
     """Transform input as 2D tensor and filter based on target tensor.
 
     Attributes:
@@ -249,7 +249,7 @@ class TensorVectorizer:
         in_selection_tool: GoldSelectionTool | None = None,
         in_selection_size: int | float = 1.0,
     ) -> None:
-        """Initialize the TensorVectorizer.
+        """Initialize the GoldTensorVectorizationTool.
 
         Args:
             keep: Optional filter to keep specific rows in the input.
@@ -315,7 +315,7 @@ class TensorVectorizer:
             and fusion_strategy is EmbeddingFusionStrategy.CONCAT
         ):
             raise ValueError(
-                "The CONCAT fusion strategy is not supported in TensorVectorizer because "
+                "The CONCAT fusion strategy is not supported in GoldTensorVectorizationTool because "
                 "it does not preserve the original vector size"
             )
         self.fusion_strategy = fusion_strategy
@@ -456,7 +456,7 @@ class GoldVectorizer:
     """Extract and flatten vectors from dataset samples and store results in a PixelTable table.
 
     The GoldVectorizer processes a dataset or PixelTable table to extract and flatten vectors using a
-    `TensorVectorizer`. The computed vectors are stored in a local PixelTable table
+    `GoldTensorVectorizationTool`. The computed vectors are stored in a local PixelTable table
     (specified by `table_path`) so that the vectorization process is idempotent: calling the
     same operation multiple times will not duplicate or recompute vectors that are already
     present in the table.
@@ -471,7 +471,7 @@ class GoldVectorizer:
 
     Attributes:
         table_path: Path to the PixelTable table where vectorized outputs will be stored locally.
-        vectorizer: TensorVectorizer instance for transforming batched inputs into vectors.
+        vectorizer: GoldTensorVectorizationTool instance for transforming batched inputs into vectors.
         collate_fn: Optional function to collate dataset samples into batches composed of
             dictionaries with at least the key specified by `data_key` returning a PyTorch Tensor.
             If None, `pxt_torch_dataset_collate_fn` is used, which preserves list-valued
@@ -505,7 +505,7 @@ class GoldVectorizer:
     def __init__(
         self,
         table_path: str,
-        vectorizer: TensorVectorizer,
+        vectorizer: GoldTensorVectorizationTool,
         collate_fn: Callable | None = None,
         data_key: str = "embeddings",
         target_key: str = "target",
@@ -528,7 +528,7 @@ class GoldVectorizer:
 
         Args:
             table_path: Path to the PixelTable table for storing vectors.
-            vectorizer: TensorVectorizer instance for transforming tensors.
+            vectorizer: GoldTensorVectorizationTool instance for transforming tensors.
             collate_fn: Optional collate function for preparing batches.
                 If None, `pxt_torch_dataset_collate_fn` is used.
             data_key: Key for data in the batch dictionary. Defaults to "embeddings".
@@ -578,7 +578,7 @@ class GoldVectorizer:
         """Extract and flatten vectors from samples and return results as a GoldPxtTorchDataset.
 
         The vectorization process extracts and flattens vectors from the provided dataset or table
-        using the `TensorVectorizer` instance and stores them in a PixelTable table specified by `table_path`.
+        using the `GoldTensorVectorizationTool` instance and stores them in a PixelTable table specified by `table_path`.
         The resulting vectors are stored in the column specified by `vectorized_key`.
 
         This is a convenience wrapper that runs `vectorize_in_table` to populate
@@ -612,7 +612,7 @@ class GoldVectorizer:
         """Extract and flatten vectors from samples and store results in a PixelTable table.
 
         The vectorization process extracts and flattens vectors from the provided dataset or table
-        using the `TensorVectorizer` instance and stores them in a PixelTable table specified by `table_path`.
+        using the `GoldTensorVectorizationTool` instance and stores them in a PixelTable table specified by `table_path`.
         The resulting vectors are stored in the column specified by `vectorized_key`.
 
         This method is idempotent (i.e., failure proof), meaning that if it is called
@@ -830,7 +830,7 @@ class GoldVectorizer:
         """Run sequential (single-process) vectorization process.
 
         This private method processes the dataset in batches, applies vectorization using
-        the TensorVectorizer, and stores the results in the vectorized table. It is idempotent
+        the GoldTensorVectorizationTool, and stores the results in the vectorized table. It is idempotent
         and will skip samples that have already been vectorized.
 
         Args:
@@ -1033,7 +1033,7 @@ def unwrap_vectors_in_batch(
 
 def vectorize_and_unwrap_in_batch(
     batch: dict[str, Any],
-    vectorizer: TensorVectorizer,
+    vectorizer: GoldTensorVectorizationTool,
     data_key: str,
     vectorized_key: str,
     target_key: str | None = None,
@@ -1048,11 +1048,11 @@ def vectorize_and_unwrap_in_batch(
     """Vectorize a batch and insert the results into a PixelTable table.
 
     This function vectorizes the data in the provided batch using the specified
-    TensorVectorizer and inserts the resulting vectors into the given PixelTable table.
+    GoldTensorVectorizationTool and inserts the resulting vectors into the given PixelTable table.
 
     Args:
         batch: The batch dictionary containing data to vectorize.
-        vectorizer: The TensorVectorizer instance to use for vectorization.
+        vectorizer: The GoldTensorVectorizationTool instance to use for vectorization.
         data_key: Key in the batch dictionary that contains the data to vectorize.
         vectorized_key: Column name to store the resulting vectors in the PixelTable table.
         target_key: Optional key in the batch dictionary containing the target used to filter vectors.

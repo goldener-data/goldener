@@ -9,7 +9,7 @@ import pixeltable as pxt
 from goldener.describe import GoldDescriptor
 from goldener.embed import GoldTorchEmbeddingToolConfig, GoldTorchEmbeddingTool
 from goldener.pxt_utils import pxt_torch_dataset_collate_fn
-from goldener.vectorize import TensorVectorizer
+from goldener.vectorize import GoldTensorVectorizationTool
 
 
 class DummyModel(torch.nn.Module):
@@ -33,7 +33,7 @@ def embedder():
 
 @pytest.fixture
 def vectorizer():
-    return TensorVectorizer()
+    return GoldTensorVectorizationTool()
 
 
 class DummyDataset:
@@ -785,7 +785,7 @@ class TestGoldDescriptor:
         desc = GoldDescriptor(
             table_path="unit_test.test_describe",
             embedder=embedder,
-            vectorizer=TensorVectorizer(),
+            vectorizer=GoldTensorVectorizationTool(),
             batch_size=2,
             collate_fn=None,
             device=torch.device("cpu"),

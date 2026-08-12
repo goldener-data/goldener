@@ -2,12 +2,16 @@ from typing import Callable
 
 import torch
 
-from goldener.vectorize import TensorVectorizer, Filter2DWithCount, FilterLocation
+from goldener.vectorize import (
+    GoldTensorVectorizationTool,
+    Filter2DWithCount,
+    FilterLocation,
+)
 
 
-def get_vit_class_token_vectorizer() -> TensorVectorizer:
-    """Get a TensorVectorizer that keeps only the class token from a ViT model."""
-    return TensorVectorizer(
+def get_vit_class_token_vectorizer() -> GoldTensorVectorizationTool:
+    """Get a GoldTensorVectorizationTool that keeps only the class token from a ViT model."""
+    return GoldTensorVectorizationTool(
         keep=Filter2DWithCount(
             filter_count=1, keep=True, filter_location=FilterLocation.START
         ),
@@ -15,8 +19,10 @@ def get_vit_class_token_vectorizer() -> TensorVectorizer:
     )
 
 
-def get_vit_prefix_tokens_vectorizer(n_prefixes: int = 5) -> TensorVectorizer:
-    """Get a TensorVectorizer that keeps the first n_prefixes tokens from a ViT model.
+def get_vit_prefix_tokens_vectorizer(
+    n_prefixes: int = 5,
+) -> GoldTensorVectorizationTool:
+    """Get a GoldTensorVectorizationTool that keeps the first n_prefixes tokens from a ViT model.
 
     Args:
         n_prefixes: The number of prefix tokens to keep (default is 5).
@@ -24,7 +30,7 @@ def get_vit_prefix_tokens_vectorizer(n_prefixes: int = 5) -> TensorVectorizer:
     if n_prefixes <= 0:
         raise ValueError("n_prefixes must be a positive integer")
 
-    return TensorVectorizer(
+    return GoldTensorVectorizationTool(
         keep=Filter2DWithCount(
             filter_count=n_prefixes, keep=True, filter_location=FilterLocation.START
         ),
@@ -37,8 +43,8 @@ def get_vit_patch_tokens_vectorizer(
     n_random: int | None = None,
     transform_y: Callable[[torch.Tensor], torch.Tensor] | None = None,
     generator: torch.Generator | None = None,
-) -> TensorVectorizer:
-    """Get a TensorVectorizer that keeps the patch tokens from a ViT model
+) -> GoldTensorVectorizationTool:
+    """Get a GoldTensorVectorizationTool that keeps the patch tokens from a ViT model
 
     It optionally removes the first n_prefixes tokens and keeps n_random random tokens.
 
@@ -56,7 +62,7 @@ def get_vit_patch_tokens_vectorizer(
     if n_random is not None and n_random <= 0:
         raise ValueError("n_random must be a positive integer or None")
 
-    return TensorVectorizer(
+    return GoldTensorVectorizationTool(
         remove=(
             Filter2DWithCount(
                 filter_count=n_prefixes,

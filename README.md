@@ -70,7 +70,7 @@ from goldener import (
     GoldDescriptor,
     GoldTorchEmbeddingTool,
     GoldTorchEmbeddingToolConfig,
-    TensorVectorizer,
+    GoldTensorVectorizationTool,
 )
 
 gd = GoldDescriptor(
@@ -81,7 +81,7 @@ gd = GoldDescriptor(
             layers=my_layers,
         )
     ),
-    vectorizer=TensorVectorizer()
+    vectorizer=GoldTensorVectorizationTool()
 )
 
 gs = GoldSelector(
@@ -138,7 +138,7 @@ from goldener import (
     GoldDescriptor,
     GoldTorchEmbeddingTool,
     GoldTorchEmbeddingToolConfig,
-    TensorVectorizer,
+    GoldTensorVectorizationTool,
 )
 from sklearn.cluster import KMeans
 

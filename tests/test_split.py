@@ -10,7 +10,7 @@ from goldener.describe import GoldDescriptor
 from goldener.embed import GoldTorchEmbeddingToolConfig, GoldTorchEmbeddingTool
 from goldener.pxt_utils import pxt_torch_dataset_collate_fn
 from goldener.split import GoldSplitter, GoldSet, check_sets_validity
-from goldener.vectorize import TensorVectorizer, GoldVectorizer
+from goldener.vectorize import GoldTensorVectorizationTool, GoldVectorizer
 from goldener.select import GoldSelector
 
 
@@ -71,7 +71,7 @@ def selector():
 def vectorizer():
     return GoldVectorizer(
         table_path="unit_test.vectorizer_split",
-        vectorizer=TensorVectorizer(),
+        vectorizer=GoldTensorVectorizationTool(),
         to_keep_schema={"label": pxt.String},
         collate_fn=pxt_torch_dataset_collate_fn,
         batch_size=2,
@@ -603,7 +603,7 @@ class TestGoldSplitter:
         descriptor = GoldDescriptor(
             table_path="unit_test.descriptor_split",
             embedder=embedder,
-            vectorizer=TensorVectorizer(),
+            vectorizer=GoldTensorVectorizationTool(),
             description_key="vectorized",
             batch_size=2,
             collate_fn=None,

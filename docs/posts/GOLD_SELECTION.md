@@ -21,7 +21,7 @@ embedder_config = GoldTorchEmbeddingToolConfig(
     channel_pos=1,
 )
 embedder = GoldTorchEmbeddingTool(embedder_config)
-vectorizer = TensorVectorizer(
+vectorizer = GoldTensorVectorizationTool(
     keep=Filter2DWithCount(
         filter_count=1,
         filter_location=FilterLocation.START,
@@ -92,7 +92,7 @@ embedder_config = GoldTorchEmbeddingToolConfig(
     channel_pos=1,
 )
 embedder = GoldTorchEmbeddingTool(embedder_config)
-vectorizer = TensorVectorizer(
+vectorizer = GoldTensorVectorizationTool(
     keep=Filter2DWithCount(
         filter_count=1,
         filter_location=FilterLocation.START,

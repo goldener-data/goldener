@@ -22,7 +22,10 @@ from goldener.pxt_utils import (
 )
 from goldener.torch_utils import get_dataset_sample_dict
 from goldener.utils import filter_batch_from_indices
-from goldener.vectorize import TensorVectorizer, vectorize_and_unwrap_in_batch
+from goldener.vectorize import (
+    GoldTensorVectorizationTool,
+    vectorize_and_unwrap_in_batch,
+)
 
 logger = getLogger(__name__)
 
@@ -47,7 +50,7 @@ class GoldDescriptor:
     Attributes:
         table_path: Path to the PixelTable table where descriptions will be saved locally.
         embedder: GoldEmbeddingTool instance for embedding the data.
-        vectorizer: Optional TensorVectorizer to further vectorize the computed embeddings
+        vectorizer: Optional GoldTensorVectorizationTool to further vectorize the computed embeddings
             before storing them in the table.
         transform: Optional transformation to apply to the data before embedding computation if not already
             applied by the `collate_fn`.
@@ -89,7 +92,7 @@ class GoldDescriptor:
         self,
         table_path: str,
         embedder: GoldEmbeddingTool,
-        vectorizer: TensorVectorizer | None = None,
+        vectorizer: GoldTensorVectorizationTool | None = None,
         transform: Callable | None = None,
         collate_fn: Callable | None = None,
         data_key: str = "data",
@@ -116,7 +119,7 @@ class GoldDescriptor:
         Args:
             table_path: Path to the PixelTable table where descriptions will be saved.
             embedder: GoldEmbeddingTool instance for embedding data.
-            vectorizer: Optional TensorVectorizer to further vectorize the computed embeddings.
+            vectorizer: Optional GoldTensorVectorizationTool to further vectorize the computed embeddings.
             transform: Optional transformation to apply before embedding computation.
             collate_fn: Optional function to collate dataset samples into batches.
                 If None, `pxt_torch_dataset_collate_fn` is used.
