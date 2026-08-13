@@ -36,7 +36,7 @@ from goldener.vectorize import (
     Filter2DWithCount,
     FilterLocation,
     Vectorized,
-    TensorVectorizer,
+    GoldTensorVectorizationTool,
 )
 
 
@@ -69,5 +69,5 @@ __all__ = (
     "Filter2DWithCount",
     "FilterLocation",
     "Vectorized",
-    "TensorVectorizer",
+    "GoldTensorVectorizationTool",
 )

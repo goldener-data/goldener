@@ -16,7 +16,7 @@ from goldener.organize import (
     get_indices_per_cluster_for_subset,
 )
 from goldener.pxt_utils import pxt_torch_dataset_collate_fn
-from goldener.vectorize import GoldVectorizer, TensorVectorizer
+from goldener.vectorize import GoldVectorizer, GoldTensorVectorizationTool
 
 
 class DummyDataset(Dataset):
@@ -53,7 +53,7 @@ def descriptor():
 def vectorizer():
     return GoldVectorizer(
         table_path="unit_test.vectorizer_batcher",
-        vectorizer=TensorVectorizer(),
+        vectorizer=GoldTensorVectorizationTool(),
         collate_fn=pxt_torch_dataset_collate_fn,
         batch_size=2,
     )

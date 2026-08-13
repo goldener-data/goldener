@@ -21,7 +21,7 @@ embedder_config = GoldTorchEmbeddingToolConfig(
     channel_pos=1,
 )
 embedder = GoldTorchEmbeddingTool(embedder_config)
-vectorizer = TensorVectorizer(
+vectorizer = GoldTensorVectorizationTool(
     keep=Filter2DWithCount(
         filter_count=1,
         filter_location=FilterLocation.START,
@@ -137,11 +137,11 @@ The main entry point in the code is [GoldVectorizer](https://github.com/goldener
 Depending on the input data and the model, the `Description` of each sample might be a multidimensions tensor instead of a single vector (a feature map from an image, temporal evolution description from a signal, among others). In [Goldener](https://github.com/goldener-data/goldener), the selection tools are designed to process vectors, this makes them input type/task agnostic. Thus, Goldener proposes a `GoldVectorizer` in order to move from a batch of tensors to a list of vectors.
 
 The [Goldener](https://github.com/goldener-data/goldener) orchestrating the vectorization of a full dataset is `GoldVectorizer`.
-Its main building block is the `TensorVectorizer` which vectorizes its input regardless of the tensor shape. Within the input tensor, some vectors can be selected or ignored from the `keep`, `remove`, `random` attributes. Furthermore, when more than one vector is still present in the description of a sample, the remaining vectors can be aggregated together (same possibilities as for the layers). Finally, depending on the task and dataset, some local annotations might be available. Then, the vectorizer can use this information to restrict the focus of the description on the specific annotated elements. If the annotation is required to be adapted to the description scale, the user can specify a specific transform in order to adapt the annotation.
+Its main building block is the `GoldTensorVectorizationTool` which vectorizes its input regardless of the tensor shape. Within the input tensor, some vectors can be selected or ignored from the `keep`, `remove`, `random` attributes. Furthermore, when more than one vector is still present in the description of a sample, the remaining vectors can be aggregated together (same possibilities as for the layers). Finally, depending on the task and dataset, some local annotations might be available. Then, the vectorizer can use this information to restrict the focus of the description on the specific annotated elements. If the annotation is required to be adapted to the description scale, the user can specify a specific transform in order to adapt the annotation.
 
 In [Goldener](https://github.com/goldener-data/goldener), `GoldVectorizer` is callable from either a PyTorch `Dataset` or Pixeltable `Table`. If a `Dataset` is provided, each sample is expected to be accessible as a dictionary containing the keys defined in `data_key`, `target_key`, and `label_key` attributes (if it is not initially in this format, a custom collate function must be provided). The input data is processed sequentially batch by batch using a PyTorch `DataLoader`. At the end of its task, the `GoldVectorizer` returns a PyTorch `Dataset` via `vectorize_in_dataset` or a Pixeltable `Table` via `vectorize_in_table`. At the end, the vectors are stored within the column defined by the `vectorized_key` attribute. The output also includes the `idx` and `idx_vector` fields, with `idx` storing the index of the sample and `idx_vector` the index of the vector (a sample might be described by multiple vectors).
 
-When the `Description` is not yet available and the processing pipeline requires the data to be vectorized, it is advised to instantiate the `TensorVectorizer` in the `GoldDescriptor` object of [Goldener](https://github.com/goldener-data/goldener). It avoids making new iterations with data loading and storage actions, and finally makes the whole operation faster.
+When the `Description` is not yet available and the processing pipeline requires the data to be vectorized, it is advised to instantiate the `GoldTensorVectorizationTool` in the `GoldDescriptor` object of [Goldener](https://github.com/goldener-data/goldener). It avoids making new iterations with data loading and storage actions, and finally makes the whole operation faster.
 
 ```python
 # Create a vectorizer to split the samples as vectors
@@ -151,7 +151,7 @@ keep = Filter2DWithCount(
     filter_location=FilterLocation.START,
     keep=True,
 )
-vectorizer = TensorVectorizer(
+vectorizer = GoldTensorVectorizationTool(
     keep=keep,
     fusion_strategy=EmbeddingFusionStrategy.AVERAGE,
     transform_y=None,

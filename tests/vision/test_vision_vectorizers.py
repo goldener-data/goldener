@@ -7,7 +7,11 @@ from goldener.vision.vectorizers import (
     get_vit_prefix_tokens_vectorizer,
     get_vit_patch_tokens_vectorizer,
 )
-from goldener.vectorize import TensorVectorizer, Filter2DWithCount, FilterLocation
+from goldener.vectorize import (
+    GoldTensorVectorizationTool,
+    Filter2DWithCount,
+    FilterLocation,
+)
 
 
 class TestVitVectorizerHelpers:
@@ -26,7 +30,7 @@ class TestVitVectorizerHelpers:
     def test_get_vit_prefix_tokens_vectorizer_default(self):
         x = self.make_tensor((2, 6, 4))
         vec = get_vit_prefix_tokens_vectorizer(n_prefixes=5)
-        assert isinstance(vec, TensorVectorizer)
+        assert isinstance(vec, GoldTensorVectorizationTool)
 
         out = vec.vectorize(x)
         assert out.vectors.shape[0] == x.shape[0] * 5
@@ -86,7 +90,7 @@ class TestVitVectorizerHelpers:
             filter_location=FilterLocation.RANDOM,
             generator=generator,
         )
-        vec = TensorVectorizer(remove=remove, random=rand, channel_pos=2)
+        vec = GoldTensorVectorizationTool(remove=remove, random=rand, channel_pos=2)
 
         out = vec.vectorize(x)
         assert out.vectors.shape[0] == x.shape[0] * 3
