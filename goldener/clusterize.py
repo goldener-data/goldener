@@ -943,30 +943,11 @@ class GoldClusterizer:
             )
             return
 
-        if self.chunk is None or self.chunk >= len(to_cluster_vector_indices):
-            chunk_assignment = [
-                to_cluster_vector_indices,
-            ]
-        else:
-            chunk_count = math.ceil(available_for_clustering / self.chunk)
-            random_assignment = (
-                GoldRandomClusteringTool(random_state=self.random_state)
-                .fit(
-                    torch.empty(
-                        available_for_clustering, 1
-                    ),  # dummy input for random clustering
-                    chunk_count,
-                )
-                .tolist()
-            )
-            chunk_assignment = [
-                [
-                    vector_idx
-                    for vect_pos, vector_idx in enumerate(to_cluster_vector_indices)
-                    if random_assignment[vect_pos] == chunk_idx
-                ]
-                for chunk_idx in range(chunk_count)
-            ]
+        chunk_assignment = get_random_chunk_assignment(
+            to_chunk=to_cluster_vector_indices,
+            max_chunk_size=self.chunk,
+            random_state=self.random_state,
+        )
 
         for chunk_indices in chunk_assignment:
             to_cluster_from = cluster_from.where(
