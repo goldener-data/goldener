@@ -20,7 +20,7 @@ A Python library orchestrating data during the full life cycle of Machine Learni
 # Overview
 
 Goldener is an **open-source Python library** (Apache 2 licence) designed to manage the **orchestration
-of data** (sampling, splitting) during the full life cycle of Machine Learning (ML) pipelines.
+of data** during the full life cycle of Machine Learning (ML) pipelines.
 
 In the artificial intelligence (AI) era, the data is the new gold. Being able to collect it is already something
 but **creating value from it is the real challenge**. Goldener is designed to help to make the most of the available data.
@@ -28,12 +28,12 @@ It provides tools to orchestrate data during the full life cycle of Machine Lear
 from the training phase to the monitoring phase.
 
 Goldener makes the **right data** available at the **right time**, allowing to **optimize the performance**
-of any ML pipelines while **minimizing the costs** (time, performance, computing resources) of data sampling and labeling.
+of any ML pipelines while **minimizing the costs** (time, performance, computing resources).
 
-When it's time to annotate data, Goldener find the most representative subset to annotate. During annotation, it can help
+When it's time to annotate data, Goldener finds the most representative subset to annotate. During annotation, it can help
 to define annotation guidelines by spotting specific cases or as well run annotation quality checks.
 Once enough data is annotated, Goldener can split it in multiple sets (train, validation, test) ensuring the reproduction
-of the task variability. During the training phase, Goldener can balance efficiently the data
+of the task variability. During the training phase, Goldener can efficiently balance the data
 to optimize the training time and the model performance. Finally, when the model is deployed, Goldener can find
 the most informative data to monitor the model performance and detect any drift in the data distribution.
 
@@ -49,7 +49,7 @@ the different for different tasks (selection, splitting, monitoring, etc.).
 - **Modality-agnostic**: The same tool is actionable for any data modalities (text, image, video, tabular, etc.)
 and even for multimodality data.
 
-This is not yet applied but for the next iterations, the following principles will be as well followed:
+This is not yet applied, but for the next iterations, the following principles will be as well followed:
 
 - **Distributed first**: Any task can be distributed across multiple machines.
 - **On demand access to pipelines**: All processing pipelines are serializable.
