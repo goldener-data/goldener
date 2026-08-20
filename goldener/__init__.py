@@ -15,6 +15,7 @@ from goldener.embed import (
     GoldTorchEmbeddingToolConfig,
     GoldMultiModalTorchEmbeddingTool,
 )
+from goldener.organize import GoldClusterizedBatchSampler
 from goldener.pxt_utils import GoldPxtTorchDataset
 from goldener.reduce import (
     GoldReductionTool,
@@ -52,6 +53,7 @@ __all__ = (
     "GoldTorchEmbeddingTool",
     "GoldTorchEmbeddingToolConfig",
     "GoldMultiModalTorchEmbeddingTool",
+    "GoldClusterizedBatchSampler",
     "GoldPxtTorchDataset",
     "GoldReductionTool",
     "GoldReductionToolWithFit",
