@@ -571,6 +571,20 @@ class GoldVectorizer:
         self.drop_table = drop_table
         self.max_batches = max_batches
 
+    @property
+    def distribute(self) -> bool:
+        """Whether distributed processing is enabled."""
+        return self._distribute
+
+    @distribute.setter
+    def distribute(self, value: bool) -> None:
+        """Set whether distributed processing is enabled."""
+        if value:
+            raise NotImplementedError(
+                "Distributed processing is not implemented for GoldVectorizer."
+            )
+        self._distribute = value
+
     def vectorize_in_dataset(
         self,
         to_vectorize: Dataset | Table,

@@ -105,6 +105,7 @@ class GoldSplitter:
         n_clusters: Number of clusters to use for clusterized selection (if clusterizer is provided).
         in_described_table: Whether to return the splitting in the described table or the selected table.
         allow_existing: Whether to allow existing tables in all components.
+        distribute: Whether to use distributed processing. Not implemented yet. Defaults to False.
         drop_table: Whether to drop intermediate tables. Defaults to False.
         max_batches: Optional maximum number of batches to process in both descriptor and selector. Useful for testing on a small subset of the dataset.
     """
@@ -119,6 +120,7 @@ class GoldSplitter:
         n_clusters: int = 0,
         in_described_table: bool = False,
         allow_existing: bool = True,
+        distribute: bool = False,
         drop_table: bool = False,
         max_batches: int | None = None,
     ) -> None:
@@ -134,6 +136,7 @@ class GoldSplitter:
             n_clusters: Number of clusters to use for clusterized selection (if clusterizer is provided).
             in_described_table: Whether to return the splitting in the described table or the selected table.
             allow_existing: Whether to allow existing tables in all components.
+            distribute: Whether to use distributed processing. Defaults to False.
             drop_table: Whether to drop intermediate tables. Defaults to False.
             max_batches: Optional maximum number of batches to process for the selection.
             Useful for testing on a small subset of the dataset.
@@ -145,6 +148,7 @@ class GoldSplitter:
             ValueError: If `descriptor.description_key` does not match `selector.vectorized_key` (when no vectorizer).
             ValueError: If `clusterizer.vectorized_key` does not match `selector.vectorized_key`.
             ValueError: If the `sets` configuration is invalid (for example, invalid sum of sizes/ratios or duplicate set names).
+            NotImplementedError: If `distribute` is True.
         """
         if descriptor is None and in_described_table:
             raise ValueError(
@@ -206,7 +210,22 @@ class GoldSplitter:
         self.drop_table = drop_table
         self._max_batches = max_batches
         self.allow_existing = allow_existing
+        self.distribute = distribute
         self.max_batches = max_batches
+
+    @property
+    def distribute(self) -> bool:
+        """Whether distributed processing is enabled."""
+        return self._distribute
+
+    @distribute.setter
+    def distribute(self, value: bool) -> None:
+        """Set whether distributed processing is enabled."""
+        if value:
+            raise NotImplementedError(
+                "Distributed processing is not implemented for GoldSplitter."
+            )
+        self._distribute = value
 
     @property
     def max_batches(self) -> int | None:

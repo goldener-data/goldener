@@ -49,6 +49,21 @@ class TestGoldSelector:
     def teardown_method(self):
         pxt.drop_dir("unit_test", force=True)
 
+    def test_distribute_cannot_be_enabled(self):
+        error = "Distributed processing is not implemented for GoldSelector"
+        with pytest.raises(NotImplementedError, match=error):
+            GoldSelector(
+                table_path="unit_test.test_distribute",
+                distribute=True,
+            )
+
+        selector = GoldSelector(table_path="unit_test.test_distribute")
+        assert selector.distribute is False
+
+        with pytest.raises(NotImplementedError, match=error):
+            selector.distribute = True
+        assert selector.distribute is False
+
     def test_collate_fn_defaults_to_pxt_torch_dataset_collate_fn(self):
         selector = GoldSelector(table_path="unit_test.select_default_collate")
         assert selector.collate_fn is pxt_torch_dataset_collate_fn

@@ -335,6 +335,20 @@ class GoldClusterizer:
         self.max_batches = max_batches
         self.random_state = random_state
 
+    @property
+    def distribute(self) -> bool:
+        """Whether distributed processing is enabled."""
+        return self._distribute
+
+    @distribute.setter
+    def distribute(self, value: bool) -> None:
+        """Set whether distributed processing is enabled."""
+        if value:
+            raise NotImplementedError(
+                "Distributed processing is not implemented for GoldClusterizer."
+            )
+        self._distribute = value
+
     def cluster_in_dataset(
         self, cluster_from: Dataset | Table, n_clusters: int
     ) -> GoldPxtTorchDataset:

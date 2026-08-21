@@ -756,6 +756,20 @@ class GoldSelector:
         self.max_batches = max_batches
         self.random_state = random_state
 
+    @property
+    def distribute(self) -> bool:
+        """Whether distributed processing is enabled."""
+        return self._distribute
+
+    @distribute.setter
+    def distribute(self, value: bool) -> None:
+        """Set whether distributed processing is enabled."""
+        if value:
+            raise NotImplementedError(
+                "Distributed processing is not implemented for GoldSelector."
+            )
+        self._distribute = value
+
     def setup_selection_table(self, select_from: Dataset | Table) -> Table:
         """Set up the selection table based on the source dataset or table.
 

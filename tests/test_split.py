@@ -94,6 +94,19 @@ class TestGoldSplitter:
     def teardown_method(self):
         pxt.drop_dir("unit_test", force=True)
 
+    def test_distribute_cannot_be_enabled(self, selector):
+        sets = [GoldSet(name="train", size=0.5), GoldSet(name="val", size=0.5)]
+        error = "Distributed processing is not implemented for GoldSplitter"
+        with pytest.raises(NotImplementedError, match=error):
+            GoldSplitter(sets=sets, selector=selector, distribute=True)
+
+        splitter = GoldSplitter(sets=sets, selector=selector)
+        assert splitter.distribute is False
+
+        with pytest.raises(NotImplementedError, match=error):
+            splitter.distribute = True
+        assert splitter.distribute is False
+
     def test_get_split_indices_from_dataset_with_default_collate_fn(self):
         splitted = GoldSplitter.get_split_indices(
             DummyDataset(

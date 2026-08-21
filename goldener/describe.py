@@ -173,6 +173,20 @@ class GoldDescriptor:
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.device = device
 
+    @property
+    def distribute(self) -> bool:
+        """Whether distributed processing is enabled."""
+        return self._distribute
+
+    @distribute.setter
+    def distribute(self, value: bool) -> None:
+        """Set whether distributed processing is enabled."""
+        if value:
+            raise NotImplementedError(
+                "Distributed processing is not implemented for GoldDescriptor."
+            )
+        self._distribute = value
+
     def describe_in_dataset(
         self,
         to_describe: Dataset | Table,
