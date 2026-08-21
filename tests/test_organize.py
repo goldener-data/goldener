@@ -6,13 +6,13 @@ import pixeltable as pxt
 from goldener import (
     GoldDescriptor,
     GoldClusterizer,
+    GoldClusterizedBatchSampler,
     GoldClusteringTool,
     GoldTorchEmbeddingToolConfig,
     GoldTorchEmbeddingTool,
 )
 from goldener.organize import (
     ExhaustedClusterStrategy,
-    GoldClusterizedBatchSampler,
     get_indices_per_cluster_for_subset,
 )
 from goldener.pxt_utils import pxt_torch_dataset_collate_fn
