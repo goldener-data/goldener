@@ -751,7 +751,11 @@ class GoldSelector:
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.allow_existing = allow_existing
-        self.distribute = distribute
+        if distribute:
+            raise NotImplementedError(
+                "Distributed processing is not implemented for GoldSelector."
+            )
+        self._distribute = distribute
         self.drop_table = drop_table
         self.max_batches = max_batches
         self.random_state = random_state
