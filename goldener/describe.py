@@ -143,6 +143,9 @@ class GoldDescriptor:
             drop_table: Whether to drop the table after dataset creation. Defaults to False.
             device: Torch device for embedding computation. Auto-detected if None.
             max_batches: Optional maximum number of batches to process.
+
+        Raises:
+            NotImplementedError: If `distribute` is True.
         """
         self.table_path = table_path
         self.embedder = embedder

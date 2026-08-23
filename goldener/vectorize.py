@@ -548,6 +548,9 @@ class GoldVectorizer:
             distribute: Whether to use distributed processing. Defaults to False.
             drop_table: Whether to drop the table after dataset creation. Defaults to False.
             max_batches: Optional maximum number of batches to process.
+
+        Raises:
+            NotImplementedError: If `distribute` is True.
         """
         self.table_path = table_path
         self.vectorizer = vectorizer

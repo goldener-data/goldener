@@ -311,6 +311,7 @@ class GoldClusterizer:
 
         Raises:
             ValueError: If `chunk` is not a positive integer or None.
+            NotImplementedError: If `distribute` is True.
         """
         self.table_path = table_path
         self.clustering_tool = clustering_tool
