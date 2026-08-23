@@ -1,3 +1,5 @@
+import math
+import time
 from dataclasses import dataclass
 from functools import partial
 from logging import getLogger
@@ -956,6 +958,55 @@ class GoldVectorizer:
             vectorized_table.batch_update(ready_to_insert, if_not_exists="insert")
 
         return vectorized_table
+
+
+def estimate_vectorization_time(
+    vectorizer: GoldVectorizer,
+    dataset: Dataset,
+    sample_batches: int = 2,
+) -> float | None:
+    """Estimate the total vectorization time for a dataset by timing a small sample of batches.
+
+    Args:
+        vectorizer: The GoldVectorizer whose configuration (batch size, workers, etc.)
+            will be used to sample and time batches.
+        dataset: The dataset to estimate vectorization time for.
+        sample_batches: Number of initial batches to measure. Defaults to 2.
+
+    Returns:
+        The estimated total vectorization time in seconds, or None if the dataset's
+        size is unknown (only the per-batch time is logged in that case).
+    """
+    dataloader = DataLoader(
+        dataset,
+        batch_size=vectorizer.batch_size,
+        num_workers=vectorizer.num_workers,
+        collate_fn=vectorizer.collate_fn,
+    )
+
+    elapsed = 0.0
+    batches_measured = 0
+
+    for batch_idx, batch in enumerate(dataloader):
+        if batch_idx >= sample_batches:
+            break
+
+        start = time.perf_counter()
+        vectorizer.vectorizer.vectorize(batch[vectorizer.data_key])
+        elapsed += time.perf_counter() - start
+        batches_measured += 1
+
+    if batches_measured == 0:
+        return None
+
+    avg_time_per_batch = elapsed / batches_measured
+
+    if hasattr(dataset, "__len__"):
+        total_batches = math.ceil(len(dataset) / vectorizer.batch_size)
+        return avg_time_per_batch * total_batches
+
+    logger.info(f"Average vectorization time per batch: {avg_time_per_batch:.4f}s")
+    return None
 
 
 def unwrap_vectors_in_batch(

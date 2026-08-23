@@ -10,6 +10,7 @@ from goldener.vectorize import (
     FilterLocation,
     GoldVectorizer,
     Vectorized,
+    estimate_vectorization_time,
     unwrap_vectors_in_batch,
     vectorize_and_unwrap_in_batch,
 )
@@ -1160,3 +1161,60 @@ class TestVectorizeAndUnwrapInBatch:
         )
         vectors = result["vectorized"]
         assert len(vectors) == 2
+
+
+class TestEstimateVectorizationTime:
+    def setup_method(self):
+        pxt.drop_dir("unit_test", force=True)
+        pxt.create_dir("unit_test", if_exists="ignore")
+
+    def teardown_method(self):
+        pxt.drop_dir("unit_test", force=True)
+
+    def test_returns_estimate_when_dataset_size_known(self):
+        gv = GoldVectorizer(
+            table_path="unit_test.vectorize_estimate",
+            vectorizer=GoldTensorVectorizationTool(),
+            batch_size=2,
+        )
+        dataset = DummyDataset(dataset_len=10)
+
+        estimate = estimate_vectorization_time(gv, dataset, sample_batches=2)
+
+        assert estimate is not None
+        assert estimate > 0
+
+    def test_returns_none_when_dataset_size_unknown(self):
+        from torch.utils.data import IterableDataset
+
+        class NoLenDataset(IterableDataset):
+            def __init__(self):
+                self.data = [
+                    {"embeddings": torch.zeros(3, 8, 8), "idx": i, "label": "dummy"}
+                    for i in range(4)
+                ]
+
+            def __iter__(self):
+                return iter(self.data)
+
+        gv = GoldVectorizer(
+            table_path="unit_test.vectorize_estimate_nolen",
+            vectorizer=GoldTensorVectorizationTool(),
+            batch_size=2,
+        )
+
+        estimate = estimate_vectorization_time(gv, NoLenDataset(), sample_batches=2)
+
+        assert estimate is None
+
+    def test_returns_none_when_dataset_is_empty(self):
+        gv = GoldVectorizer(
+            table_path="unit_test.vectorize_estimate_empty",
+            vectorizer=GoldTensorVectorizationTool(),
+            batch_size=2,
+        )
+        dataset = DummyDataset(dataset_len=0)
+
+        estimate = estimate_vectorization_time(gv, dataset, sample_batches=2)
+
+        assert estimate is None
