@@ -575,7 +575,6 @@ class GoldVectorizer:
         self,
         to_vectorize: Dataset | Table,
         restrict_to: set[int] | None = None,
-        restriction_idx_key: str = "idx_vector",
     ) -> GoldPxtTorchDataset:
         """Extract and flatten vectors from samples and return results as a GoldPxtTorchDataset.
 
@@ -593,9 +592,8 @@ class GoldVectorizer:
                 dictionary with at least the key specified by `data_key` after applying the collate_fn.
                 If a Table is provided,
                 it should contain both 'idx' and `data_key` columns.
-            restrict_to: Optional set of indices to restrict the vectorization to.
-                If provided, only the selected indices in `restriction_idx_key` will be vectorized.
-            restriction_idx_key: Column name used to get sample indices for restriction.
+            restrict_to: Optional set of sample indices (`idx`) to restrict the
+                vectorization to. If provided, only the selected samples will be vectorized.
 
         Returns:
             A GoldPxtTorchDataset containing at least the vectorized data in the `vectorized_key` key
@@ -604,7 +602,6 @@ class GoldVectorizer:
         vectorized_table = self.vectorize_in_table(
             to_vectorize,
             restrict_to=restrict_to,
-            restriction_idx_key=restriction_idx_key,
         )
 
         vectorized_dataset = GoldPxtTorchDataset(vectorized_table, keep_cache=True)
@@ -618,7 +615,6 @@ class GoldVectorizer:
         self,
         to_vectorize: Dataset | Table,
         restrict_to: set[int] | None = None,
-        restriction_idx_key: str = "idx_vector",
     ) -> Table:
         """Extract and flatten vectors from samples and store results in a PixelTable table.
 
@@ -635,9 +631,8 @@ class GoldVectorizer:
                 dictionary with at least the key specified by `data_key` after applying the collate_fn.
                 If a Table is provided,
                 it should contain both 'idx' and `data_key` columns.
-            restrict_to: Optional set of indices to restrict the vectorization to.
-                If provided, only the selected indices in `restriction_idx_key` will be vectorized.
-            restriction_idx_key: Column name used to get sample indices for restriction.
+            restrict_to: Optional set of sample indices (`idx`) to restrict the
+                vectorization to. If provided, only the selected samples will be vectorized.
 
         Returns:
             A PixelTable Table containing at least the vectorized data in the `vectorized_key` column
@@ -672,52 +667,40 @@ class GoldVectorizer:
         # get the table and dataset to execute the vectorize pipeline
         to_vectorize_dataset: Dataset | GoldPxtTorchDataset
         if isinstance(to_vectorize, Table):
-            if restrict_to is not None:
-                to_vectorize = to_vectorize.where(
-                    get_expr_from_column_name(
-                        to_vectorize, restriction_idx_key
-                    ).isin(restrict_to)
-                )
-
             vectorized_table = self._vectorized_table_from_table(
                 to_vectorize=to_vectorize,
                 old_vectorized_table=old_vectorized_table,
             )
 
-            if vectorized_table.count() > 0:
-                idx_key_for_check = (
-                    restriction_idx_key if restrict_to is not None else "idx"
-                )
-                if idx_key_for_check in to_vectorize.columns():
-                    to_vectorize_indices = set(
-                        [
-                            row[idx_key_for_check]
-                            for row in to_vectorize.select(
-                                get_expr_from_column_name(
-                                    to_vectorize, idx_key_for_check
-                                )
-                            )
-                            .distinct()
-                            .collect()
-                        ]
+            if vectorized_table.count() > 0 and "idx" in to_vectorize.columns():
+                to_vectorize_query = to_vectorize
+                if restrict_to is not None:
+                    to_vectorize_query = to_vectorize.where(
+                        to_vectorize.idx.isin(restrict_to)
                     )
-                    already_vectorized = set(
-                        [
-                            row[idx_key_for_check]
-                            for row in vectorized_table.select(
-                                get_expr_from_column_name(
-                                    vectorized_table, idx_key_for_check
-                                )
-                            )
-                            .distinct()
-                            .collect()
-                        ]
-                    )
-                    if not to_vectorize_indices.difference(already_vectorized):
-                        logger.info(
-                            f"Vectorized table already fully filled out from {self.table_path}"
+                to_vectorize_indices = set(
+                    [
+                        row["idx"]
+                        for row in to_vectorize_query.select(
+                            to_vectorize.idx
                         )
-                        return vectorized_table
+                        .distinct()
+                        .collect()
+                    ]
+                )
+                already_vectorized = set(
+                    [
+                        row["idx"]
+                        for row in vectorized_table.select(vectorized_table.idx)
+                        .distinct()
+                        .collect()
+                    ]
+                )
+                if not to_vectorize_indices.difference(already_vectorized):
+                    logger.info(
+                        f"Vectorized table already fully filled out from {self.table_path}"
+                    )
+                    return vectorized_table
 
             to_vectorize_dataset = GoldPxtTorchDataset(to_vectorize)
         else:
@@ -728,17 +711,13 @@ class GoldVectorizer:
 
         if self.distribute:
             vectorized = self._distributed_vectorize(
-                vectorized_table,
-                to_vectorize_dataset,
-                restrict_to=restrict_to,
-                restriction_idx_key=restriction_idx_key,
+                vectorized_table, to_vectorize_dataset
             )
         else:
             vectorized = self._sequential_vectorize(
                 vectorized_table,
                 to_vectorize_dataset,
                 restrict_to=restrict_to,
-                restriction_idx_key=restriction_idx_key,
             )
 
         logger.info(
@@ -848,8 +827,6 @@ class GoldVectorizer:
         self,
         vectorized_table: Table,
         to_vectorize_dataset: Dataset,
-        restrict_to: set[int] | None = None,
-        restriction_idx_key: str = "idx_vector",
     ) -> Table:
         """Run distributed vectorization process (not implemented).
 
@@ -870,7 +847,6 @@ class GoldVectorizer:
         vectorized_table: Table,
         to_vectorize_dataset: Dataset,
         restrict_to: set[int] | None = None,
-        restriction_idx_key: str = "idx_vector",
     ) -> Table:
         """Run sequential (single-process) vectorization process.
 
@@ -943,22 +919,12 @@ class GoldVectorizer:
                 ]
 
             if restrict_to is not None:
-                if restriction_idx_key not in batch:
-                    batch[restriction_idx_key] = batch["idx"]
                 to_remove = {
-                    (
-                        idx_value.item()
-                        if isinstance(idx_value, torch.Tensor)
-                        else idx_value
-                    )
-                    for idx_value in batch[restriction_idx_key]
+                    idx.item() if isinstance(idx, torch.Tensor) else idx
+                    for idx in batch["idx"]
                 } - restrict_to
                 if to_remove:
-                    batch = filter_batch_from_indices(
-                        batch,
-                        to_remove,
-                        index_key=restriction_idx_key,
-                    )
+                    batch = filter_batch_from_indices(batch, to_remove)
 
                     if len(batch) == 0:
                         continue

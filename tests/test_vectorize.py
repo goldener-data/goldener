@@ -577,6 +577,27 @@ class TestGoldVectorizer:
             assert row["vectorized"].shape == (4,)
             assert row["label"] == "dummy"
 
+    def test_vectorize_in_table_with_restrict_to(self):
+        gv = GoldVectorizer(
+            table_path="unit_test.vectorize_restrict",
+            vectorizer=GoldTensorVectorizationTool(),
+            collate_fn=None,
+            data_key="embeddings",
+            vectorized_key="vectorized",
+            batch_size=1,
+            num_workers=0,
+            allow_existing=False,
+        )
+
+        out_table = gv.vectorize_in_table(
+            DummyDataset(dataset_len=6), restrict_to={1, 4}
+        )
+
+        assert out_table.count() > 0
+        assert {row["idx"] for row in out_table.collect()} == {1, 4}
+        for row in out_table.collect():
+            assert row["vectorized"] is not None
+
     def test_vectorize_in_table_with_target(self):
         src_path = "unit_test.src_table_vectorize"
         desc_path = "unit_test.vectorize_from_table"

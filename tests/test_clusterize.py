@@ -533,6 +533,33 @@ class TestGoldClusterizer:
         ]
         assert set(distinct_clusters).issubset(set(range(3)))
 
+    def test_cluster_in_table_with_restrict_to(self):
+        src_path = "unit_test.src_cluster_restrict_table"
+        cluster_path = "unit_test.test_cluster_restrict"
+
+        src_table = self._make_src_table(src_path, n=10)
+
+        clusterizer = GoldClusterizer(
+            table_path=cluster_path,
+            clustering_tool=GoldRandomClusteringTool(random_state=0),
+            allow_existing=True,
+        )
+
+        cluster_table = clusterizer.cluster_in_table(
+            src_table, n_clusters=3, restrict_to={2, 5, 7}
+        )
+
+        assert cluster_table.count() == 10
+        clustered = (
+            cluster_table.where(
+                cluster_table[clusterizer.cluster_key] != None  # noqa: E711
+            )
+            .select(cluster_table.idx)
+            .distinct()
+            .collect()
+        )
+        assert {row["idx"] for row in clustered} == {2, 5, 7}
+
     def test_cluster_in_table_with_reducer(self):
         table_path = "unit_test.test_cluster_reducer"
 
