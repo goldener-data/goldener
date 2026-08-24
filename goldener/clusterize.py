@@ -253,6 +253,8 @@ class GoldClusterizer:
             when using `cluster_in_dataset`. Default is False.
         max_batches: Optional maximum number of batches to process. Useful for testing on a small subset of the dataset.
         random_state: Optional random state for reproducibility during chunk assignment.
+        force_same_cluster: If True, all vectors from the same sample (same `idx`) are assigned
+            to the same cluster. Default is False.
     """
 
     _MINIMAL_SCHEMA: dict[str, type] = {
@@ -280,6 +282,7 @@ class GoldClusterizer:
         drop_table: bool = False,
         max_batches: int | None = None,
         random_state: int | None = None,
+        force_same_cluster: bool = False,
     ) -> None:
         """Initialize the GoldClusterizer with configuration parameters.
 
@@ -308,6 +311,8 @@ class GoldClusterizer:
                 when using `cluster_in_dataset`. Default is False.
             max_batches: Optional maximum number of batches to process. Useful for testing on a small subset of the dataset.
             random_state: Optional random state for reproducibility during chunk assignment.
+            force_same_cluster: If True, all vectors from the same sample (same `idx`) are assigned
+                to the same cluster. Default is False.
 
         Raises:
             ValueError: If `chunk` is not a positive integer or None.
@@ -334,6 +339,7 @@ class GoldClusterizer:
         self.drop_table = drop_table
         self.max_batches = max_batches
         self.random_state = random_state
+        self.force_same_cluster = force_same_cluster
 
     def cluster_in_dataset(
         self, cluster_from: Dataset | Table, n_clusters: int
@@ -949,10 +955,14 @@ class GoldClusterizer:
             random_state=self.random_state,
         )
 
+        idx_key = "idx" if self.force_same_cluster else "idx_vector"
+        idx_col = get_expr_from_column_name(cluster_from, idx_key)
+        idx_expr = get_expr_from_column_name(cluster_table, idx_key)
+
         for chunk_indices in chunk_assignment:
             to_cluster_from = cluster_from.where(
                 cluster_from.idx_vector.isin(chunk_indices)
-            ).select(vectorized_col, cluster_from.idx_vector)
+            ).select(vectorized_col, idx_col)
 
             if to_cluster_from.count() == 0:
                 raise ValueError("Unexpected empty chunk for clustering.")
@@ -960,7 +970,7 @@ class GoldClusterizer:
             to_cluster_for_chunk = [
                 (
                     torch.from_numpy(sample[self.vectorized_key]),
-                    torch.tensor(sample["idx_vector"]).unsqueeze(0),
+                    torch.tensor(sample[idx_key]).unsqueeze(0),
                 )
                 for sample in to_cluster_from.collect()
             ]
@@ -983,7 +993,7 @@ class GoldClusterizer:
                 set_value_to_idx_rows(
                     table=cluster_table,
                     col_expr=cluster_col,
-                    idx_expr=cluster_table.idx_vector,
+                    idx_expr=idx_expr,
                     indices=set(indices_in_cluster),
                     value=cluster_idx,
                 )
