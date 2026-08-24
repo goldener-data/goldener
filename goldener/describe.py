@@ -176,6 +176,8 @@ class GoldDescriptor:
     def describe_in_dataset(
         self,
         to_describe: Dataset | Table,
+        restrict_to: set[int] | None = None,
+        restriction_idx_key: str = "idx_vector",
     ) -> GoldPxtTorchDataset:
         """Compute embeddings from samples and return results as a GoldPxtTorchDataset.
 
@@ -193,13 +195,20 @@ class GoldDescriptor:
                 dictionary with at least the key specified by `data_key` after applying the collate_fn.
                 If a Table is provided,
                 it should contain both 'idx' and `data_key` columns.
+            restrict_to: Optional set of indices to restrict the description to.
+                If provided, only the selected indices in `restriction_idx_key` will be described.
+            restriction_idx_key: Column name used to get sample indices for restriction.
 
         Returns:
             A GoldPxtTorchDataset containing at least the computed embeddings in the `description_key` key
                 and an `idx` key as well.
         """
 
-        description_table = self.describe_in_table(to_describe)
+        description_table = self.describe_in_table(
+            to_describe,
+            restrict_to=restrict_to,
+            restriction_idx_key=restriction_idx_key,
+        )
 
         description_dataset = GoldPxtTorchDataset(description_table, keep_cache=True)
 
@@ -211,6 +220,8 @@ class GoldDescriptor:
     def describe_in_table(
         self,
         to_describe: Dataset | Table,
+        restrict_to: set[int] | None = None,
+        restriction_idx_key: str = "idx_vector",
     ) -> Table:
         """Compute embeddings from samples and store results in a PixelTable table.
 
@@ -227,6 +238,9 @@ class GoldDescriptor:
                 dictionary with at least the key specified by `data_key` after applying the collate_fn.
                 If a Table is provided,
                 it should contain both 'idx' and `data_key` columns.
+            restrict_to: Optional set of indices to restrict the description to.
+                If provided, only the selected indices in `restriction_idx_key` will be described.
+            restriction_idx_key: Column name used to get sample indices for restriction.
 
         Returns:
             A PixelTable Table containing at least the computed embeddings in the `description_key` column
@@ -261,30 +275,47 @@ class GoldDescriptor:
         # get the table and dataset to execute the description pipeline
         to_describe_dataset: GoldPxtTorchDataset | Dataset
         if isinstance(to_describe, Table):
+            if restrict_to is not None:
+                to_describe = to_describe.where(
+                    get_expr_from_column_name(
+                        to_describe, restriction_idx_key
+                    ).isin(restrict_to)
+                )
+
             description_table = self._description_table_from_table(
                 to_describe, old_description_table
             )
 
-            if description_table.count() > 0 and "idx" in to_describe.columns():
-                to_describe_indices = set(
-                    [
-                        row["idx"]
-                        for row in to_describe.select(to_describe.idx).collect()
-                    ]
+            if description_table.count() > 0:
+                idx_key_for_check = (
+                    restriction_idx_key if restrict_to is not None else "idx"
                 )
-                already_described = set(
-                    [
-                        row["idx"]
-                        for row in description_table.select(
-                            description_table.idx
-                        ).collect()
-                    ]
-                )
-                if not to_describe_indices.difference(already_described):
-                    logger.info(
-                        f"Description table already fully filled out from {self.table_path}"
+                if idx_key_for_check in to_describe.columns():
+                    to_describe_indices = set(
+                        [
+                            row[idx_key_for_check]
+                            for row in to_describe.select(
+                                get_expr_from_column_name(
+                                    to_describe, idx_key_for_check
+                                )
+                            ).collect()
+                        ]
                     )
-                    return description_table
+                    already_described = set(
+                        [
+                            row[idx_key_for_check]
+                            for row in description_table.select(
+                                get_expr_from_column_name(
+                                    description_table, idx_key_for_check
+                                )
+                            ).collect()
+                        ]
+                    )
+                    if not to_describe_indices.difference(already_described):
+                        logger.info(
+                            f"Description table already fully filled out from {self.table_path}"
+                        )
+                        return description_table
 
             to_describe_dataset = GoldPxtTorchDataset(to_describe)
 
@@ -296,11 +327,17 @@ class GoldDescriptor:
 
         if self.distribute:
             described = self._distributed_describe(
-                description_table, to_describe_dataset
+                description_table,
+                to_describe_dataset,
+                restrict_to=restrict_to,
+                restriction_idx_key=restriction_idx_key,
             )
         else:
             described = self._sequential_describe(
-                description_table, to_describe_dataset
+                description_table,
+                to_describe_dataset,
+                restrict_to=restrict_to,
+                restriction_idx_key=restriction_idx_key,
             )
 
         logger.info(
@@ -438,6 +475,8 @@ class GoldDescriptor:
         self,
         description_table: Table,
         to_describe_dataset: Dataset,
+        restrict_to: set[int] | None = None,
+        restriction_idx_key: str = "idx_vector",
     ) -> Table:
         """Run distributed description process (not implemented).
 
@@ -457,6 +496,8 @@ class GoldDescriptor:
         self,
         description_table: Table,
         to_describe_dataset: Dataset,
+        restrict_to: set[int] | None = None,
+        restriction_idx_key: str = "idx_vector",
     ) -> Table:
         """Run sequential (single-process) description process.
 
@@ -535,6 +576,24 @@ class GoldDescriptor:
                 batch["idx"] = [
                     starts + idx for idx in range(len(batch[self.data_key]))
                 ]
+
+            if restrict_to is not None:
+                if restriction_idx_key not in batch:
+                    batch[restriction_idx_key] = batch["idx"]
+                to_remove = {
+                    (
+                        idx_value.item()
+                        if isinstance(idx_value, torch.Tensor)
+                        else idx_value
+                    )
+                    for idx_value in batch[restriction_idx_key]
+                } - restrict_to
+                if to_remove:
+                    batch = filter_batch_from_indices(
+                        batch,
+                        to_remove,
+                        index_key=restriction_idx_key,
+                    )
 
             # Keep only not yet described samples in the batch
             if not_empty:

@@ -336,7 +336,11 @@ class GoldClusterizer:
         self.random_state = random_state
 
     def cluster_in_dataset(
-        self, cluster_from: Dataset | Table, n_clusters: int
+        self,
+        cluster_from: Dataset | Table,
+        n_clusters: int,
+        restrict_to: set[int] | None = None,
+        restriction_idx_key: str = "idx_vector",
     ) -> GoldPxtTorchDataset:
         """Cluster the data and return results as a GoldPxtTorchDataset.
 
@@ -355,12 +359,20 @@ class GoldClusterizer:
                 dictionary with at least the `vectorized_key`, `idx_vector` and `idx` keys after applying the collate_fn.
                 If a Table is provided, it should contain at least the `vectorized_key` and `idx` columns.
             n_clusters: Number of clusters to create.
+            restrict_to: Optional set of indices to restrict the clustering to.
+                If provided, only the selected indices in `restriction_idx_key` will be used for the clustering.
+            restriction_idx_key: Column name used to get sample indices for restriction.
         Returns:
             A GoldPxtTorchDataset containing at least the clustering information in the `cluster_key` key
                 and `idx` (index of the sample) and `idx_vector` (index of the vector) keys as well.
         """
 
-        cluster_table = self.cluster_in_table(cluster_from, n_clusters)
+        cluster_table = self.cluster_in_table(
+            cluster_from,
+            n_clusters,
+            restrict_to=restrict_to,
+            restriction_idx_key=restriction_idx_key,
+        )
 
         cluster_dataset = GoldPxtTorchDataset(cluster_table, keep_cache=True)
 
@@ -369,7 +381,13 @@ class GoldClusterizer:
 
         return cluster_dataset
 
-    def cluster_in_table(self, cluster_from: Dataset | Table, n_clusters: int) -> Table:
+    def cluster_in_table(
+        self,
+        cluster_from: Dataset | Table,
+        n_clusters: int,
+        restrict_to: set[int] | None = None,
+        restriction_idx_key: str = "idx_vector",
+    ) -> Table:
         """Cluster the data and store results in a PixelTable table.
 
         The clustering process applies a clustering algorithm on already vectorized
@@ -386,6 +404,9 @@ class GoldClusterizer:
                 dictionary with at least the `vectorized_key` and `idx` keys after applying the collate_fn.
                 If a Table is provided, it should contain at least the `vectorized_key`, `idx` and `idx_vector` columns.
             n_clusters: Number of clusters to create.
+            restrict_to: Optional set of indices to restrict the clustering to.
+                If provided, only the selected indices in `restriction_idx_key` will be used for the clustering.
+            restriction_idx_key: Column name used to get sample indices for restriction.
 
         Returns:
             A PixelTable Table containing at least the clustering information in the `cluster_key` column
@@ -432,14 +453,31 @@ class GoldClusterizer:
 
         assert isinstance(cluster_from, Table)
 
-        still_to_cluster_count = self.get_cluster_count(cluster_table, self.cluster_key)
+        still_to_cluster_count = self.get_cluster_count(
+            cluster_table,
+            self.cluster_key,
+            restrict_to=restrict_to,
+            restriction_idx_key=restriction_idx_key,
+        )
         if still_to_cluster_count == 0:
             logger.info(f"Cluster table {self.table_path} already fully clustered")
             return cluster_table
         elif self.distribute:
-            self._distributed_cluster(cluster_from, cluster_table, n_clusters)
+            self._distributed_cluster(
+                cluster_from,
+                cluster_table,
+                n_clusters,
+                restrict_to=restrict_to,
+                restriction_idx_key=restriction_idx_key,
+            )
         else:
-            self._sequential_cluster(cluster_from, cluster_table, n_clusters)
+            self._sequential_cluster(
+                cluster_from,
+                cluster_table,
+                n_clusters,
+                restrict_to=restrict_to,
+                restriction_idx_key=restriction_idx_key,
+            )
 
         logger.info(
             f"Cluster table {self.table_path} successfully clustered in {n_clusters} clusters."
@@ -735,6 +773,8 @@ class GoldClusterizer:
         label_key: str | None = None,
         label_value: str | None = None,
         idx_key: str = "idx_vector",
+        restrict_to: set[int] | None = None,
+        restriction_idx_key: str = "idx_vector",
     ) -> Query:
         """Get the Pixeltable query to access samples clustered in a given cluster.
 
@@ -745,6 +785,9 @@ class GoldClusterizer:
             label_key: Optional column name used to filter samples by label.
             label_value: Optional label value to filter samples by label.
             idx_key: Column name used to get sample indices.
+            restrict_to: Optional set of indices to restrict the search to.
+                If provided, only the selected indices in `restriction_idx_key` will be used for the clustering.
+            restriction_idx_key: Column name used to get sample indices for restriction.
 
         Returns: A Pixeltable Query object that can be used to access
             the samples in the specified cluster (and label if specified).
@@ -763,6 +806,10 @@ class GoldClusterizer:
                 raise ValueError("label_key and label_value must be set together.")
             query = cluster_col == cluster_idx  # noqa: E712
 
+        if restrict_to is not None:
+            restrict_idx_col = get_expr_from_column_name(table, restriction_idx_key)
+            query = query & restrict_idx_col.isin(restrict_to)
+
         return table.where(query).select(idx_col).distinct()
 
     @staticmethod
@@ -773,6 +820,8 @@ class GoldClusterizer:
         label_key: str | None = None,
         label_value: str | None = None,
         idx_key: str = "idx_vector",
+        restrict_to: set[int] | None = None,
+        restriction_idx_key: str = "idx_vector",
     ) -> set[int]:
         """Get the indices of samples clustered in a given cluster.
 
@@ -783,6 +832,9 @@ class GoldClusterizer:
             label_key: Optional column name used to filter samples by label.
             label_value: Optional label value to filter samples by label.
             idx_key: Column name used to get sample indices.
+            restrict_to: Optional set of indices to restrict the search to.
+                If provided, only the selected indices in `restriction_idx_key` will be used for the clustering.
+            restriction_idx_key: Column name used to get sample indices for restriction.
 
         Returns: A set of indices corresponding to the samples in the specified cluster (and label if specified).
 
@@ -799,6 +851,8 @@ class GoldClusterizer:
                     label_key=label_key,
                     label_value=label_value,
                     idx_key=idx_key,
+                    restrict_to=restrict_to,
+                    restriction_idx_key=restriction_idx_key,
                 ).collect()
             ]
         )
@@ -811,6 +865,8 @@ class GoldClusterizer:
         label_key: str | None = None,
         label_value: str | None = None,
         idx_key: str = "idx_vector",
+        restrict_to: set[int] | None = None,
+        restriction_idx_key: str = "idx_vector",
     ) -> int:
         """Get the number of samples clustered in a given cluster.
 
@@ -821,6 +877,9 @@ class GoldClusterizer:
             label_key: Optional column name used to filter samples by label.
             label_value: Optional label value to filter samples by label.
             idx_key: Column name used to get sample indices.
+            restrict_to: Optional set of indices to restrict the search to.
+                If provided, only the selected indices in `restriction_idx_key` will be used for the clustering.
+            restriction_idx_key: Column name used to get sample indices for restriction.
 
         Returns: The number of samples in the specified cluster (and label if specified).
 
@@ -834,6 +893,8 @@ class GoldClusterizer:
             label_key=label_key,
             label_value=label_value,
             idx_key=idx_key,
+            restrict_to=restrict_to,
+            restriction_idx_key=restriction_idx_key,
         ).count()
 
     def _sequential_cluster(
@@ -841,6 +902,8 @@ class GoldClusterizer:
         cluster_from: Table,
         cluster_table: Table,
         n_clusters: int,
+        restrict_to: set[int] | None = None,
+        restriction_idx_key: str = "idx_vector",
     ) -> None:
         """Run sequential (single-process) clustering process.
 
@@ -869,6 +932,8 @@ class GoldClusterizer:
                     cluster_key=self.cluster_key,
                     label_key=self.label_key,
                     label_value=label_value,
+                    restrict_to=restrict_to,
+                    restriction_idx_key=restriction_idx_key,
                 )
                 if label_still_to_cluster_count == 0:
                     logger.info(
@@ -881,12 +946,16 @@ class GoldClusterizer:
                     cluster_table,
                     n_clusters,
                     label_value=label_value,
+                    restrict_to=restrict_to,
+                    restriction_idx_key=restriction_idx_key,
                 )
 
         else:
             still_to_cluster_count = GoldClusterizer.get_cluster_count(
                 table=cluster_table,
                 cluster_key=self.cluster_key,
+                restrict_to=restrict_to,
+                restriction_idx_key=restriction_idx_key,
             )
             logger.info(
                 f"Clustering {still_to_cluster_count} samples in {n_clusters} clusters."
@@ -895,6 +964,8 @@ class GoldClusterizer:
                 cluster_from,
                 cluster_table,
                 n_clusters,
+                restrict_to=restrict_to,
+                restriction_idx_key=restriction_idx_key,
             )
 
     def _cluster_label(
@@ -903,6 +974,8 @@ class GoldClusterizer:
         cluster_table: Table,
         n_clusters: int,
         label_value: str | None = None,
+        restrict_to: set[int] | None = None,
+        restriction_idx_key: str = "idx_vector",
     ) -> None:
         """Perform clustering for a specific label or all data.
 
@@ -928,6 +1001,12 @@ class GoldClusterizer:
             available_query = (cluster_col == None) & (label_col == label_value)  # noqa: E712 E711
         else:
             available_query = cluster_col == None  # noqa: E711
+
+        if restrict_to is not None:
+            restricted_idx_col = get_expr_from_column_name(
+                cluster_table, restriction_idx_key
+            )
+            available_query = available_query & restricted_idx_col.isin(restrict_to)
 
         to_cluster = cluster_table.where(available_query)
         to_cluster_vector_indices = [
@@ -993,6 +1072,8 @@ class GoldClusterizer:
         cluster_from: Table,
         cluster_table: Table,
         n_clusters: int,
+        restrict_to: set[int] | None = None,
+        restriction_idx_key: str = "idx_vector",
     ) -> None:
         """Run distributed clustering process (not implemented).
 
