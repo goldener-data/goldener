@@ -768,7 +768,11 @@ class GoldSelector:
 
     @distribute.setter
     def distribute(self, value: bool) -> None:
-        """Set whether distributed processing is enabled."""
+        """Set whether distributed processing is enabled.
+
+        Raises:
+            NotImplementedError: If `value` is True.
+        """
         if value:
             raise NotImplementedError(
                 "Distributed processing is not implemented for GoldSelector."
