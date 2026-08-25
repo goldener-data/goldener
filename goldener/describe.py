@@ -143,6 +143,9 @@ class GoldDescriptor:
             drop_table: Whether to drop the table after dataset creation. Defaults to False.
             device: Torch device for embedding computation. Auto-detected if None.
             max_batches: Optional maximum number of batches to process.
+
+        Raises:
+            NotImplementedError: If `distribute` is True.
         """
         self.table_path = table_path
         self.embedder = embedder
@@ -165,13 +168,35 @@ class GoldDescriptor:
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.allow_existing = allow_existing
-        self.distribute = distribute
+        if distribute:
+            raise NotImplementedError(
+                "Distributed processing is not implemented for GoldDescriptor."
+            )
+        self._distribute = distribute
         self.drop_table = drop_table
         self.max_batches = max_batches
 
         if device is None:
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.device = device
+
+    @property
+    def distribute(self) -> bool:
+        """Whether distributed processing is enabled."""
+        return self._distribute
+
+    @distribute.setter
+    def distribute(self, value: bool) -> None:
+        """Set whether distributed processing is enabled.
+
+        Raises:
+            NotImplementedError: If `value` is True.
+        """
+        if value:
+            raise NotImplementedError(
+                "Distributed processing is not implemented for GoldDescriptor."
+            )
+        self._distribute = value
 
     def describe_in_dataset(
         self,

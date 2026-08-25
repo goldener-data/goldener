@@ -243,6 +243,25 @@ class TestGoldClusterizer:
     def teardown_method(self):
         pxt.drop_dir("unit_test", force=True)
 
+    def test_distribute_cannot_be_enabled(self):
+        error = "Distributed processing is not implemented for GoldClusterizer"
+        with pytest.raises(NotImplementedError, match=error):
+            GoldClusterizer(
+                table_path="unit_test.test_distribute",
+                clustering_tool=GoldRandomClusteringTool(),
+                distribute=True,
+            )
+
+        clusterizer = GoldClusterizer(
+            table_path="unit_test.test_distribute",
+            clustering_tool=GoldRandomClusteringTool(),
+        )
+        assert clusterizer.distribute is False
+
+        with pytest.raises(NotImplementedError, match=error):
+            clusterizer.distribute = True
+        assert clusterizer.distribute is False
+
     def test_collate_fn_defaults_to_pxt_torch_dataset_collate_fn(self):
         clusterizer = GoldClusterizer(
             table_path="unit_test.cluster_default_collate",

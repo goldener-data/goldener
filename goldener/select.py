@@ -722,13 +722,14 @@ class GoldSelector:
             batch_size: Batch size used when iterating over the data.
             num_workers: Number of workers for the PyTorch DataLoader during iteration on data.
             allow_existing: Whether to allow using an existing table. Defaults to True.
-            distribute: Whether to use distributed selection. Defaults to False.
+            distribute: Whether to use distributed selection. Not implemented yet. Defaults to False.
             drop_table: Whether to drop the table after dataset creation. Defaults to False.
             max_batches: Optional maximum number of batches to process.
             random_state: Optional random state for reproducibility during chunk assignment. Default is None.
 
         Raises:
             ValueError: If `exclude_labels` is provided but `label_key` is None.
+            NotImplementedError: If `distribute` is True.
         """
         self.table_path = table_path
         self.selection_tool = selection_tool
@@ -751,10 +752,32 @@ class GoldSelector:
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.allow_existing = allow_existing
-        self.distribute = distribute
+        if distribute:
+            raise NotImplementedError(
+                "Distributed processing is not implemented for GoldSelector."
+            )
+        self._distribute = distribute
         self.drop_table = drop_table
         self.max_batches = max_batches
         self.random_state = random_state
+
+    @property
+    def distribute(self) -> bool:
+        """Whether distributed processing is enabled."""
+        return self._distribute
+
+    @distribute.setter
+    def distribute(self, value: bool) -> None:
+        """Set whether distributed processing is enabled.
+
+        Raises:
+            NotImplementedError: If `value` is True.
+        """
+        if value:
+            raise NotImplementedError(
+                "Distributed processing is not implemented for GoldSelector."
+            )
+        self._distribute = value
 
     def setup_selection_table(self, select_from: Dataset | Table) -> Table:
         """Set up the selection table based on the source dataset or table.
