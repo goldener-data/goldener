@@ -275,17 +275,22 @@ class GoldDescriptor:
             )
 
             if description_table.count() > 0 and "idx" in to_describe.columns():
-                to_describe_query = to_describe
                 if restrict_to is not None:
-                    to_describe_query = to_describe.where(
-                        to_describe.idx.isin(restrict_to)
-                    )
-                to_describe_indices = set(
-                    [
+                    to_describe_indices = {
                         row["idx"]
-                        for row in to_describe_query.select(to_describe.idx).collect()
-                    ]
-                )
+                        for row in to_describe.where(
+                            to_describe.idx.isin(restrict_to)
+                        )
+                        .select(to_describe.idx)
+                        .collect()
+                    }
+                else:
+                    to_describe_indices = set(
+                        [
+                            row["idx"]
+                            for row in to_describe.select(to_describe.idx).collect()
+                        ]
+                    )
                 already_described = set(
                     [
                         row["idx"]
@@ -310,7 +315,7 @@ class GoldDescriptor:
 
         if self.distribute:
             described = self._distributed_describe(
-                description_table, to_describe_dataset
+                description_table, to_describe_dataset, restrict_to=restrict_to
             )
         else:
             described = self._sequential_describe(
@@ -454,12 +459,14 @@ class GoldDescriptor:
         self,
         description_table: Table,
         to_describe_dataset: Dataset,
+        restrict_to: set[int] | None = None,
     ) -> Table:
         """Run distributed description process (not implemented).
 
         Args:
             description_table: The table to store descriptions.
             to_describe_dataset: The dataset to describe.
+            restrict_to: Optional set of sample indices to restrict to.
 
         Returns:
             The populated description table.
@@ -555,8 +562,8 @@ class GoldDescriptor:
 
             if restrict_to is not None:
                 to_remove = {
-                    idx.item() if isinstance(idx, torch.Tensor) else idx
-                    for idx in batch["idx"]
+                    int(idx.item()) if isinstance(idx, torch.Tensor) else int(idx)
+                    for idx in batch["idx"]  # type: ignore[arg-type]
                 } - restrict_to
                 if to_remove:
                     batch = filter_batch_from_indices(batch, to_remove)

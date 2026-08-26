@@ -673,21 +673,25 @@ class GoldVectorizer:
             )
 
             if vectorized_table.count() > 0 and "idx" in to_vectorize.columns():
-                to_vectorize_query = to_vectorize
                 if restrict_to is not None:
-                    to_vectorize_query = to_vectorize.where(
-                        to_vectorize.idx.isin(restrict_to)
-                    )
-                to_vectorize_indices = set(
-                    [
+                    to_vectorize_indices = {
                         row["idx"]
-                        for row in to_vectorize_query.select(
-                            to_vectorize.idx
+                        for row in to_vectorize.where(
+                            to_vectorize.idx.isin(restrict_to)
                         )
+                        .select(to_vectorize.idx)
                         .distinct()
                         .collect()
-                    ]
-                )
+                    }
+                else:
+                    to_vectorize_indices = set(
+                        [
+                            row["idx"]
+                            for row in to_vectorize.select(to_vectorize.idx)
+                            .distinct()
+                            .collect()
+                        ]
+                    )
                 already_vectorized = set(
                     [
                         row["idx"]
@@ -711,7 +715,7 @@ class GoldVectorizer:
 
         if self.distribute:
             vectorized = self._distributed_vectorize(
-                vectorized_table, to_vectorize_dataset
+                vectorized_table, to_vectorize_dataset, restrict_to=restrict_to
             )
         else:
             vectorized = self._sequential_vectorize(
@@ -827,12 +831,14 @@ class GoldVectorizer:
         self,
         vectorized_table: Table,
         to_vectorize_dataset: Dataset,
+        restrict_to: set[int] | None = None,
     ) -> Table:
         """Run distributed vectorization process (not implemented).
 
         Args:
             vectorized_table: The table to store vectorized outputs.
             to_vectorize_dataset: The dataset to vectorize.
+            restrict_to: Optional set of sample indices to restrict to.
 
         Returns:
             The populated vectorized table.
@@ -920,8 +926,8 @@ class GoldVectorizer:
 
             if restrict_to is not None:
                 to_remove = {
-                    idx.item() if isinstance(idx, torch.Tensor) else idx
-                    for idx in batch["idx"]
+                    int(idx.item()) if isinstance(idx, torch.Tensor) else int(idx)
+                    for idx in batch["idx"]  # type: ignore[arg-type]
                 } - restrict_to
                 if to_remove:
                     batch = filter_batch_from_indices(batch, to_remove)
