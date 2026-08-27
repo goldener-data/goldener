@@ -311,6 +311,7 @@ class GoldClusterizer:
 
         Raises:
             ValueError: If `chunk` is not a positive integer or None.
+            NotImplementedError: If `distribute` is True.
         """
         self.table_path = table_path
         self.clustering_tool = clustering_tool
@@ -330,10 +331,32 @@ class GoldClusterizer:
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.allow_existing = allow_existing
-        self.distribute = distribute
+        if distribute:
+            raise NotImplementedError(
+                "Distributed processing is not implemented for GoldClusterizer."
+            )
+        self._distribute = distribute
         self.drop_table = drop_table
         self.max_batches = max_batches
         self.random_state = random_state
+
+    @property
+    def distribute(self) -> bool:
+        """Whether distributed processing is enabled."""
+        return self._distribute
+
+    @distribute.setter
+    def distribute(self, value: bool) -> None:
+        """Set whether distributed processing is enabled.
+
+        Raises:
+            NotImplementedError: If `value` is True.
+        """
+        if value:
+            raise NotImplementedError(
+                "Distributed processing is not implemented for GoldClusterizer."
+            )
+        self._distribute = value
 
     def cluster_in_dataset(
         self, cluster_from: Dataset | Table, n_clusters: int

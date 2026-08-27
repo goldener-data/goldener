@@ -73,6 +73,25 @@ class TestGoldDescriptor:
     def teardown_method(self):
         pxt.drop_dir("unit_test", force=True)
 
+    def test_distribute_cannot_be_enabled(self, embedder):
+        error = "Distributed processing is not implemented for GoldDescriptor"
+        with pytest.raises(NotImplementedError, match=error):
+            GoldDescriptor(
+                table_path="unit_test.test_distribute",
+                embedder=embedder,
+                distribute=True,
+            )
+
+        descriptor = GoldDescriptor(
+            table_path="unit_test.test_distribute",
+            embedder=embedder,
+        )
+        assert descriptor.distribute is False
+
+        with pytest.raises(NotImplementedError, match=error):
+            descriptor.distribute = True
+        assert descriptor.distribute is False
+
     def test_simple_describe_in_table(self, embedder):
         desc = GoldDescriptor(
             table_path="unit_test.test_describe",

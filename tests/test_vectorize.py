@@ -463,6 +463,25 @@ class TestGoldVectorizer:
     def teardown_method(self):
         pxt.drop_dir("unit_test", force=True)
 
+    def test_distribute_cannot_be_enabled(self):
+        error = "Distributed processing is not implemented for GoldVectorizer"
+        with pytest.raises(NotImplementedError, match=error):
+            GoldVectorizer(
+                table_path="unit_test.test_distribute",
+                vectorizer=GoldTensorVectorizationTool(),
+                distribute=True,
+            )
+
+        vectorizer = GoldVectorizer(
+            table_path="unit_test.test_distribute",
+            vectorizer=GoldTensorVectorizationTool(),
+        )
+        assert vectorizer.distribute is False
+
+        with pytest.raises(NotImplementedError, match=error):
+            vectorizer.distribute = True
+        assert vectorizer.distribute is False
+
     def test_collate_fn_defaults_to_pxt_torch_dataset_collate_fn(self):
         gv = GoldVectorizer(
             table_path="unit_test.vectorize_default_collate",
