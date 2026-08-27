@@ -119,6 +119,7 @@ class GoldSplitter:
         n_clusters: int = 0,
         in_described_table: bool = False,
         allow_existing: bool = True,
+        distribute: bool = False,
         drop_table: bool = False,
         max_batches: int | None = None,
     ) -> None:
@@ -134,11 +135,13 @@ class GoldSplitter:
             n_clusters: Number of clusters to use for clusterized selection (if clusterizer is provided).
             in_described_table: Whether to return the splitting in the described table or the selected table.
             allow_existing: Whether to allow existing tables in all components.
+            distribute: Whether to use distributed processing. Not implemented yet. Defaults to False.
             drop_table: Whether to drop intermediate tables. Defaults to False.
             max_batches: Optional maximum number of batches to process for the selection.
             Useful for testing on a small subset of the dataset.
 
         Raises:
+            NotImplementedError: If `distribute` is True.
             ValueError: If `in_described_table` is True but no `descriptor` is provided.
             ValueError: If `vectorizer.vectorized_key` does not match `selector.vectorized_key`.
             ValueError: If `descriptor.description_key` does not match `vectorizer.data_key` (when vectorizer is set).
@@ -206,7 +209,30 @@ class GoldSplitter:
         self.drop_table = drop_table
         self._max_batches = max_batches
         self.allow_existing = allow_existing
+        if distribute:
+            raise NotImplementedError(
+                "Distributed processing is not implemented for GoldSplitter."
+            )
+        self._distribute = distribute
         self.max_batches = max_batches
+
+    @property
+    def distribute(self) -> bool:
+        """Whether distributed processing is enabled."""
+        return self._distribute
+
+    @distribute.setter
+    def distribute(self, value: bool) -> None:
+        """Set whether distributed processing is enabled.
+
+        Raises:
+            NotImplementedError: If `value` is True.
+        """
+        if value:
+            raise NotImplementedError(
+                "Distributed processing is not implemented for GoldSplitter."
+            )
+        self._distribute = value
 
     @property
     def max_batches(self) -> int | None:
