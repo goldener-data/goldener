@@ -12,5 +12,5 @@ def init(home: str | Path | None = None) -> None:
     """
     if home is not None:
         Config.init({"pixeltable.home": str(home)}, reinit=True)
-    else:
-        pxt.init()
+
+    pxt.init()
