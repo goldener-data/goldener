@@ -1,3 +1,4 @@
+from goldener.config import init
 from goldener.clusterize import (
     GoldClusteringTool,
     GoldSKLearnClusteringTool,
@@ -42,6 +43,7 @@ from goldener.vectorize import (
 
 
 __all__ = (
+    "init",
     "GoldClusteringTool",
     "GoldSKLearnClusteringTool",
     "GoldRandomClusteringTool",
