@@ -10,7 +10,6 @@ from goldener.vectorize import (
     FilterLocation,
     GoldVectorizer,
     Vectorized,
-    estimate_vectorization_time,
     unwrap_vectors_in_batch,
     vectorize_and_unwrap_in_batch,
 )
@@ -1182,7 +1181,7 @@ class TestVectorizeAndUnwrapInBatch:
         assert len(vectors) == 2
 
 
-class TestEstimateVectorizationTime:
+class TestEstimateComputationTime:
     def setup_method(self):
         pxt.drop_dir("unit_test", force=True)
         pxt.create_dir("unit_test", if_exists="ignore")
@@ -1198,7 +1197,7 @@ class TestEstimateVectorizationTime:
         )
         dataset = DummyDataset(dataset_len=10)
 
-        estimate = estimate_vectorization_time(gv, dataset, sample_batches=2)
+        estimate = gv.estimate_computation_time(dataset)
 
         assert estimate is not None
         assert estimate > 0
@@ -1222,7 +1221,7 @@ class TestEstimateVectorizationTime:
             batch_size=2,
         )
 
-        estimate = estimate_vectorization_time(gv, NoLenDataset(), sample_batches=2)
+        estimate = gv.estimate_computation_time(NoLenDataset())
 
         assert estimate is None
 
@@ -1234,6 +1233,6 @@ class TestEstimateVectorizationTime:
         )
         dataset = DummyDataset(dataset_len=0)
 
-        estimate = estimate_vectorization_time(gv, dataset, sample_batches=2)
+        estimate = gv.estimate_computation_time(dataset)
 
         assert estimate is None
