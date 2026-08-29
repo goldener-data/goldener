@@ -276,7 +276,7 @@ class GoldSplitter:
         self._sets = sets
 
     @property
-    def clustering_enable(self):
+    def clustering_enable(self) -> bool:
         return self.clusterizer is not None and self.n_clusters > 1
 
     @staticmethod

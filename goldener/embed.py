@@ -267,7 +267,7 @@ class GoldTorchEmbeddingTool(GoldEmbeddingTool):
         embeddings = self.embed(x)
         return self.fusion.fuse_embeddings(embeddings, self._layers, self._channel_pos)
 
-    def __del__(self):
+    def __del__(self) -> None:
         """Remove all registered hooks when the embedder is deleted."""
         for handle in self._hooks.values():
             handle.remove()
@@ -327,10 +327,6 @@ class GoldMultiModalTorchEmbeddingTool(GoldEmbeddingTool):
     Each modality has its own GoldTorchEmbeddingTool defined by its own configuration.
     This allows for processing different types of input data (e.g., images, text, audio)
     with different models and then fusing their embeddings.
-
-    Attributes:
-        embedders: Dictionary mapping modality names to their GoldTorchEmbeddingTool instances.
-        strategy: Strategy for fusing embeddings from different modalities.
     """
 
     def __init__(

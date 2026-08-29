@@ -1,6 +1,6 @@
 from enum import Enum
 from logging import getLogger
-from typing import Sequence
+from typing import Any, Iterator, Sequence
 
 import torch
 from torch.utils.data import Dataset, Sampler, Subset
@@ -177,7 +177,7 @@ class GoldClusterizedBatchSampler(Sampler):
                 "All the clusters are required to have the same size when `force_same_size=True`"
             )
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[Any]:
         if self.generator is None:
             seed = int(torch.empty((), dtype=torch.int64).random_().item())
             generator = torch.Generator()
@@ -209,7 +209,7 @@ class GoldClusterizedBatchSampler(Sampler):
         def draw_samples(
             to_sample_from: list[int],
             to_sample_size: int,
-        ):
+        ) -> list[int]:
             """Closure drawing the next samples for the batch (one per remaining clusters).
 
             It defines from which cluster the samples are drawn. The samples are drawn from the pointer status of
@@ -300,7 +300,7 @@ class GoldClusterizedBatchSampler(Sampler):
         while len(exhausted_once) < len(cluster_pools):
             if self._batch_size > len(remaining_clusters):
                 # requires to select multiple times from remaining clusters
-                batch = []
+                batch: list[int] = []
                 while len(batch) < self._batch_size and len(remaining_clusters) > 0:
                     still_to_get = self._batch_size - len(batch)
                     batch.extend(
