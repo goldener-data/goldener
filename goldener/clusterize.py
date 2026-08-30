@@ -444,10 +444,15 @@ class GoldClusterizer:
             cluster_table = self._cluster_table_from_table(
                 cluster_from=cluster_from,
                 old_cluster_table=old_cluster_table,
+                restrict_to=restrict_to,
+                restriction_idx_key=restriction_idx_key,
             )
         else:
             cluster_table = self._cluster_table_from_dataset(
-                cluster_from, old_cluster_table
+                cluster_from,
+                old_cluster_table,
+                restrict_to=restrict_to,
+                restriction_idx_key=restriction_idx_key,
             )
             cluster_from = cluster_table
 
@@ -486,7 +491,11 @@ class GoldClusterizer:
         return cluster_table
 
     def _cluster_table_from_table(
-        self, cluster_from: Table, old_cluster_table: Table | None
+        self,
+        cluster_from: Table,
+        old_cluster_table: Table | None,
+        restrict_to: set[int] | None = None,
+        restriction_idx_key: str = "idx_vector",
     ) -> Table:
         """Create or validate the cluster table schema from a PixelTable table.
 
@@ -496,6 +505,8 @@ class GoldClusterizer:
         Args:
             cluster_from: The source PixelTable table to cluster.
             old_cluster_table: Existing cluster table if resuming, or None.
+            restrict_to: Optional set of indices to add to the cluster table.
+            restriction_idx_key: Column name used to restrict source rows.
 
         Returns:
             The cluster table with proper schema and initial rows.
@@ -592,6 +603,8 @@ class GoldClusterizer:
 
         if self.label_key is not None and self.label_key in cluster_from.columns():
             col_list.append(self.label_key)
+        if restriction_idx_key not in col_list and restriction_idx_key != "idx_vector":
+            col_list.append(restriction_idx_key)
 
         self._add_rows_to_cluster_table_from_dataset(
             cluster_from=GoldPxtTorchDataset(
@@ -605,12 +618,18 @@ class GoldClusterizer:
             ),
             cluster_table=cluster_table,
             include_vectorized=self.include_vectorized_in_table,
+            restrict_to=restrict_to,
+            restriction_idx_key=restriction_idx_key,
         )
 
         return cluster_table
 
     def _cluster_table_from_dataset(
-        self, cluster_from: Dataset, old_cluster_table: Table | None
+        self,
+        cluster_from: Dataset,
+        old_cluster_table: Table | None,
+        restrict_to: set[int] | None = None,
+        restriction_idx_key: str = "idx_vector",
     ) -> Table:
         """Create or validate the cluster table schema from a PyTorch Dataset.
 
@@ -620,6 +639,8 @@ class GoldClusterizer:
         Args:
             cluster_from: The source PyTorch Dataset to select from.
             old_cluster_table: Existing clustering table if resuming, or None.
+            restrict_to: Optional set of indices to add to the cluster table.
+            restriction_idx_key: Key used to restrict source samples.
 
         Returns:
             The clustering table with proper schema.
@@ -661,7 +682,11 @@ class GoldClusterizer:
             cluster_table.add_column(if_exists="error", **{self.cluster_key: pxt.Int})
 
         self._add_rows_to_cluster_table_from_dataset(
-            cluster_from, cluster_table, include_vectorized=True
+            cluster_from,
+            cluster_table,
+            include_vectorized=True,
+            restrict_to=restrict_to,
+            restriction_idx_key=restriction_idx_key,
         )
 
         return cluster_table
@@ -671,6 +696,8 @@ class GoldClusterizer:
         cluster_from: Dataset,
         cluster_table: Table,
         include_vectorized: bool = False,
+        restrict_to: set[int] | None = None,
+        restriction_idx_key: str = "idx_vector",
     ) -> None:
         """Add rows from the source dataset to the cluster table.
 
@@ -681,6 +708,8 @@ class GoldClusterizer:
             cluster_from: The source PyTorch Dataset.
             cluster_table: The clustering table to populate.
             include_vectorized: Whether to include the vectorized data in the cluster table.
+            restrict_to: Optional set of indices to add to the cluster table.
+            restriction_idx_key: Key used to restrict source samples.
         """
         dataloader = DataLoader(
             cluster_from,
@@ -720,6 +749,20 @@ class GoldClusterizer:
 
             if "idx" not in batch:
                 batch["idx"] = batch["idx_vector"]
+
+            if restrict_to is not None:
+                to_remove = {
+                    int(idx.item()) if isinstance(idx, torch.Tensor) else int(idx)
+                    for idx in batch[restriction_idx_key]
+                } - restrict_to
+                if to_remove:
+                    batch = filter_batch_from_indices(
+                        batch,
+                        to_remove,
+                        index_key=restriction_idx_key,
+                    )
+                    if len(batch) == 0:
+                        continue
 
             # Keep only not yet included samples in the batch
             if not_empty:

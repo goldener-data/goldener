@@ -533,7 +533,7 @@ class TestGoldClusterizer:
         ]
         assert set(distinct_clusters).issubset(set(range(3)))
 
-    def test_cluster_in_table_with_restrict_to(self):
+    def test_cluster_from_table_with_restrict_to(self):
         src_path = "unit_test.src_cluster_restrict_table"
         cluster_path = "unit_test.test_cluster_restrict"
 
@@ -549,7 +549,7 @@ class TestGoldClusterizer:
             src_table, n_clusters=3, restrict_to={2, 5, 7}
         )
 
-        assert cluster_table.count() == 10
+        assert cluster_table.count() == 3
         clustered = (
             cluster_table.where(
                 cluster_table[clusterizer.cluster_key] != None  # noqa: E711
@@ -560,7 +560,7 @@ class TestGoldClusterizer:
         )
         assert {row["idx"] for row in clustered} == {2, 5, 7}
 
-    def test_cluster_in_dataset_with_restrict_to(self):
+    def test_cluster_from_dataset_with_restrict_to(self):
         cluster_path = "unit_test.test_cluster_restrict_dataset"
 
         dataset = DummyDataset(
@@ -573,12 +573,10 @@ class TestGoldClusterizer:
             allow_existing=True,
         )
 
-        clusterizer.cluster_in_dataset(
-            dataset, n_clusters=3, restrict_to={2, 5, 7}
-        )
+        clusterizer.cluster_in_dataset(dataset, n_clusters=3, restrict_to={2, 5, 7})
 
         cluster_table = pxt.get_table(cluster_path)
-        assert cluster_table.count() == 10
+        assert cluster_table.count() == 3
         clustered = (
             cluster_table.where(
                 cluster_table[clusterizer.cluster_key] != None  # noqa: E711

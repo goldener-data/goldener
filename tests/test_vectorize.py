@@ -593,7 +593,7 @@ class TestGoldVectorizer:
             DummyDataset(dataset_len=6), restrict_to={1, 4}
         )
 
-        assert out_table.count() > 0
+        assert out_table.count() == 128
         assert {row["idx"] for row in out_table.collect()} == {1, 4}
         for row in out_table.collect():
             assert row["vectorized"] is not None
@@ -621,7 +621,7 @@ class TestGoldVectorizer:
 
         out_table = gv.vectorize_in_table(src_table, restrict_to={1, 4})
 
-        assert out_table.count() > 0
+        assert out_table.count() == 6
         assert {row["idx"] for row in out_table.collect()} == {1, 4}
 
     def test_vectorize_in_table_with_target(self):

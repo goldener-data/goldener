@@ -4,7 +4,7 @@ from typing import Callable, Any
 import torch
 
 import pixeltable as pxt
-from pixeltable import Error
+from pixeltable import Error, Query
 from pixeltable.catalog import Table
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
@@ -275,22 +275,15 @@ class GoldDescriptor:
             )
 
             if description_table.count() > 0 and "idx" in to_describe.columns():
+                source_for_indices: Table | Query = to_describe
                 if restrict_to is not None:
-                    to_describe_indices = {
-                        row["idx"]
-                        for row in to_describe.where(
-                            to_describe.idx.isin(restrict_to)
-                        )
-                        .select(to_describe.idx)
-                        .collect()
-                    }
-                else:
-                    to_describe_indices = set(
-                        [
-                            row["idx"]
-                            for row in to_describe.select(to_describe.idx).collect()
-                        ]
+                    source_for_indices = to_describe.where(
+                        to_describe.idx.isin(restrict_to)
                     )
+                to_describe_indices = {
+                    row["idx"]
+                    for row in source_for_indices.select(to_describe.idx).collect()
+                }
                 already_described = set(
                     [
                         row["idx"]
@@ -491,6 +484,7 @@ class GoldDescriptor:
         Args:
             description_table: The table to store descriptions.
             to_describe_dataset: The dataset to describe.
+            restrict_to: Optional set of sample indices to restrict to.
 
         Returns:
             The populated description table.
@@ -563,7 +557,7 @@ class GoldDescriptor:
             if restrict_to is not None:
                 to_remove = {
                     int(idx.item()) if isinstance(idx, torch.Tensor) else int(idx)
-                    for idx in batch["idx"]  # type: ignore[arg-type]
+                    for idx in batch["idx"]
                 } - restrict_to
                 if to_remove:
                     batch = filter_batch_from_indices(batch, to_remove)
