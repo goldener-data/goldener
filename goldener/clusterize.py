@@ -929,6 +929,9 @@ class GoldClusterizer:
         """
         cluster_col = get_expr_from_column_name(cluster_table, self.cluster_key)
         vectorized_col = get_expr_from_column_name(cluster_from, self.vectorized_key)
+        idx_key = "idx" if self.force_same_cluster else "idx_vector"
+        source_idx_col = get_expr_from_column_name(cluster_from, idx_key)
+        cluster_idx_col = get_expr_from_column_name(cluster_table, idx_key)
 
         if label_value is not None:
             assert self.label_key is not None
@@ -960,7 +963,7 @@ class GoldClusterizer:
         for chunk_indices in chunk_assignment:
             to_cluster_from = cluster_from.where(
                 cluster_from.idx_vector.isin(chunk_indices)
-            ).select(vectorized_col, cluster_from.idx_vector)
+            ).select(vectorized_col, source_idx_col)
 
             if to_cluster_from.count() == 0:
                 raise ValueError("Unexpected empty chunk for clustering.")
@@ -968,7 +971,7 @@ class GoldClusterizer:
             to_cluster_for_chunk = [
                 (
                     torch.from_numpy(sample[self.vectorized_key]),
-                    torch.tensor(sample["idx_vector"]).unsqueeze(0),
+                    torch.tensor(sample[idx_key]).unsqueeze(0),
                 )
                 for sample in to_cluster_from.collect()
             ]
@@ -991,11 +994,7 @@ class GoldClusterizer:
                 set_value_to_idx_rows(
                     table=cluster_table,
                     col_expr=cluster_col,
-                    idx_expr=(
-                        cluster_table.idx
-                        if self.force_same_cluster
-                        else cluster_table.idx_vector
-                    ),
+                    idx_expr=cluster_idx_col,
                     indices=set(indices_in_cluster),
                     value=cluster_idx,
                 )
