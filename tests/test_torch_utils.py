@@ -2,7 +2,10 @@ import numpy as np
 import torch
 import pytest
 from collections import Counter
+from torch.utils.data import default_collate
+
 from goldener.torch_utils import (
+    collate_keeping_sequences_as_sequences,
     torch_tensor_to_numpy_vectors,
     numpy_vectors_to_torch_tensor,
     np_transform_from_torch,
@@ -11,6 +14,64 @@ from goldener.torch_utils import (
     get_unique_values_in_tensor,
     shuffle_list,
 )
+
+
+class TestCollateKeepingSequencesAsSequences:
+    def test_collates_numpy_arrays_and_integers(self):
+        batch = [
+            {"image": np.array([1, 2, 3]), "label": 0, "text": "hello"},
+            {"image": np.array([4, 5, 6]), "label": 1, "text": "world"},
+        ]
+
+        result = collate_keeping_sequences_as_sequences(batch)
+
+        assert isinstance(result["image"], torch.Tensor)
+        assert isinstance(result["label"], torch.Tensor)
+        assert result["text"] == ["hello", "world"]
+        assert result["image"].shape == (2, 3)
+        assert result["label"].dtype == torch.int64
+        assert torch.equal(result["label"], torch.tensor([0, 1], dtype=torch.int64))
+
+    def test_collates_tensors(self):
+        batch = [
+            {"data": torch.zeros(3, 4)},
+            {"data": torch.ones(3, 4)},
+        ]
+
+        result = collate_keeping_sequences_as_sequences(batch)
+
+        assert isinstance(result["data"], torch.Tensor)
+        assert result["data"].shape == (2, 3, 4)
+
+    def test_collates_other_non_sequences_with_default_collate(self):
+        batch = [
+            {"float": 1.5, "bool": True, "numpy_scalar": np.float32(2.5)},
+            {"float": 3.5, "bool": False, "numpy_scalar": np.float32(4.5)},
+        ]
+
+        result = collate_keeping_sequences_as_sequences(batch)
+
+        for key in batch[0]:
+            expected = default_collate([sample[key] for sample in batch])
+            assert result[key].dtype == expected.dtype
+            assert torch.equal(result[key], expected)
+
+    def test_keeps_sequences_per_sample(self):
+        batch = [
+            {"labels": ["class_1", "class_2"], "metadata": ("first",)},
+            {
+                "labels": ["class_1", "class_2"],
+                "metadata": ("second", "extra"),
+            },
+        ]
+
+        result = collate_keeping_sequences_as_sequences(batch)
+
+        assert result["labels"] == [sample["labels"] for sample in batch]
+        assert result["metadata"] == [sample["metadata"] for sample in batch]
+
+    def test_empty_batch(self):
+        assert collate_keeping_sequences_as_sequences([]) == {}
 
 
 class TestTorchTensorToNumpyVectors:

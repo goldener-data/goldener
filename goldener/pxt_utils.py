@@ -1,8 +1,6 @@
-from collections import defaultdict
-from typing import Literal, Any, Iterator, Sequence, Callable
+from typing import Literal, Any, Iterator, Callable
 import shutil
 
-import numpy as np
 import pixeltable as pxt
 from pixeltable import Query
 from pixeltable.catalog import Table
@@ -120,45 +118,6 @@ def set_value_to_idx_rows(
         value: The value to set the column to.
     """
     table.where(idx_expr.isin(indices)).update({col_expr.display_str(): value})
-
-
-def pxt_torch_dataset_collate_fn(batch: list[dict[str, Any]]) -> dict[str, Any]:
-    """Collate function for torch datasets obtained from a Pixeltable table.
-
-    Args:
-        batch: A list of samples, where each sample is a dictionary.
-
-    Returns:
-        A single dictionary with collated values. The torch tensors, numpy arrays and
-        integers are stacked into torch tensors. All other types are kept as lists.
-    """
-    value_list_dict = defaultdict(list)
-    conversion_dict: dict[str, Callable[[Sequence[Any]], torch.Tensor]] = {}
-
-    def stack_arrays_and_convert_to_torch(arrays: Sequence[np.ndarray]) -> torch.Tensor:
-        return torch.from_numpy(np.stack(arrays, axis=0))
-
-    def stack_int_as_torch(ints: Sequence[int]) -> torch.Tensor:
-        return torch.tensor(ints, dtype=torch.int64)
-
-    def stack_tensors(tensors: Sequence[torch.Tensor]) -> torch.Tensor:
-        return torch.stack(list(tensors), dim=0)
-
-    for idx_sample, sample in enumerate(batch):
-        for key, value in sample.items():
-            value_list_dict[key].append(value)
-            if idx_sample == 0:
-                if isinstance(value, torch.Tensor):
-                    conversion_dict[key] = stack_tensors
-                elif isinstance(value, np.ndarray):
-                    conversion_dict[key] = stack_arrays_and_convert_to_torch
-                elif isinstance(value, int):
-                    conversion_dict[key] = stack_int_as_torch
-
-    return {
-        key: conversion_dict[key](value) if key in conversion_dict else value
-        for key, value in value_list_dict.items()
-    }
 
 
 class GoldPxtTorchDataset(PixeltablePytorchDataset):

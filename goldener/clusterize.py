@@ -21,10 +21,12 @@ from goldener.pxt_utils import (
     make_batch_ready_for_table,
     check_pxt_table_has_primary_key,
     get_sample_row_from_idx,
-    pxt_torch_dataset_collate_fn,
 )
 from goldener.reduce import GoldReductionTool, GoldReductionToolWithFit
-from goldener.torch_utils import get_dataset_sample_dict
+from goldener.torch_utils import (
+    collate_keeping_sequences_as_sequences,
+    get_dataset_sample_dict,
+)
 from goldener.utils import (
     filter_batch_from_indices,
 )
@@ -235,7 +237,7 @@ class GoldClusterizer:
         chunk: Optional chunk size for processing data in chunks to reduce memory consumption.
         collate_fn: Optional function to collate dataset samples into batches composed of
             dictionaries with at least the key specified by `vectorized_key` returning a PyTorch Tensor.
-            If None, `pxt_torch_dataset_collate_fn` is used, which preserves list-valued
+            If None, `collate_keeping_sequences_as_sequences` is used, which preserves sequence-valued
             fields as one list per sample.
         vectorized_key: Key in the batch dictionary that contains the vectorized data for the clustering. Default is "vectorized".
         include_vectorized_in_table: Whether to keep the vectorized data in the cluster table.
@@ -290,7 +292,7 @@ class GoldClusterizer:
             chunk: Optional chunk size for processing data in chunks to reduce memory consumption.
             collate_fn: Optional function to collate dataset samples into batches composed of
                 dictionaries with at least the key specified by `vectorized_key` returning a PyTorch Tensor.
-                If None, `pxt_torch_dataset_collate_fn` is used, which preserves list-valued
+                If None, `collate_keeping_sequences_as_sequences` is used, which preserves sequence-valued
                 fields as one list per sample.
             vectorized_key: Key in the batch dictionary that contains the vectorized data for the clustering. Default is "vectorized".
             include_vectorized_in_table: Whether to keep the vectorized data in the cluster table. Defaults to False.
@@ -320,7 +322,9 @@ class GoldClusterizer:
             raise ValueError("chunk must be a positive integer or None.")
         self.chunk = chunk
         self.collate_fn = (
-            collate_fn if collate_fn is not None else pxt_torch_dataset_collate_fn
+            collate_fn
+            if collate_fn is not None
+            else collate_keeping_sequences_as_sequences
         )
         self.vectorized_key = vectorized_key
         self.include_vectorized_in_table = include_vectorized_in_table

@@ -11,7 +11,7 @@ from sklearn.decomposition import PCA
 import pixeltable as pxt
 from torch.utils.data import Dataset
 
-from goldener.pxt_utils import GoldPxtTorchDataset, pxt_torch_dataset_collate_fn
+from goldener.pxt_utils import GoldPxtTorchDataset
 from goldener.reduce import GoldSKLearnReductionTool
 from goldener.select import (
     GoldSelector,
@@ -24,6 +24,7 @@ from goldener.select import (
     GoldGreedyKernelPointsSelectionTool,
     GoldZCoreSelectionTool,
 )
+from goldener.torch_utils import collate_keeping_sequences_as_sequences
 
 
 class DummyDataset(Dataset):
@@ -64,9 +65,9 @@ class TestGoldSelector:
             selector.distribute = True
         assert selector.distribute is False
 
-    def test_collate_fn_defaults_to_pxt_torch_dataset_collate_fn(self):
+    def test_collate_fn_defaults_to_collate_keeping_sequences_as_sequences(self):
         selector = GoldSelector(table_path="unit_test.select_default_collate")
-        assert selector.collate_fn is pxt_torch_dataset_collate_fn
+        assert selector.collate_fn is collate_keeping_sequences_as_sequences
 
         def custom_collate_fn(batch):
             return batch

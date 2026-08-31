@@ -8,7 +8,7 @@ import pixeltable as pxt
 
 from goldener.describe import GoldDescriptor
 from goldener.embed import GoldTorchEmbeddingToolConfig, GoldTorchEmbeddingTool
-from goldener.pxt_utils import pxt_torch_dataset_collate_fn
+from goldener.torch_utils import collate_keeping_sequences_as_sequences
 from goldener.vectorize import GoldTensorVectorizationTool
 
 
@@ -783,12 +783,14 @@ class TestGoldDescriptor:
         assert labels_by_idx[0] == {"class_1", "class_2"}
         assert labels_by_idx[1] == {"class_1", "class_2"}
 
-    def test_collate_fn_defaults_to_pxt_torch_dataset_collate_fn(self, embedder):
+    def test_collate_fn_defaults_to_collate_keeping_sequences_as_sequences(
+        self, embedder
+    ):
         desc = GoldDescriptor(
             table_path="unit_test.test_describe",
             embedder=embedder,
         )
-        assert desc.collate_fn is pxt_torch_dataset_collate_fn
+        assert desc.collate_fn is collate_keeping_sequences_as_sequences
 
         def custom_collate_fn(batch):
             return batch

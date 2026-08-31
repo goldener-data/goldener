@@ -1,11 +1,40 @@
+from collections import defaultdict
+from collections.abc import Sequence
 from typing import Callable, Any, Iterator, TypeVar
 
 import numpy as np
 import torch
-from torch.utils.data import IterableDataset, Dataset
+from torch.utils.data import IterableDataset, Dataset, default_collate
 
 
 T = TypeVar("T")
+
+
+def collate_keeping_sequences_as_sequences(
+    batch: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Collate dictionary samples while preserving sequence-valued features.
+
+    Args:
+        batch: A list of samples, where each sample is a dictionary.
+
+    Returns:
+        A dictionary with sequences kept per sample and all other values collated
+        with PyTorch's default collate function.
+    """
+    values_by_key: dict[str, list[Any]] = defaultdict(list)
+    for sample in batch:
+        for key, value in sample.items():
+            values_by_key[key].append(value)
+
+    return {
+        key: (
+            values
+            if isinstance(values[0], Sequence) or values[0] is None
+            else default_collate(values)
+        )
+        for key, values in values_by_key.items()
+    }
 
 
 def make_2d_tensor(x: torch.Tensor) -> torch.Tensor:
