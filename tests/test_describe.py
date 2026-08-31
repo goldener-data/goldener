@@ -218,7 +218,7 @@ class TestGoldDescriptor:
             assert row["embeddings"].shape == (4, 8, 8)
             assert row["label"] == "dummy"
 
-    def test_describe_in_table_with_restrict_to(self, embedder):
+    def test_describe_from_dataset_with_restrict_to(self, embedder):
         desc = GoldDescriptor(
             table_path="unit_test.test_describe_restrict",
             embedder=embedder,
@@ -235,7 +235,7 @@ class TestGoldDescriptor:
         assert description_table.count() == 2
         assert {row["idx"] for row in description_table.collect()} == {1, 4}
 
-    def test_describe_in_table_with_restrict_to_from_table(self, embedder):
+    def test_describe_from_table_with_restrict_to_from_table(self, embedder):
         src_path = "unit_test.src_table_restrict"
         desc_path = "unit_test.test_describe_restrict_from_table"
 
