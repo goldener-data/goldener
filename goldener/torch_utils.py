@@ -37,9 +37,7 @@ def collate_keeping_sequences_as_sequences(
         extra_keys = sample.keys() - values_by_key.keys()
         if extra_keys:
             logger.warning(
-                "Ignoring extra keys %s in batch sample at index %d.",
-                sorted(extra_keys),
-                sample_idx,
+                f"Ignoring extra keys {sorted(extra_keys)} in batch sample at index {sample_idx}.",
             )
 
     return {
