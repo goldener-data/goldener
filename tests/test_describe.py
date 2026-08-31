@@ -73,6 +73,25 @@ class TestGoldDescriptor:
     def teardown_method(self):
         pxt.drop_dir("unit_test", force=True)
 
+    def test_distribute_cannot_be_enabled(self, embedder):
+        error = "Distributed processing is not implemented for GoldDescriptor"
+        with pytest.raises(NotImplementedError, match=error):
+            GoldDescriptor(
+                table_path="unit_test.test_distribute",
+                embedder=embedder,
+                distribute=True,
+            )
+
+        descriptor = GoldDescriptor(
+            table_path="unit_test.test_distribute",
+            embedder=embedder,
+        )
+        assert descriptor.distribute is False
+
+        with pytest.raises(NotImplementedError, match=error):
+            descriptor.distribute = True
+        assert descriptor.distribute is False
+
     def test_simple_describe_in_table(self, embedder):
         desc = GoldDescriptor(
             table_path="unit_test.test_describe",
@@ -217,6 +236,49 @@ class TestGoldDescriptor:
             assert row["idx"] == i
             assert row["embeddings"].shape == (4, 8, 8)
             assert row["label"] == "dummy"
+
+    def test_describe_from_dataset_with_restrict_to(self, embedder):
+        desc = GoldDescriptor(
+            table_path="unit_test.test_describe_restrict",
+            embedder=embedder,
+            batch_size=2,
+            collate_fn=None,
+            device=torch.device("cpu"),
+            allow_existing=False,
+        )
+
+        description_table = desc.describe_in_table(
+            DummyDataset(dataset_len=6), restrict_to={1, 4}
+        )
+
+        assert description_table.count() == 2
+        assert {row["idx"] for row in description_table.collect()} == {1, 4}
+
+    def test_describe_from_table_with_restrict_to_from_table(self, embedder):
+        src_path = "unit_test.src_table_restrict"
+        desc_path = "unit_test.test_describe_restrict_from_table"
+
+        source_rows = [
+            {"idx": idx, "data": torch.zeros(3, 8, 8).numpy(), "label": "dummy"}
+            for idx in range(6)
+        ]
+        src_table = pxt.create_table(
+            src_path, source=source_rows, if_exists="replace_force"
+        )
+
+        desc = GoldDescriptor(
+            table_path=desc_path,
+            embedder=embedder,
+            batch_size=2,
+            collate_fn=None,
+            device=torch.device("cpu"),
+            allow_existing=False,
+        )
+
+        description_table = desc.describe_in_table(src_table, restrict_to={1, 4})
+
+        assert description_table.count() == 2
+        assert {row["idx"] for row in description_table.collect()} == {1, 4}
 
     def test_describe_in_table_after_restart(self, embedder):
         desc = GoldDescriptor(

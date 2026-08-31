@@ -462,6 +462,25 @@ class TestGoldVectorizer:
     def teardown_method(self):
         pxt.drop_dir("unit_test", force=True)
 
+    def test_distribute_cannot_be_enabled(self):
+        error = "Distributed processing is not implemented for GoldVectorizer"
+        with pytest.raises(NotImplementedError, match=error):
+            GoldVectorizer(
+                table_path="unit_test.test_distribute",
+                vectorizer=GoldTensorVectorizationTool(),
+                distribute=True,
+            )
+
+        vectorizer = GoldVectorizer(
+            table_path="unit_test.test_distribute",
+            vectorizer=GoldTensorVectorizationTool(),
+        )
+        assert vectorizer.distribute is False
+
+        with pytest.raises(NotImplementedError, match=error):
+            vectorizer.distribute = True
+        assert vectorizer.distribute is False
+
     def test_collate_fn_defaults_to_pxt_torch_dataset_collate_fn(self):
         gv = GoldVectorizer(
             table_path="unit_test.vectorize_default_collate",
@@ -576,6 +595,53 @@ class TestGoldVectorizer:
             assert "vectorized" in row
             assert row["vectorized"].shape == (4,)
             assert row["label"] == "dummy"
+
+    def test_vectorize_from_dataset_with_restrict_to(self):
+        gv = GoldVectorizer(
+            table_path="unit_test.vectorize_restrict",
+            vectorizer=GoldTensorVectorizationTool(),
+            collate_fn=None,
+            data_key="embeddings",
+            vectorized_key="vectorized",
+            batch_size=1,
+            num_workers=0,
+            allow_existing=False,
+        )
+
+        out_table = gv.vectorize_in_table(
+            DummyDataset(dataset_len=6), restrict_to={1, 4}
+        )
+
+        assert out_table.count() == 128
+        assert {row["idx"] for row in out_table.collect()} == {1, 4}
+        for row in out_table.collect():
+            assert row["vectorized"] is not None
+
+    def test_vectorize_from_table_with_restrict_to_from_table(self):
+        src_path = "unit_test.src_vectorize_restrict"
+        gv = GoldVectorizer(
+            table_path="unit_test.vectorize_restrict_from_table",
+            vectorizer=GoldTensorVectorizationTool(),
+            collate_fn=None,
+            data_key="embeddings",
+            vectorized_key="vectorized",
+            batch_size=1,
+            num_workers=0,
+            allow_existing=False,
+        )
+
+        source_rows = [
+            {"idx": idx, "embeddings": torch.zeros(4, 3).numpy(), "label": "dummy"}
+            for idx in range(6)
+        ]
+        src_table = pxt.create_table(
+            src_path, source=source_rows, if_exists="replace_force"
+        )
+
+        out_table = gv.vectorize_in_table(src_table, restrict_to={1, 4})
+
+        assert out_table.count() == 6
+        assert {row["idx"] for row in out_table.collect()} == {1, 4}
 
     def test_vectorize_in_table_with_target(self):
         src_path = "unit_test.src_table_vectorize"

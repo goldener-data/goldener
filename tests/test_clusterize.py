@@ -243,6 +243,25 @@ class TestGoldClusterizer:
     def teardown_method(self):
         pxt.drop_dir("unit_test", force=True)
 
+    def test_distribute_cannot_be_enabled(self):
+        error = "Distributed processing is not implemented for GoldClusterizer"
+        with pytest.raises(NotImplementedError, match=error):
+            GoldClusterizer(
+                table_path="unit_test.test_distribute",
+                clustering_tool=GoldRandomClusteringTool(),
+                distribute=True,
+            )
+
+        clusterizer = GoldClusterizer(
+            table_path="unit_test.test_distribute",
+            clustering_tool=GoldRandomClusteringTool(),
+        )
+        assert clusterizer.distribute is False
+
+        with pytest.raises(NotImplementedError, match=error):
+            clusterizer.distribute = True
+        assert clusterizer.distribute is False
+
     def test_collate_fn_defaults_to_pxt_torch_dataset_collate_fn(self):
         clusterizer = GoldClusterizer(
             table_path="unit_test.cluster_default_collate",
@@ -574,6 +593,94 @@ class TestGoldClusterizer:
             assert seen_samples.isdisjoint(samples)
             seen_samples.update(samples)
         assert seen_samples == set(range(10))
+
+    def test_cluster_in_table_without_force_keeps_per_vector_labels(self):
+        src_path = "unit_test.src_cluster_no_force_table"
+        cluster_path = "unit_test.test_cluster_no_force"
+
+        rows = [
+            {
+                "idx": sample,
+                "idx_vector": sample * 3 + vector,
+                "vectorized": torch.rand(4).numpy(),
+            }
+            for sample in range(10)
+            for vector in range(3)
+        ]
+        src_table = pxt.create_table(src_path, source=rows, if_exists="replace_force")
+
+        clusterizer = GoldClusterizer(
+            table_path=cluster_path,
+            clustering_tool=GoldRandomClusteringTool(random_state=0),
+            allow_existing=True,
+        )
+
+        cluster_table = clusterizer.cluster_in_table(src_table, n_clusters=4)
+
+        assert cluster_table.count() == 30
+        labeled_vectors = (
+            cluster_table.where(
+                cluster_table[clusterizer.cluster_key] != None  # noqa: E711
+            )
+            .select(cluster_table.idx_vector)
+            .distinct()
+            .count()
+        )
+        assert labeled_vectors == 30
+
+    def test_cluster_from_table_with_restrict_to(self):
+        src_path = "unit_test.src_cluster_restrict_table"
+        cluster_path = "unit_test.test_cluster_restrict"
+
+        src_table = self._make_src_table(src_path, n=10)
+
+        clusterizer = GoldClusterizer(
+            table_path=cluster_path,
+            clustering_tool=GoldRandomClusteringTool(random_state=0),
+            allow_existing=True,
+        )
+
+        cluster_table = clusterizer.cluster_in_table(
+            src_table, n_clusters=3, restrict_to={2, 5, 7}
+        )
+
+        assert cluster_table.count() == 3
+        clustered = (
+            cluster_table.where(
+                cluster_table[clusterizer.cluster_key] != None  # noqa: E711
+            )
+            .select(cluster_table.idx)
+            .distinct()
+            .collect()
+        )
+        assert {row["idx"] for row in clustered} == {2, 5, 7}
+
+    def test_cluster_from_dataset_with_restrict_to(self):
+        cluster_path = "unit_test.test_cluster_restrict_dataset"
+
+        dataset = DummyDataset(
+            [{"vectorized": torch.rand(4), "idx": idx} for idx in range(10)]
+        )
+
+        clusterizer = GoldClusterizer(
+            table_path=cluster_path,
+            clustering_tool=GoldRandomClusteringTool(random_state=0),
+            allow_existing=True,
+        )
+
+        clusterizer.cluster_in_dataset(dataset, n_clusters=3, restrict_to={2, 5, 7})
+
+        cluster_table = pxt.get_table(cluster_path)
+        assert cluster_table.count() == 3
+        clustered = (
+            cluster_table.where(
+                cluster_table[clusterizer.cluster_key] != None  # noqa: E711
+            )
+            .select(cluster_table.idx)
+            .distinct()
+            .collect()
+        )
+        assert {row["idx"] for row in clustered} == {2, 5, 7}
 
     def test_cluster_in_table_with_reducer(self):
         table_path = "unit_test.test_cluster_reducer"
