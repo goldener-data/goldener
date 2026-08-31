@@ -3,7 +3,7 @@ from collections import defaultdict
 import torch
 import pytest
 import pixeltable as pxt
-from goldener.pxt_utils import pxt_torch_dataset_collate_fn
+from goldener.torch_utils import collate_keeping_sequences_as_sequences
 from goldener.vectorize import (
     GoldTensorVectorizationTool,
     Filter2DWithCount,
@@ -481,12 +481,12 @@ class TestGoldVectorizer:
             vectorizer.distribute = True
         assert vectorizer.distribute is False
 
-    def test_collate_fn_defaults_to_pxt_torch_dataset_collate_fn(self):
+    def test_collate_fn_defaults_to_collate_keeping_sequences_as_sequences(self):
         gv = GoldVectorizer(
             table_path="unit_test.vectorize_default_collate",
             vectorizer=GoldTensorVectorizationTool(),
         )
-        assert gv.collate_fn is pxt_torch_dataset_collate_fn
+        assert gv.collate_fn is collate_keeping_sequences_as_sequences
 
         def custom_collate_fn(batch):
             return batch

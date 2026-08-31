@@ -15,7 +15,7 @@ from goldener.organize import (
     ExhaustedClusterStrategy,
     get_indices_per_cluster_for_subset,
 )
-from goldener.pxt_utils import pxt_torch_dataset_collate_fn
+from goldener.torch_utils import collate_keeping_sequences_as_sequences
 from goldener.vectorize import GoldVectorizer, GoldTensorVectorizationTool
 
 
@@ -54,7 +54,7 @@ def vectorizer():
     return GoldVectorizer(
         table_path="unit_test.vectorizer_batcher",
         vectorizer=GoldTensorVectorizationTool(),
-        collate_fn=pxt_torch_dataset_collate_fn,
+        collate_fn=collate_keeping_sequences_as_sequences,
         batch_size=2,
     )
 

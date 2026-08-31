@@ -22,13 +22,16 @@ from goldener.pxt_utils import (
     GoldPxtTorchDataset,
     get_valid_table,
     get_sample_row_from_idx,
-    pxt_torch_dataset_collate_fn,
     get_expr_from_column_name,
     make_batch_ready_for_table,
     check_pxt_table_has_primary_key,
     get_max_value_in_column,
 )
-from goldener.torch_utils import make_2d_tensor, get_dataset_sample_dict
+from goldener.torch_utils import (
+    collate_keeping_sequences_as_sequences,
+    get_dataset_sample_dict,
+    make_2d_tensor,
+)
 from goldener.utils import (
     check_x_and_y_shapes,
     filter_batch_from_indices,
@@ -474,8 +477,8 @@ class GoldVectorizer:
         vectorizer: GoldTensorVectorizationTool instance for transforming batched inputs into vectors.
         collate_fn: Optional function to collate dataset samples into batches composed of
             dictionaries with at least the key specified by `data_key` returning a PyTorch Tensor.
-            If None, `pxt_torch_dataset_collate_fn` is used, which preserves list-valued
-            fields as one list per sample.
+            If None, `collate_keeping_sequences_as_sequences` is used, which preserves sequence-valued
+            fields as one sequence per sample.
         data_key: Key in the batch dictionary that contains the data to vectorize. Default is "embeddings".
         target_key: Optional key in the batch dictionary containing the target used to filter vectors. Default is "target".
         vectorized_key: Column name to store the resulting vectors in the PixelTable table. Default is "vectorized".
@@ -530,7 +533,7 @@ class GoldVectorizer:
             table_path: Path to the PixelTable table for storing vectors.
             vectorizer: GoldTensorVectorizationTool instance for transforming tensors.
             collate_fn: Optional collate function for preparing batches.
-                If None, `pxt_torch_dataset_collate_fn` is used.
+                If None, `collate_keeping_sequences_as_sequences` is used.
             data_key: Key for data in the batch dictionary. Defaults to "embeddings".
             target_key: Key for target in the batch dictionary. Defaults to "target".
             vectorized_key: Column name for storing vectors. Defaults to "vectorized".
@@ -555,7 +558,9 @@ class GoldVectorizer:
         self.table_path = table_path
         self.vectorizer = vectorizer
         self.collate_fn = (
-            collate_fn if collate_fn is not None else pxt_torch_dataset_collate_fn
+            collate_fn
+            if collate_fn is not None
+            else collate_keeping_sequences_as_sequences
         )
         self.data_key = data_key
         self.target_key = target_key
@@ -768,7 +773,7 @@ class GoldVectorizer:
             logger.info(f"Add the Vectorized column in {self.table_path}")
             sample = get_sample_row_from_idx(
                 to_vectorize,
-                collate_fn=pxt_torch_dataset_collate_fn,
+                collate_fn=collate_keeping_sequences_as_sequences,
                 expected_keys=[self.data_key],
             )
             vectorized = self.vectorizer.vectorize(

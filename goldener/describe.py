@@ -14,13 +14,15 @@ from goldener.pxt_utils import (
     GoldPxtTorchDataset,
     get_expr_from_column_name,
     get_sample_row_from_idx,
-    pxt_torch_dataset_collate_fn,
     get_valid_table,
     make_batch_ready_for_table,
     check_pxt_table_has_primary_key,
     get_max_value_in_column,
 )
-from goldener.torch_utils import get_dataset_sample_dict
+from goldener.torch_utils import (
+    collate_keeping_sequences_as_sequences,
+    get_dataset_sample_dict,
+)
 from goldener.utils import filter_batch_from_indices
 from goldener.vectorize import (
     GoldTensorVectorizationTool,
@@ -56,8 +58,8 @@ class GoldDescriptor:
             applied by the `collate_fn`.
         collate_fn: Optional function to collate dataset samples into batches composed of
             dictionaries with at least the key specified by `data_key` returning a PyTorch Tensor.
-            If None, `pxt_torch_dataset_collate_fn` is used, which preserves list-valued
-            fields as one list per sample. It should format
+            If None, `collate_keeping_sequences_as_sequences` is used, which preserves sequence-valued
+            fields as one sequence per sample. It should format
             the value at `data_key` in the format expected by the embedder.
         data_key: Key in the batch dictionary that contains the data to compute embeddings from. Default is "data".
         target_key: Key in the batch dictionary that contains the target/label information. Default is "target".
@@ -122,7 +124,7 @@ class GoldDescriptor:
             vectorizer: Optional GoldTensorVectorizationTool to further vectorize the computed embeddings.
             transform: Optional transformation to apply before embedding computation.
             collate_fn: Optional function to collate dataset samples into batches.
-                If None, `pxt_torch_dataset_collate_fn` is used.
+                If None, `collate_keeping_sequences_as_sequences` is used.
             data_key: Key in the batch dictionary containing the data. Defaults to "data".
             target_key: Key in the batch dictionary containing the target/label. Defaults to "target".
             label_key: Optional key for labels in the batch dictionary. Default is None.
@@ -152,7 +154,9 @@ class GoldDescriptor:
         self.vectorizer = vectorizer
         self.transform = transform
         self.collate_fn = (
-            collate_fn if collate_fn is not None else pxt_torch_dataset_collate_fn
+            collate_fn
+            if collate_fn is not None
+            else collate_keeping_sequences_as_sequences
         )
         self.data_key = data_key
         self.target_key = target_key
@@ -369,7 +373,7 @@ class GoldDescriptor:
             logger.info(f"Add the description column in {self.table_path}")
             sample = get_sample_row_from_idx(
                 to_describe,
-                collate_fn=pxt_torch_dataset_collate_fn,
+                collate_fn=collate_keeping_sequences_as_sequences,
                 expected_keys=[self.data_key],
             )
             sample_data = sample[self.data_key]

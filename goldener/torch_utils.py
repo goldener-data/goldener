@@ -1,11 +1,53 @@
+from collections.abc import Sequence
+from logging import getLogger
 from typing import Callable, Any, Iterator, TypeVar
 
 import numpy as np
 import torch
-from torch.utils.data import IterableDataset, Dataset
+from torch.utils.data import IterableDataset, Dataset, default_collate
 
 
+logger = getLogger(__name__)
 T = TypeVar("T")
+
+
+def collate_keeping_sequences_as_sequences(
+    batch: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Collate dictionary samples while preserving sequence-valued features.
+
+    Args:
+        batch: A list of samples, where each sample is a dictionary.
+
+    Returns:
+        A dictionary with sequences kept per sample and all other values collated
+        with PyTorch's default collate function.
+
+    Raises:
+        KeyError: If a sample is missing a key present in the first sample.
+    """
+    if not batch:
+        return {}
+
+    values_by_key = {key: [value] for key, value in batch[0].items()}
+    for sample_idx, sample in enumerate(batch[1:], start=1):
+        for key in values_by_key:
+            values_by_key[key].append(sample[key])
+
+        extra_keys = sample.keys() - values_by_key.keys()
+        if extra_keys:
+            logger.warning(
+                f"Ignoring extra keys {sorted(extra_keys)} in batch sample at index {sample_idx}.",
+            )
+
+    return {
+        key: (
+            values
+            if isinstance(values[0], Sequence) or values[0] is None
+            else default_collate(values)
+        )
+        for key, values in values_by_key.items()
+    }
 
 
 def make_2d_tensor(x: torch.Tensor) -> torch.Tensor:
