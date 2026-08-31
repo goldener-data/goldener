@@ -3,6 +3,7 @@ import pytest
 import torch
 
 import pixeltable as pxt
+from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset
 
 from goldener.clusterize import GoldClusterizer, GoldRandomClusteringTool
@@ -524,6 +525,82 @@ class TestGoldSplitter:
 
         with pytest.raises(pxt.Error):
             pxt.get_table(basic_splitter.vectorizer.table_path)
+
+    def test_split_population_matches_sklearn(self, selector):
+        sample_count = 11
+        train_ratio = 0.8
+        splitter = GoldSplitter(
+            sets=[
+                GoldSet(name="train", size=train_ratio),
+                GoldSet(name="val", size=1 - train_ratio),
+            ],
+            selector=selector,
+        )
+
+        split_table = splitter.split_in_table(
+            to_split=DummyDataset(
+                [
+                    {
+                        "vectorized": torch.rand(4),
+                        "idx": idx,
+                        "label": "dummy",
+                    }
+                    for idx in range(sample_count)
+                ]
+            )
+        )
+        split_indices = splitter.get_split_indices(
+            split_table,
+            selection_key=splitter.selector.selection_key,
+            idx_key="idx",
+        )
+        sklearn_train, sklearn_val = train_test_split(
+            range(sample_count), train_size=train_ratio, shuffle=False
+        )
+
+        assert len(split_indices["train"]) == len(sklearn_train)
+        assert len(split_indices["val"]) == len(sklearn_val)
+
+    @pytest.mark.parametrize(
+        "sample_count,set_sizes,expected_counts",
+        [
+            (11, (0.5, 0.3, 0.2), {"train": 5, "val": 3, "test": 3}),
+            (3, (0.9, 0.05, 0.05), {"train": 1, "val": 1, "test": 1}),
+        ],
+    )
+    def test_split_population_with_multiple_sets(
+        self, selector, sample_count, set_sizes, expected_counts
+    ):
+        splitter = GoldSplitter(
+            sets=[
+                GoldSet(name="train", size=set_sizes[0]),
+                GoldSet(name="val", size=set_sizes[1]),
+                GoldSet(name="test", size=set_sizes[2]),
+            ],
+            selector=selector,
+        )
+
+        split_table = splitter.split_in_table(
+            to_split=DummyDataset(
+                [
+                    {
+                        "vectorized": torch.rand(4),
+                        "idx": idx,
+                        "label": "dummy",
+                    }
+                    for idx in range(sample_count)
+                ]
+            )
+        )
+        split_indices = splitter.get_split_indices(
+            split_table,
+            selection_key=splitter.selector.selection_key,
+            idx_key="idx",
+        )
+
+        assert {
+            name: len(indices) for name, indices in split_indices.items()
+        } == expected_counts
 
     def test_split_in_table_from_dataset_with_restart(self, basic_splitter):
         dataset = DummyDataset(
