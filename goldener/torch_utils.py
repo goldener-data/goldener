@@ -186,13 +186,13 @@ class ResetableTorchIterableDataset(torch.utils.data.IterableDataset):
         self.data_iterable = data_iterable
         self._data_iterator: Iterator[Any] | None = iter(self.data_iterable)
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[Any]:
         """Return the iterator object."""
         if self._data_iterator is None:
             self._data_iterator = iter(self.data_iterable)
         return self
 
-    def __next__(self):
+    def __next__(self) -> Any:
         """Return the next item from the iterator."""
         # __iter__ always runs before __next__ in the iterator protocol and
         # re-creates _data_iterator if it was exhausted, so it is never None
@@ -204,7 +204,7 @@ class ResetableTorchIterableDataset(torch.utils.data.IterableDataset):
             self._data_iterator = None
             raise
 
-    def reset(self):
+    def reset(self) -> None:
         """Reset the iterator to the beginning of the dataset."""
         self._data_iterator = iter(self.data_iterable)
 
