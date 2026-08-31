@@ -655,7 +655,7 @@ class GoldSelector:
         collate_fn: Optional function to collate dataset samples into batches composed of
             dictionaries with at least the key specified by `vectorized_key` returning a PyTorch Tensor.
             If None, `collate_keeping_sequences_as_sequences` is used, which preserves sequence-valued
-            fields as one list per sample.
+            fields as one sequence per sample.
         vectorized_key: Key in the batch dictionary that contains the vectorized data for selection. Default is "vectorized".
         include_vectorized_in_table: Whether to include the vectorized data in the selection table. Defaults to False.
         It is only applied if the cluster table is created from a Table (it is forced anyway for Dataset).

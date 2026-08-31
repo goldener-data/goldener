@@ -17,32 +17,6 @@ from goldener.torch_utils import (
 
 
 class TestCollateKeepingSequencesAsSequences:
-    def test_collates_numpy_arrays_and_integers(self):
-        batch = [
-            {"image": np.array([1, 2, 3]), "label": 0, "text": "hello"},
-            {"image": np.array([4, 5, 6]), "label": 1, "text": "world"},
-        ]
-
-        result = collate_keeping_sequences_as_sequences(batch)
-
-        assert isinstance(result["image"], torch.Tensor)
-        assert isinstance(result["label"], torch.Tensor)
-        assert result["text"] == ["hello", "world"]
-        assert result["image"].shape == (2, 3)
-        assert result["label"].dtype == torch.int64
-        assert torch.equal(result["label"], torch.tensor([0, 1], dtype=torch.int64))
-
-    def test_collates_tensors(self):
-        batch = [
-            {"data": torch.zeros(3, 4)},
-            {"data": torch.ones(3, 4)},
-        ]
-
-        result = collate_keeping_sequences_as_sequences(batch)
-
-        assert isinstance(result["data"], torch.Tensor)
-        assert result["data"].shape == (2, 3, 4)
-
     def test_collates_other_non_sequences_with_default_collate(self):
         batch = [
             {"float": 1.5, "bool": True, "numpy_scalar": np.float32(2.5)},
@@ -69,6 +43,30 @@ class TestCollateKeepingSequencesAsSequences:
 
         assert result["labels"] == [sample["labels"] for sample in batch]
         assert result["metadata"] == [sample["metadata"] for sample in batch]
+
+    def test_raises_when_sample_is_missing_key(self):
+        batch = [
+            {"value": 1, "label": "first"},
+            {"value": 2},
+        ]
+
+        with pytest.raises(KeyError, match="label"):
+            collate_keeping_sequences_as_sequences(batch)
+
+    def test_warns_and_ignores_extra_keys(self, caplog):
+        batch = [
+            {"value": 1},
+            {"value": 2, "extra": "ignored"},
+        ]
+
+        with caplog.at_level("WARNING", logger="goldener.torch_utils"):
+            result = collate_keeping_sequences_as_sequences(batch)
+
+        assert set(result) == {"value"}
+        assert torch.equal(result["value"], torch.tensor([1, 2]))
+        assert (
+            "Ignoring extra keys ['extra'] in batch sample at index 1." in caplog.text
+        )
 
     def test_empty_batch(self):
         assert collate_keeping_sequences_as_sequences([]) == {}

@@ -478,7 +478,7 @@ class GoldVectorizer:
         collate_fn: Optional function to collate dataset samples into batches composed of
             dictionaries with at least the key specified by `data_key` returning a PyTorch Tensor.
             If None, `collate_keeping_sequences_as_sequences` is used, which preserves sequence-valued
-            fields as one list per sample.
+            fields as one sequence per sample.
         data_key: Key in the batch dictionary that contains the data to vectorize. Default is "embeddings".
         target_key: Optional key in the batch dictionary containing the target used to filter vectors. Default is "target".
         vectorized_key: Column name to store the resulting vectors in the PixelTable table. Default is "vectorized".

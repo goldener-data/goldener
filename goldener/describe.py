@@ -59,7 +59,7 @@ class GoldDescriptor:
         collate_fn: Optional function to collate dataset samples into batches composed of
             dictionaries with at least the key specified by `data_key` returning a PyTorch Tensor.
             If None, `collate_keeping_sequences_as_sequences` is used, which preserves sequence-valued
-            fields as one list per sample. It should format
+            fields as one sequence per sample. It should format
             the value at `data_key` in the format expected by the embedder.
         data_key: Key in the batch dictionary that contains the data to compute embeddings from. Default is "data".
         target_key: Key in the batch dictionary that contains the target/label information. Default is "target".
