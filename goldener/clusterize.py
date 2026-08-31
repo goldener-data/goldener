@@ -603,8 +603,6 @@ class GoldClusterizer:
 
         if self.label_key is not None and self.label_key in cluster_from.columns():
             col_list.append(self.label_key)
-        if restriction_idx_key not in col_list and restriction_idx_key != "idx_vector":
-            col_list.append(restriction_idx_key)
 
         self._add_rows_to_cluster_table_from_dataset(
             cluster_from=GoldPxtTorchDataset(
