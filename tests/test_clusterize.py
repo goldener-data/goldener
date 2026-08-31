@@ -481,6 +481,54 @@ class TestGoldClusterizer:
         with pytest.raises(ValueError, match="n_clusters to be greater than 1"):
             clusterizer.cluster_in_table(dataset, n_clusters=1)
 
+    def test_cluster_in_table_with_invalid_restriction_idx_key(self):
+        table_path = "unit_test.test_cluster_invalid_restriction_idx_key"
+        clusterizer = GoldClusterizer(
+            table_path=table_path,
+            clustering_tool=GoldRandomClusteringTool(random_state=0),
+        )
+
+        with pytest.raises(
+            ValueError,
+            match="restriction_idx_key must be either 'idx' or 'idx_vector'",
+        ):
+            clusterizer.cluster_in_table(
+                DummyDataset([]),
+                n_clusters=2,
+                restrict_to={0},
+                restriction_idx_key="invalid",
+            )
+
+        with pytest.raises(pxt.Error):
+            pxt.get_table(table_path)
+
+    @pytest.mark.parametrize("restriction_idx_key", ["idx", "idx_vector"])
+    def test_cluster_in_table_with_valid_restriction_idx_key(self, restriction_idx_key):
+        table_path = f"unit_test.test_cluster_restrict_{restriction_idx_key}"
+        dataset = DummyDataset(
+            [{"vectorized": torch.rand(4), "idx": idx} for idx in range(10)]
+        )
+        clusterizer = GoldClusterizer(
+            table_path=table_path,
+            clustering_tool=GoldRandomClusteringTool(random_state=0),
+            batch_size=5,
+        )
+
+        cluster_table = clusterizer.cluster_in_table(
+            dataset,
+            n_clusters=3,
+            restrict_to={2, 5, 7},
+            restriction_idx_key=restriction_idx_key,
+        )
+
+        assert cluster_table.count() == 3
+        assert {
+            row[restriction_idx_key]
+            for row in cluster_table.select(
+                cluster_table[restriction_idx_key]
+            ).collect()
+        } == {2, 5, 7}
+
     def test_cluster_in_table_with_chunk(self):
         table_path = "unit_test.test_cluster_chunk"
 

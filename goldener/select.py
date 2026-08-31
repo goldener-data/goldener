@@ -911,8 +911,14 @@ class GoldSelector:
                 and `idx` (index of the sample) and `idx_vector` (index of the vector) columns as well.
 
         Raises:
-            ValueError: If select_size is a float not in the range ]0.0, 1.0].
+            ValueError: If `restriction_idx_key` is not `"idx"` or `"idx_vector"`,
+                or if select_size is a float not in the range ]0.0, 1.0].
         """
+        if restriction_idx_key not in ("idx", "idx_vector"):
+            raise ValueError(
+                "restriction_idx_key must be either 'idx' or 'idx_vector'."
+            )
+
         if isinstance(select_size, float):
             if not (0.0 < select_size <= 1.0):
                 raise ValueError(
