@@ -552,6 +552,60 @@ class TestGoldClusterizer:
         ]
         assert set(distinct_clusters).issubset(set(range(3)))
 
+    def test_cluster_from_table_with_restrict_to(self):
+        src_path = "unit_test.src_cluster_restrict_table"
+        cluster_path = "unit_test.test_cluster_restrict"
+
+        src_table = self._make_src_table(src_path, n=10)
+
+        clusterizer = GoldClusterizer(
+            table_path=cluster_path,
+            clustering_tool=GoldRandomClusteringTool(random_state=0),
+            allow_existing=True,
+        )
+
+        cluster_table = clusterizer.cluster_in_table(
+            src_table, n_clusters=3, restrict_to={2, 5, 7}
+        )
+
+        assert cluster_table.count() == 3
+        clustered = (
+            cluster_table.where(
+                cluster_table[clusterizer.cluster_key] != None  # noqa: E711
+            )
+            .select(cluster_table.idx)
+            .distinct()
+            .collect()
+        )
+        assert {row["idx"] for row in clustered} == {2, 5, 7}
+
+    def test_cluster_from_dataset_with_restrict_to(self):
+        cluster_path = "unit_test.test_cluster_restrict_dataset"
+
+        dataset = DummyDataset(
+            [{"vectorized": torch.rand(4), "idx": idx} for idx in range(10)]
+        )
+
+        clusterizer = GoldClusterizer(
+            table_path=cluster_path,
+            clustering_tool=GoldRandomClusteringTool(random_state=0),
+            allow_existing=True,
+        )
+
+        clusterizer.cluster_in_dataset(dataset, n_clusters=3, restrict_to={2, 5, 7})
+
+        cluster_table = pxt.get_table(cluster_path)
+        assert cluster_table.count() == 3
+        clustered = (
+            cluster_table.where(
+                cluster_table[clusterizer.cluster_key] != None  # noqa: E711
+            )
+            .select(cluster_table.idx)
+            .distinct()
+            .collect()
+        )
+        assert {row["idx"] for row in clustered} == {2, 5, 7}
+
     def test_cluster_in_table_with_reducer(self):
         table_path = "unit_test.test_cluster_reducer"
 

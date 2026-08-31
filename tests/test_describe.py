@@ -237,6 +237,49 @@ class TestGoldDescriptor:
             assert row["embeddings"].shape == (4, 8, 8)
             assert row["label"] == "dummy"
 
+    def test_describe_from_dataset_with_restrict_to(self, embedder):
+        desc = GoldDescriptor(
+            table_path="unit_test.test_describe_restrict",
+            embedder=embedder,
+            batch_size=2,
+            collate_fn=None,
+            device=torch.device("cpu"),
+            allow_existing=False,
+        )
+
+        description_table = desc.describe_in_table(
+            DummyDataset(dataset_len=6), restrict_to={1, 4}
+        )
+
+        assert description_table.count() == 2
+        assert {row["idx"] for row in description_table.collect()} == {1, 4}
+
+    def test_describe_from_table_with_restrict_to_from_table(self, embedder):
+        src_path = "unit_test.src_table_restrict"
+        desc_path = "unit_test.test_describe_restrict_from_table"
+
+        source_rows = [
+            {"idx": idx, "data": torch.zeros(3, 8, 8).numpy(), "label": "dummy"}
+            for idx in range(6)
+        ]
+        src_table = pxt.create_table(
+            src_path, source=source_rows, if_exists="replace_force"
+        )
+
+        desc = GoldDescriptor(
+            table_path=desc_path,
+            embedder=embedder,
+            batch_size=2,
+            collate_fn=None,
+            device=torch.device("cpu"),
+            allow_existing=False,
+        )
+
+        description_table = desc.describe_in_table(src_table, restrict_to={1, 4})
+
+        assert description_table.count() == 2
+        assert {row["idx"] for row in description_table.collect()} == {1, 4}
+
     def test_describe_in_table_after_restart(self, embedder):
         desc = GoldDescriptor(
             table_path="unit_test.test_describe",

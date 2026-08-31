@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from functools import partial
 from logging import getLogger
 
-from pixeltable import Error
+from pixeltable import Error, Query
 from torch.utils.data import RandomSampler, Dataset, DataLoader
 from tqdm import tqdm
 from typing_extensions import assert_never
@@ -599,6 +599,7 @@ class GoldVectorizer:
     def vectorize_in_dataset(
         self,
         to_vectorize: Dataset | Table,
+        restrict_to: set[int] | None = None,
     ) -> GoldPxtTorchDataset:
         """Extract and flatten vectors from samples and return results as a GoldPxtTorchDataset.
 
@@ -616,12 +617,17 @@ class GoldVectorizer:
                 dictionary with at least the key specified by `data_key` after applying the collate_fn.
                 If a Table is provided,
                 it should contain both 'idx' and `data_key` columns.
+            restrict_to: Optional set of sample indices (`idx`) to restrict the
+                vectorization to. If provided, only the selected samples will be vectorized.
 
         Returns:
             A GoldPxtTorchDataset containing at least the vectorized data in the `vectorized_key` key
                 and `idx` (index of the sample) and `idx_vector` (index of the vector) keys as well.
         """
-        vectorized_table = self.vectorize_in_table(to_vectorize)
+        vectorized_table = self.vectorize_in_table(
+            to_vectorize,
+            restrict_to=restrict_to,
+        )
 
         vectorized_dataset = GoldPxtTorchDataset(vectorized_table, keep_cache=True)
 
@@ -633,6 +639,7 @@ class GoldVectorizer:
     def vectorize_in_table(
         self,
         to_vectorize: Dataset | Table,
+        restrict_to: set[int] | None = None,
     ) -> Table:
         """Extract and flatten vectors from samples and store results in a PixelTable table.
 
@@ -649,6 +656,8 @@ class GoldVectorizer:
                 dictionary with at least the key specified by `data_key` after applying the collate_fn.
                 If a Table is provided,
                 it should contain both 'idx' and `data_key` columns.
+            restrict_to: Optional set of sample indices (`idx`) to restrict the
+                vectorization to. If provided, only the selected samples will be vectorized.
 
         Returns:
             A PixelTable Table containing at least the vectorized data in the `vectorized_key` column
@@ -689,12 +698,17 @@ class GoldVectorizer:
             )
 
             if vectorized_table.count() > 0 and "idx" in to_vectorize.columns():
-                to_vectorize_indices = set(
-                    [
-                        row["idx"]
-                        for row in to_vectorize.select(to_vectorize.idx).collect()
-                    ]
-                )
+                source_for_indices: Table | Query = to_vectorize
+                if restrict_to is not None:
+                    source_for_indices = to_vectorize.where(
+                        to_vectorize.idx.isin(restrict_to)
+                    )
+                to_vectorize_indices = {
+                    row["idx"]
+                    for row in source_for_indices.select(to_vectorize.idx)
+                    .distinct()
+                    .collect()
+                }
                 already_vectorized = set(
                     [
                         row["idx"]
@@ -718,11 +732,13 @@ class GoldVectorizer:
 
         if self.distribute:
             vectorized = self._distributed_vectorize(
-                vectorized_table, to_vectorize_dataset
+                vectorized_table, to_vectorize_dataset, restrict_to=restrict_to
             )
         else:
             vectorized = self._sequential_vectorize(
-                vectorized_table, to_vectorize_dataset
+                vectorized_table,
+                to_vectorize_dataset,
+                restrict_to=restrict_to,
             )
 
         logger.info(
@@ -832,12 +848,14 @@ class GoldVectorizer:
         self,
         vectorized_table: Table,
         to_vectorize_dataset: Dataset,
+        restrict_to: set[int] | None = None,
     ) -> Table:
         """Run distributed vectorization process (not implemented).
 
         Args:
             vectorized_table: The table to store vectorized outputs.
             to_vectorize_dataset: The dataset to vectorize.
+            restrict_to: Optional set of sample indices to restrict to.
 
         Returns:
             The populated vectorized table.
@@ -851,6 +869,7 @@ class GoldVectorizer:
         self,
         vectorized_table: Table,
         to_vectorize_dataset: Dataset,
+        restrict_to: set[int] | None = None,
     ) -> Table:
         """Run sequential (single-process) vectorization process.
 
@@ -861,6 +880,7 @@ class GoldVectorizer:
         Args:
             vectorized_table: The table to store vectorized outputs.
             to_vectorize_dataset: The dataset to vectorize.
+            restrict_to: Optional set of sample indices to restrict to.
 
         Returns:
             The populated vectorized table.
@@ -921,6 +941,17 @@ class GoldVectorizer:
                 batch["idx"] = [
                     starts + idx for idx in range(len(batch[self.data_key]))
                 ]
+
+            if restrict_to is not None:
+                to_remove = {
+                    int(idx.item()) if isinstance(idx, torch.Tensor) else int(idx)
+                    for idx in batch["idx"]
+                } - restrict_to
+                if to_remove:
+                    batch = filter_batch_from_indices(batch, to_remove)
+
+                    if len(batch) == 0:
+                        continue
 
             # Keep only not yet described samples in the batch
             if not_empty:
