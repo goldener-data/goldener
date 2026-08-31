@@ -552,6 +552,82 @@ class TestGoldClusterizer:
         ]
         assert set(distinct_clusters).issubset(set(range(3)))
 
+    def test_cluster_in_table_force_same_cluster(self):
+        src_path = "unit_test.src_cluster_force_table"
+        cluster_path = "unit_test.test_cluster_force_same"
+
+        rows = [
+            {
+                "idx": sample,
+                "idx_vector": sample * 3 + vector,
+                "vectorized": torch.rand(4).numpy(),
+            }
+            for sample in range(10)
+            for vector in range(3)
+        ]
+        src_table = pxt.create_table(src_path, source=rows, if_exists="replace_force")
+
+        clusterizer = GoldClusterizer(
+            table_path=cluster_path,
+            clustering_tool=GoldRandomClusteringTool(random_state=0),
+            allow_existing=True,
+            chunk=10,
+            force_same_cluster=True,
+        )
+
+        cluster_table = clusterizer.cluster_in_table(src_table, n_clusters=4)
+
+        assert cluster_table.count() == 30
+
+        samples_by_cluster = [
+            clusterizer.get_cluster_indices(
+                cluster_table,
+                cluster_key=clusterizer.cluster_key,
+                cluster_idx=cluster_idx,
+                idx_key="idx",
+            )
+            for cluster_idx in range(4)
+        ]
+        seen_samples: set[int] = set()
+        for samples in samples_by_cluster:
+            assert seen_samples.isdisjoint(samples)
+            seen_samples.update(samples)
+        assert seen_samples == set(range(10))
+
+    def test_cluster_in_table_without_force_keeps_per_vector_labels(self):
+        src_path = "unit_test.src_cluster_no_force_table"
+        cluster_path = "unit_test.test_cluster_no_force"
+
+        rows = [
+            {
+                "idx": sample,
+                "idx_vector": sample * 3 + vector,
+                "vectorized": torch.rand(4).numpy(),
+            }
+            for sample in range(10)
+            for vector in range(3)
+        ]
+        src_table = pxt.create_table(src_path, source=rows, if_exists="replace_force")
+
+        clusterizer = GoldClusterizer(
+            table_path=cluster_path,
+            clustering_tool=GoldRandomClusteringTool(random_state=0),
+            allow_existing=True,
+        )
+
+        cluster_table = clusterizer.cluster_in_table(src_table, n_clusters=4)
+
+        assert cluster_table.count() == 30
+        labeled_vectors = (
+            cluster_table.where(
+                cluster_table[clusterizer.cluster_key] != None  # noqa: E711
+            )
+            .select(cluster_table.idx_vector)
+            .distinct()
+            .count()
+        )
+        assert labeled_vectors == 30
+
     def test_cluster_from_table_with_restrict_to(self):
         src_path = "unit_test.src_cluster_restrict_table"
         cluster_path = "unit_test.test_cluster_restrict"
