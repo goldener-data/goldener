@@ -678,20 +678,20 @@ class TestGoldClusterizer:
         cluster_table = clusterizer.cluster_in_table(
             src_table,
             n_clusters=3,
-            restrict_to={0, 20, 50},
-            restriction_idx_key="idx_vector",
+            restrict_to={2, 5, 7},
+            restriction_idx_key="idx",
         )
 
         assert cluster_table.count() == 3
         clustered = (
             cluster_table.where(
-                cluster_table_1[clusterizer.cluster_key] != None  # noqa: E711
+                cluster_table[clusterizer.cluster_key] != None  # noqa: E711
             )
-            .select(cluster_table.idx_vector)
+            .select(cluster_table.idx)
             .distinct()
             .collect()
         )
-        assert {row["idx_vector"] for row in clustered} == {0, 20, 50}
+        assert {row["idx"] for row in clustered} == {2, 5, 7}
 
     def test_cluster_from_dataset_with_restrict_to(self):
         cluster_path = "unit_test.test_cluster_restrict_dataset"
@@ -827,7 +827,7 @@ class TestGoldClusterizer:
         assert cluster_table_1.count() == 30
         clustered_count_1 = (
             cluster_table_1.where(
-                cluster_table[clusterizer.cluster_key] != None  # noqa: E711
+                cluster_table_1[clusterizer.cluster_key] != None  # noqa: E711
             )
             .select(cluster_table_1.idx)
             .distinct()
