@@ -781,7 +781,6 @@ class TestGoldSelector:
         dataset.keep_cache = False
 
     def test_select_in_dataset_with_restrict_to_exceeding_size(self):
-        # restrict_to pool size 3, select_size=5 → ValueError expect karo
         table_path = "unit_test.test_restrict_to"
 
         dataset = DummyDataset(
