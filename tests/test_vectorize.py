@@ -654,21 +654,22 @@ class TestGoldVectorizer:
             batch_size=1,
             num_workers=0,
             allow_existing=False,
-            index_key="custom_idx",
         )
 
         source_rows = [
-            {"custom_idx": idx, "embeddings": torch.zeros(4, 3).numpy(), "label": "dummy"}
+            {"idx": idx * 10, "embeddings": torch.zeros(4, 3).numpy(), "label": "dummy"}
             for idx in range(6)
         ]
         src_table = pxt.create_table(
             src_path, source=source_rows, if_exists="replace_force"
         )
 
-        out_table = gv.vectorize_in_table(src_table, restrict_to={1, 4})
+        out_table = gv.vectorize_in_table(
+            src_table, restrict_to={10, 40}, restriction_idx_key="idx"
+        )
 
         assert out_table.count() == 6
-        assert {row["custom_idx"] for row in out_table.collect()} == {1, 4}
+        assert {row["idx"] for row in out_table.collect()} == {10, 40}
 
     def test_vectorize_in_table_with_target(self):
         src_path = "unit_test.src_table_vectorize"
