@@ -291,15 +291,5 @@ To release a new version of the `goldener` package:
 
 # Contributors
 
-Thanks to everyone who has contributed to this project! 🎉
-
-- [panosfrantzolas](https://github.com/panosfrantzolas)
-- [Mr-Neutr0n](https://github.com/Mr-Neutr0n)
-- [HafidIdrissi](https://github.com/HafidIdrissi)
-- [TaniaW777](https://github.com/TaniaW777)
-- [pre765](https://github.com/pre765)
-- [jason-scheffel](https://github.com/jason-scheffel)
-- [Yann-CV](https://github.com/Yann-CV)
-- [AnayGarodia](https://github.com/AnayGarodia)
-- [abhiramvsmg](https://github.com/abhiramvsmg)
-- [AshleyAHuang](https://github.com/AshleyAHuang)
+<!-- readme: contributors -start -->
+<!-- readme: contributors -end -->
