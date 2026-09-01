@@ -15,7 +15,8 @@ A Python library orchestrating data during the full life cycle of Machine Learni
 [**Principles**](#key-design-principles) |
 [**Features**](#example-of-features) |
 [**Installation**](#installation) |
-[**Contribute**](#contribute)
+[**Contribute**](#contribute) |
+[**Contributors**](#contributors)
 
 # Overview
 
@@ -288,7 +289,7 @@ To release a new version of the `goldener` package:
 5. Merge the branch into `main`
 6. Trigger a new release on GitHub with the tag `vX.Y.Z`
 
-## Contributors
+# Contributors
 
 Thanks to everyone who has contributed to this project! 🎉
 
