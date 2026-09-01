@@ -685,7 +685,7 @@ class TestGoldClusterizer:
         assert cluster_table.count() == 3
         clustered = (
             cluster_table.where(
-                cluster_table[clusterizer.cluster_key] != None  # noqa: E711
+                cluster_table_1[clusterizer.cluster_key] != None  # noqa: E711
             )
             .select(cluster_table.idx_vector)
             .distinct()
