@@ -171,7 +171,6 @@ class TestGoldSKLearnClusteringTool:
 
         assert isinstance(labels, torch.Tensor)
         assert labels.shape == (n_samples,)
-        # all labels in expected range
         assert set(labels.tolist()).issubset(set(range(n_clusters)))
 
     def test_fit_rejects_1d_tensor(self):
@@ -199,7 +198,7 @@ class TestGoldSKLearnClusteringTool:
         from sklearn.cluster import KMeans
 
         tool = GoldSKLearnClusteringTool(KMeans(n_clusters=2, random_state=0))
-        tool.fit(torch.randn(10, 5), n_clusters=2)  # First fit with valid input
+        tool.fit(torch.randn(10, 5), n_clusters=2)
         with pytest.raises(
             ValueError, match="GoldClusteringTool only accepts 2D tensors"
         ):
@@ -210,7 +209,7 @@ class TestGoldSKLearnClusteringTool:
         from sklearn.cluster import KMeans
 
         tool = GoldSKLearnClusteringTool(KMeans(n_clusters=2, random_state=0))
-        tool.fit(torch.randn(10, 5), n_clusters=2)  # First fit with valid input
+        tool.fit(torch.randn(10, 5), n_clusters=2)
         with pytest.raises(
             ValueError, match="GoldClusteringTool only accepts 2D tensors"
         ):
@@ -226,13 +225,11 @@ class TestGoldSKLearnClusteringTool:
         base = KMeans(n_clusters=n_clusters, random_state=0)
         tool = GoldSKLearnClusteringTool(base)
 
-        # fit on half of the samples, then predict on all
         tool.fit(x[:5], n_clusters)
         preds = tool.predict(x)
 
         assert isinstance(preds, torch.Tensor)
         assert preds.shape == (n_samples,)
-        # ensure we actually used sklearn under the hood by checking range
         assert set(preds.tolist()).issubset(set(range(n_clusters)))
 
 
@@ -529,7 +526,7 @@ class TestGoldClusterizer:
             clustering_tool=GoldRandomClusteringTool(random_state=0),
             allow_existing=True,
             batch_size=5,
-            chunk=100,  # larger than total number of vectors (15)
+            chunk=100,
         )
 
         cluster_table = clusterizer.cluster_in_table(dataset, n_clusters=3)
@@ -655,6 +652,44 @@ class TestGoldClusterizer:
             .collect()
         )
         assert {row["idx"] for row in clustered} == {2, 5, 7}
+
+    def test_cluster_from_table_with_restrict_to_custom_index_key(self):
+        src_path = "unit_test.src_cluster_restrict_custom_idx_table"
+        cluster_path = "unit_test.test_cluster_restrict_custom_idx"
+
+        source_rows = [
+            {
+                "custom_idx": i,
+                "idx_vector": i,
+                "vectorized": torch.rand(4).numpy(),
+            }
+            for i in range(10)
+        ]
+        src_table = pxt.create_table(
+            src_path, source=source_rows, if_exists="replace_force"
+        )
+
+        clusterizer = GoldClusterizer(
+            table_path=cluster_path,
+            clustering_tool=GoldRandomClusteringTool(random_state=0),
+            allow_existing=True,
+            index_key="custom_idx",
+        )
+
+        cluster_table = clusterizer.cluster_in_table(
+            src_table, n_clusters=3, restrict_to={2, 5, 7}
+        )
+
+        assert cluster_table.count() == 3
+        clustered = (
+            cluster_table.where(
+                cluster_table[clusterizer.cluster_key] != None  # noqa: E711
+            )
+            .select(cluster_table.custom_idx)
+            .distinct()
+            .collect()
+        )
+        assert {row["custom_idx"] for row in clustered} == {2, 5, 7}
 
     def test_cluster_from_dataset_with_restrict_to(self):
         cluster_path = "unit_test.test_cluster_restrict_dataset"
