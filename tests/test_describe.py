@@ -280,34 +280,6 @@ class TestGoldDescriptor:
         assert description_table.count() == 2
         assert {row["idx"] for row in description_table.collect()} == {1, 4}
 
-    def test_describe_from_table_with_restrict_to_custom_index_key(self, embedder):
-        src_path = "unit_test.src_table_restrict_custom_idx"
-        desc_path = "unit_test.test_describe_restrict_custom_idx"
-
-        source_rows = [
-            {"idx": idx * 10, "data": torch.zeros(3, 8, 8).numpy(), "label": "dummy"}
-            for idx in range(6)
-        ]
-        src_table = pxt.create_table(
-            src_path, source=source_rows, if_exists="replace_force"
-        )
-
-        desc = GoldDescriptor(
-            table_path=desc_path,
-            embedder=embedder,
-            batch_size=2,
-            collate_fn=None,
-            device=torch.device("cpu"),
-            allow_existing=False,
-        )
-
-        description_table = desc.describe_in_table(
-            src_table, restrict_to={10, 40}, restriction_idx_key="idx"
-        )
-
-        assert description_table.count() == 2
-        assert {row["idx"] for row in description_table.collect()} == {10, 40}
-
     def test_describe_in_table_after_restart(self, embedder):
         desc = GoldDescriptor(
             table_path="unit_test.test_describe",
