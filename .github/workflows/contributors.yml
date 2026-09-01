@@ -6,12 +6,17 @@ on:
       - main
   workflow_dispatch:
 
+permissions:
+  contents: write
+  pull-requests: write
+
 jobs:
   contrib-readme-job:
     runs-on: ubuntu-latest
-    name: A job to automate contrib in readme
+    name: Automate contributors in README
+
     steps:
-      - name: Contribute List
+      - name: Update contributors list
         uses: akhilmhdh/contributors-readme-action@v2.3.11
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
