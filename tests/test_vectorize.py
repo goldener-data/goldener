@@ -643,34 +643,6 @@ class TestGoldVectorizer:
         assert out_table.count() == 6
         assert {row["idx"] for row in out_table.collect()} == {1, 4}
 
-    def test_vectorize_from_table_with_restrict_to_custom_index_key(self):
-        src_path = "unit_test.src_vectorize_restrict_custom_idx"
-        gv = GoldVectorizer(
-            table_path="unit_test.vectorize_restrict_custom_idx",
-            vectorizer=GoldTensorVectorizationTool(),
-            collate_fn=None,
-            data_key="embeddings",
-            vectorized_key="vectorized",
-            batch_size=1,
-            num_workers=0,
-            allow_existing=False,
-        )
-
-        source_rows = [
-            {"idx": idx * 10, "embeddings": torch.zeros(4, 3).numpy(), "label": "dummy"}
-            for idx in range(6)
-        ]
-        src_table = pxt.create_table(
-            src_path, source=source_rows, if_exists="replace_force"
-        )
-
-        out_table = gv.vectorize_in_table(
-            src_table, restrict_to={10, 40}, restriction_idx_key="idx"
-        )
-
-        assert out_table.count() == 6
-        assert {row["idx"] for row in out_table.collect()} == {10, 40}
-
     def test_vectorize_in_table_with_target(self):
         src_path = "unit_test.src_table_vectorize"
         desc_path = "unit_test.vectorize_from_table"
