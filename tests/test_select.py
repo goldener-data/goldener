@@ -687,6 +687,88 @@ class TestGoldSelector:
 
         dataset.keep_cache = False
 
+    def test_select_in_dataset_with_restrict_to(self):
+        table_path = "unit_test.test_restrict_to"
+
+        dataset = DummyDataset(
+            [
+                {"vectorized": torch.rand(5), "idx": idx, "idx_vector": idx}
+                for idx in range(20)
+            ]
+        )
+
+        selector = GoldSelector(
+            table_path=table_path, allow_existing=False, batch_size=10, max_batches=None
+        )
+
+        dataset = selector.select_in_dataset(
+            dataset, select_size=3, value="train", restrict_to={0, 1, 2, 3, 4}
+        )
+
+        selected_indices = set()
+        for item in dataset:
+            if item["selected"] == "train":
+                selected_indices.add(item["idx_vector"])
+
+        assert len(selected_indices) == 3
+        assert selected_indices.issubset({0, 1, 2, 3, 4})
+
+        dataset.keep_cache = False
+
+    def test_select_in_dataset_with_restriction_idx_key(self):
+        table_path = "unit_test.test_restriction_idx_key"
+
+        dataset = DummyDataset(
+            [
+                {"vectorized": torch.rand(5), "idx": idx, "idx_vector": idx + 100}
+                for idx in range(20)
+            ]
+        )
+        selector = GoldSelector(
+            table_path=table_path, allow_existing=False, batch_size=10, max_batches=None
+        )
+        dataset = selector.select_in_dataset(
+            dataset,
+            select_size=3,
+            value="train",
+            restrict_to={0, 1, 4},
+            restriction_idx_key="idx",
+        )
+        selected_indices = set()
+        selected_idx_vector = set()
+        for item in dataset:
+            if item["selected"] == "train":
+                assert item["idx_vector"] == item["idx"] + 100
+                selected_indices.add(item["idx"])
+                selected_idx_vector.add(item["idx_vector"])
+
+        assert len(selected_indices) == 3
+        assert selected_indices.issubset({0, 1, 4})
+        assert selected_idx_vector.issubset({100, 101, 104})
+
+        dataset.keep_cache = False
+
+    def test_select_in_dataset_with_restrict_to_exceeding_size(self):
+        # restrict_to pool size 3, select_size=5 → ValueError expect karo
+        table_path = "unit_test.test_restrict_to"
+
+        dataset = DummyDataset(
+            [
+                {"vectorized": torch.rand(5), "idx": idx, "idx_vector": idx}
+                for idx in range(20)
+            ]
+        )
+        selector = GoldSelector(
+            table_path=table_path, allow_existing=False, batch_size=10, max_batches=None
+        )
+
+        with pytest.raises(
+            ValueError, match="cannot be greater than the total number of samples"
+        ):
+            selector.select_in_dataset(
+                dataset, select_size=5, value="train", restrict_to={0, 1, 2}
+            )
+
     def test_select_in_table_from_dataset_with_already_selected(self):
         table_path = "unit_test.test_select_from_dataset"
 
