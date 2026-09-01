@@ -659,8 +659,8 @@ class TestGoldClusterizer:
 
         source_rows = [
             {
-                "custom_idx": i,
-                "idx_vector": i,
+                "idx": i,
+                "idx_vector": i * 10,
                 "vectorized": torch.rand(4).numpy(),
             }
             for i in range(10)
@@ -673,11 +673,13 @@ class TestGoldClusterizer:
             table_path=cluster_path,
             clustering_tool=GoldRandomClusteringTool(random_state=0),
             allow_existing=True,
-            index_key="custom_idx",
         )
 
         cluster_table = clusterizer.cluster_in_table(
-            src_table, n_clusters=3, restrict_to={2, 5, 7}
+            src_table,
+            n_clusters=3,
+            restrict_to={0, 20, 50},
+            restriction_idx_key="idx_vector",
         )
 
         assert cluster_table.count() == 3
@@ -685,11 +687,11 @@ class TestGoldClusterizer:
             cluster_table.where(
                 cluster_table[clusterizer.cluster_key] != None  # noqa: E711
             )
-            .select(cluster_table.custom_idx)
+            .select(cluster_table.idx_vector)
             .distinct()
             .collect()
         )
-        assert {row["custom_idx"] for row in clustered} == {2, 5, 7}
+        assert {row["idx_vector"] for row in clustered} == {0, 20, 50}
 
     def test_cluster_from_dataset_with_restrict_to(self):
         cluster_path = "unit_test.test_cluster_restrict_dataset"
@@ -825,7 +827,7 @@ class TestGoldClusterizer:
         assert cluster_table_1.count() == 30
         clustered_count_1 = (
             cluster_table_1.where(
-                cluster_table_1[clusterizer.cluster_key] != None  # noqa: E711
+                cluster_table[clusterizer.cluster_key] != None  # noqa: E711
             )
             .select(cluster_table_1.idx)
             .distinct()
