@@ -617,7 +617,7 @@ class TestGoldVectorizer:
         for row in out_table.collect():
             assert row["vectorized"] is not None
 
-    def test_vectorize_from_table_with_restrict_to_from_table(self):
+    def test_vectorize_from_table_with_restrict_to(self):
         src_path = "unit_test.src_vectorize_restrict"
         gv = GoldVectorizer(
             table_path="unit_test.vectorize_restrict_from_table",
