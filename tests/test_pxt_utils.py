@@ -12,7 +12,6 @@ from goldener.pxt_utils import (
     get_expr_from_column_name,
     create_pxt_dirs_for_path,
     set_value_to_idx_rows,
-    pxt_torch_dataset_collate_fn,
     get_distinct_value_and_count_in_column,
     get_column_distinct_ratios,
     get_array_column_shapes_from_table,
@@ -198,51 +197,6 @@ class TestSetValueToIdxRows:
         assert result_a[0]["idx"] == 1
 
         pxt.drop_dir("test_set_value", force=True)
-
-
-class TestPxtTorchDatasetCollateFn:
-    def test_collate_numpy_arrays(self):
-        batch = [
-            {"image": np.array([1, 2, 3]), "label": 0, "text": "hello"},
-            {"image": np.array([4, 5, 6]), "label": 1, "text": "world"},
-        ]
-
-        result = pxt_torch_dataset_collate_fn(batch)
-
-        assert "image" in result
-        assert "label" in result
-        assert isinstance(result["image"], torch.Tensor)
-        assert isinstance(result["label"], torch.Tensor)
-        assert isinstance(result["text"], list)
-        assert result["text"] == ["hello", "world"]
-        assert result["image"].shape == (2, 3)
-        assert torch.equal(result["label"], torch.tensor([0, 1], dtype=torch.int64))
-
-    def test_collate_tensors(self):
-        batch = [
-            {"data": torch.zeros(3, 4)},
-            {"data": torch.ones(3, 4)},
-        ]
-
-        result = pxt_torch_dataset_collate_fn(batch)
-
-        assert isinstance(result["data"], torch.Tensor)
-        assert result["data"].shape == (2, 3, 4)
-
-    def test_collate_keeps_multilabel_lists_per_sample(self):
-        batch = [
-            {"label": ["class_1", "class_2"]},
-            {"label": ["class_1", "class_2"]},
-        ]
-
-        result = pxt_torch_dataset_collate_fn(batch)
-
-        assert result["label"] == [["class_1", "class_2"], ["class_1", "class_2"]]
-
-    def test_collate_empty_batch(self):
-        batch = []
-        result = pxt_torch_dataset_collate_fn(batch)
-        assert result == {}
 
 
 class TestGetDistinctValueAndCountInColumn:

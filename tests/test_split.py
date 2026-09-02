@@ -8,7 +8,7 @@ from torch.utils.data import Dataset
 from goldener.clusterize import GoldClusterizer, GoldRandomClusteringTool
 from goldener.describe import GoldDescriptor
 from goldener.embed import GoldTorchEmbeddingToolConfig, GoldTorchEmbeddingTool
-from goldener.pxt_utils import pxt_torch_dataset_collate_fn
+from goldener.torch_utils import collate_keeping_sequences_as_sequences
 from goldener.split import GoldSplitter, GoldSet, check_sets_validity
 from goldener.vectorize import GoldTensorVectorizationTool, GoldVectorizer
 from goldener.select import GoldSelector
@@ -73,7 +73,7 @@ def vectorizer():
         table_path="unit_test.vectorizer_split",
         vectorizer=GoldTensorVectorizationTool(),
         to_keep_schema={"label": pxt.String},
-        collate_fn=pxt_torch_dataset_collate_fn,
+        collate_fn=collate_keeping_sequences_as_sequences,
         batch_size=2,
     )
 
@@ -98,9 +98,9 @@ class TestGoldSplitter:
         splitted = GoldSplitter.get_split_indices(
             DummyDataset(
                 [
+                    {"idx": 2, "selected": None},
                     {"idx": 0, "selected": "train"},
                     {"idx": 1, "selected": "val"},
-                    {"idx": 2, "selected": None},
                 ]
             ),
             selection_key="selected",

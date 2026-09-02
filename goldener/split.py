@@ -14,9 +14,9 @@ from goldener.pxt_utils import (
     get_expr_from_column_name,
     set_value_to_idx_rows,
     GoldPxtTorchDataset,
-    pxt_torch_dataset_collate_fn,
 )
 from goldener.select import GoldSelector
+from goldener.torch_utils import collate_keeping_sequences_as_sequences
 from goldener.utils import (
     check_sampling_size,
     check_all_same_type,
@@ -276,7 +276,7 @@ class GoldSplitter:
         self._sets = sets
 
     @property
-    def clustering_enable(self):
+    def clustering_enable(self) -> bool:
         return self.clusterizer is not None and self.n_clusters > 1
 
     @staticmethod
@@ -298,7 +298,7 @@ class GoldSplitter:
             num_workers: Number of workers to use when processing the input as dataset.
             collate_fn: Collate function to use when processing the input as dataset. It should
                 return a dictionary with at least the keys specified by `idx_key` and `selection_key`.
-                If None, `pxt_torch_dataset_collate_fn` is used.
+                If None, `collate_keeping_sequences_as_sequences` is used.
 
         Returns:
             A dictionary mapping each set name to a set of sample indices.
@@ -314,7 +314,7 @@ class GoldSplitter:
                 collate_fn=(
                     collate_fn
                     if collate_fn is not None
-                    else pxt_torch_dataset_collate_fn
+                    else collate_keeping_sequences_as_sequences
                 ),
             )
 
@@ -551,16 +551,17 @@ class GoldSplitter:
         gold_set: GoldSet,
     ) -> Table:
         assert self.clusterizer is not None
-        # the table for each cluster are processed sequentially, and sent as GoldPxtTorchDataset
-        # to the selector, so the collate_fn of the selector is temporarily updated to `pxt_torch_dataset_collate_fn,
-        # and reset to the original collate_fn after the cluster-wise selection is done
+        # Cluster tables are processed sequentially as GoldPxtTorchDataset instances.
+        # The selector temporarily uses `collate_keeping_sequences_as_sequences`, then
+        # restores its original collate function after cluster-wise selection.
         selection_collate_fn = self.selector.collate_fn
         logger.info(
             "Clusterized selection is enabled. Temporarily setting selector's collate_fn "
-            "to pxt_torch_dataset_collate_fn to process cluster-wise selection. "
+            "to collate_keeping_sequences_as_sequences to process cluster-wise "
+            "selection. "
             "It will be reset to the original collate_fn after the cluster-wise selection is done."
         )
-        self.selector.collate_fn = pxt_torch_dataset_collate_fn
+        self.selector.collate_fn = collate_keeping_sequences_as_sequences
 
         try:
             # validate the clustering has been run

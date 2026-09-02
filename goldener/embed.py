@@ -267,7 +267,7 @@ class GoldTorchEmbeddingTool(GoldEmbeddingTool):
         embeddings = self.embed(x)
         return self.fusion.fuse_embeddings(embeddings, self._layers, self._channel_pos)
 
-    def __del__(self):
+    def __del__(self) -> None:
         """Remove all registered hooks when the embedder is deleted."""
         for handle in self._hooks.values():
             handle.remove()

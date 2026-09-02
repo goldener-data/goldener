@@ -11,7 +11,8 @@ from goldener.clusterize import (
     get_random_chunk_assignment,
 )
 from goldener.reduce import GoldSKLearnReductionTool
-from goldener.pxt_utils import GoldPxtTorchDataset, pxt_torch_dataset_collate_fn
+from goldener.pxt_utils import GoldPxtTorchDataset
+from goldener.torch_utils import collate_keeping_sequences_as_sequences
 
 
 class DummyDataset(Dataset):
@@ -170,7 +171,6 @@ class TestGoldSKLearnClusteringTool:
 
         assert isinstance(labels, torch.Tensor)
         assert labels.shape == (n_samples,)
-        # all labels in expected range
         assert set(labels.tolist()).issubset(set(range(n_clusters)))
 
     def test_fit_rejects_1d_tensor(self):
@@ -198,7 +198,7 @@ class TestGoldSKLearnClusteringTool:
         from sklearn.cluster import KMeans
 
         tool = GoldSKLearnClusteringTool(KMeans(n_clusters=2, random_state=0))
-        tool.fit(torch.randn(10, 5), n_clusters=2)  # First fit with valid input
+        tool.fit(torch.randn(10, 5), n_clusters=2)
         with pytest.raises(
             ValueError, match="GoldClusteringTool only accepts 2D tensors"
         ):
@@ -209,7 +209,7 @@ class TestGoldSKLearnClusteringTool:
         from sklearn.cluster import KMeans
 
         tool = GoldSKLearnClusteringTool(KMeans(n_clusters=2, random_state=0))
-        tool.fit(torch.randn(10, 5), n_clusters=2)  # First fit with valid input
+        tool.fit(torch.randn(10, 5), n_clusters=2)
         with pytest.raises(
             ValueError, match="GoldClusteringTool only accepts 2D tensors"
         ):
@@ -225,13 +225,11 @@ class TestGoldSKLearnClusteringTool:
         base = KMeans(n_clusters=n_clusters, random_state=0)
         tool = GoldSKLearnClusteringTool(base)
 
-        # fit on half of the samples, then predict on all
         tool.fit(x[:5], n_clusters)
         preds = tool.predict(x)
 
         assert isinstance(preds, torch.Tensor)
         assert preds.shape == (n_samples,)
-        # ensure we actually used sklearn under the hood by checking range
         assert set(preds.tolist()).issubset(set(range(n_clusters)))
 
 
@@ -262,12 +260,12 @@ class TestGoldClusterizer:
             clusterizer.distribute = True
         assert clusterizer.distribute is False
 
-    def test_collate_fn_defaults_to_pxt_torch_dataset_collate_fn(self):
+    def test_collate_fn_defaults_to_collate_keeping_sequences_as_sequences(self):
         clusterizer = GoldClusterizer(
             table_path="unit_test.cluster_default_collate",
             clustering_tool=GoldRandomClusteringTool(),
         )
-        assert clusterizer.collate_fn is pxt_torch_dataset_collate_fn
+        assert clusterizer.collate_fn is collate_keeping_sequences_as_sequences
 
         def custom_collate_fn(batch):
             return batch
@@ -528,7 +526,7 @@ class TestGoldClusterizer:
             clustering_tool=GoldRandomClusteringTool(random_state=0),
             allow_existing=True,
             batch_size=5,
-            chunk=100,  # larger than total number of vectors (15)
+            chunk=100,
         )
 
         cluster_table = clusterizer.cluster_in_table(dataset, n_clusters=3)
@@ -551,6 +549,176 @@ class TestGoldClusterizer:
             .collect()
         ]
         assert set(distinct_clusters).issubset(set(range(3)))
+
+    def test_cluster_in_table_force_same_cluster(self):
+        src_path = "unit_test.src_cluster_force_table"
+        cluster_path = "unit_test.test_cluster_force_same"
+
+        rows = [
+            {
+                "idx": sample,
+                "idx_vector": sample * 3 + vector,
+                "vectorized": torch.rand(4).numpy(),
+            }
+            for sample in range(10)
+            for vector in range(3)
+        ]
+        src_table = pxt.create_table(src_path, source=rows, if_exists="replace_force")
+
+        clusterizer = GoldClusterizer(
+            table_path=cluster_path,
+            clustering_tool=GoldRandomClusteringTool(random_state=0),
+            allow_existing=True,
+            chunk=10,
+            force_same_cluster=True,
+        )
+
+        cluster_table = clusterizer.cluster_in_table(src_table, n_clusters=4)
+
+        assert cluster_table.count() == 30
+
+        samples_by_cluster = [
+            clusterizer.get_cluster_indices(
+                cluster_table,
+                cluster_key=clusterizer.cluster_key,
+                cluster_idx=cluster_idx,
+                idx_key="idx",
+            )
+            for cluster_idx in range(4)
+        ]
+        seen_samples: set[int] = set()
+        for samples in samples_by_cluster:
+            assert seen_samples.isdisjoint(samples)
+            seen_samples.update(samples)
+        assert seen_samples == set(range(10))
+
+    def test_cluster_in_table_without_force_keeps_per_vector_labels(self):
+        src_path = "unit_test.src_cluster_no_force_table"
+        cluster_path = "unit_test.test_cluster_no_force"
+
+        rows = [
+            {
+                "idx": sample,
+                "idx_vector": sample * 3 + vector,
+                "vectorized": torch.rand(4).numpy(),
+            }
+            for sample in range(10)
+            for vector in range(3)
+        ]
+        src_table = pxt.create_table(src_path, source=rows, if_exists="replace_force")
+
+        clusterizer = GoldClusterizer(
+            table_path=cluster_path,
+            clustering_tool=GoldRandomClusteringTool(random_state=0),
+            allow_existing=True,
+        )
+
+        cluster_table = clusterizer.cluster_in_table(src_table, n_clusters=4)
+
+        assert cluster_table.count() == 30
+        labeled_vectors = (
+            cluster_table.where(
+                cluster_table[clusterizer.cluster_key] != None  # noqa: E711
+            )
+            .select(cluster_table.idx_vector)
+            .distinct()
+            .count()
+        )
+        assert labeled_vectors == 30
+
+    def test_cluster_from_table_with_restrict_to(self):
+        src_path = "unit_test.src_cluster_restrict_table"
+        cluster_path = "unit_test.test_cluster_restrict"
+
+        src_table = self._make_src_table(src_path, n=10)
+
+        clusterizer = GoldClusterizer(
+            table_path=cluster_path,
+            clustering_tool=GoldRandomClusteringTool(random_state=0),
+            allow_existing=True,
+        )
+
+        cluster_table = clusterizer.cluster_in_table(
+            src_table, n_clusters=3, restrict_to={2, 5, 7}
+        )
+
+        assert cluster_table.count() == 3
+        clustered = (
+            cluster_table.where(
+                cluster_table[clusterizer.cluster_key] != None  # noqa: E711
+            )
+            .select(cluster_table.idx)
+            .distinct()
+            .collect()
+        )
+        assert {row["idx"] for row in clustered} == {2, 5, 7}
+
+    def test_cluster_from_table_with_restrict_to_custom_index_key(self):
+        src_path = "unit_test.src_cluster_restrict_custom_idx_table"
+        cluster_path = "unit_test.test_cluster_restrict_custom_idx"
+
+        source_rows = [
+            {
+                "idx": i,
+                "idx_vector": i * 10,
+                "vectorized": torch.rand(4).numpy(),
+            }
+            for i in range(10)
+        ]
+        src_table = pxt.create_table(
+            src_path, source=source_rows, if_exists="replace_force"
+        )
+
+        clusterizer = GoldClusterizer(
+            table_path=cluster_path,
+            clustering_tool=GoldRandomClusteringTool(random_state=0),
+            allow_existing=True,
+        )
+
+        cluster_table = clusterizer.cluster_in_table(
+            src_table,
+            n_clusters=3,
+            restrict_to={2, 5, 7},
+            restriction_idx_key="idx",
+        )
+
+        assert cluster_table.count() == 3
+        clustered = (
+            cluster_table.where(
+                cluster_table[clusterizer.cluster_key] != None  # noqa: E711
+            )
+            .select(cluster_table.idx)
+            .distinct()
+            .collect()
+        )
+        assert {row["idx"] for row in clustered} == {2, 5, 7}
+
+    def test_cluster_from_dataset_with_restrict_to(self):
+        cluster_path = "unit_test.test_cluster_restrict_dataset"
+
+        dataset = DummyDataset(
+            [{"vectorized": torch.rand(4), "idx": idx} for idx in range(10)]
+        )
+
+        clusterizer = GoldClusterizer(
+            table_path=cluster_path,
+            clustering_tool=GoldRandomClusteringTool(random_state=0),
+            allow_existing=True,
+        )
+
+        clusterizer.cluster_in_dataset(dataset, n_clusters=3, restrict_to={2, 5, 7})
+
+        cluster_table = pxt.get_table(cluster_path)
+        assert cluster_table.count() == 3
+        clustered = (
+            cluster_table.where(
+                cluster_table[clusterizer.cluster_key] != None  # noqa: E711
+            )
+            .select(cluster_table.idx)
+            .distinct()
+            .collect()
+        )
+        assert {row["idx"] for row in clustered} == {2, 5, 7}
 
     def test_cluster_in_table_with_reducer(self):
         table_path = "unit_test.test_cluster_reducer"

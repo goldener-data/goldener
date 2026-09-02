@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from functools import partial
 from logging import getLogger
 
-from pixeltable import Error
+from pixeltable import Error, Query
 from torch.utils.data import RandomSampler, Dataset, DataLoader
 from tqdm import tqdm
 from typing_extensions import assert_never
@@ -23,13 +23,16 @@ from goldener.pxt_utils import (
     GoldPxtTorchDataset,
     get_valid_table,
     get_sample_row_from_idx,
-    pxt_torch_dataset_collate_fn,
     get_expr_from_column_name,
     make_batch_ready_for_table,
     check_pxt_table_has_primary_key,
     get_max_value_in_column,
 )
-from goldener.torch_utils import make_2d_tensor, get_dataset_sample_dict
+from goldener.torch_utils import (
+    collate_keeping_sequences_as_sequences,
+    get_dataset_sample_dict,
+    make_2d_tensor,
+)
 from goldener.utils import (
     check_x_and_y_shapes,
     filter_batch_from_indices,
@@ -475,8 +478,8 @@ class GoldVectorizer:
         vectorizer: GoldTensorVectorizationTool instance for transforming batched inputs into vectors.
         collate_fn: Optional function to collate dataset samples into batches composed of
             dictionaries with at least the key specified by `data_key` returning a PyTorch Tensor.
-            If None, `pxt_torch_dataset_collate_fn` is used, which preserves list-valued
-            fields as one list per sample.
+            If None, `collate_keeping_sequences_as_sequences` is used, which preserves sequence-valued
+            fields as one sequence per sample.
         data_key: Key in the batch dictionary that contains the data to vectorize. Default is "embeddings".
         target_key: Optional key in the batch dictionary containing the target used to filter vectors. Default is "target".
         vectorized_key: Column name to store the resulting vectors in the PixelTable table. Default is "vectorized".
@@ -532,7 +535,7 @@ class GoldVectorizer:
             table_path: Path to the PixelTable table for storing vectors.
             vectorizer: GoldTensorVectorizationTool instance for transforming tensors.
             collate_fn: Optional collate function for preparing batches.
-                If None, `pxt_torch_dataset_collate_fn` is used.
+                If None, `collate_keeping_sequences_as_sequences` is used.
             data_key: Key for data in the batch dictionary. Defaults to "embeddings".
             target_key: Key for target in the batch dictionary. Defaults to "target".
             vectorized_key: Column name for storing vectors. Defaults to "vectorized".
@@ -554,7 +557,9 @@ class GoldVectorizer:
         self.table_path = table_path
         self.vectorizer = vectorizer
         self.collate_fn = (
-            collate_fn if collate_fn is not None else pxt_torch_dataset_collate_fn
+            collate_fn
+            if collate_fn is not None
+            else collate_keeping_sequences_as_sequences
         )
         self.data_key = data_key
         self.target_key = target_key
@@ -595,6 +600,7 @@ class GoldVectorizer:
     def vectorize_in_dataset(
         self,
         to_vectorize: Dataset | Table,
+        restrict_to: set[int] | None = None,
     ) -> GoldPxtTorchDataset:
         """Extract and flatten vectors from samples and return results as a GoldPxtTorchDataset.
 
@@ -612,12 +618,17 @@ class GoldVectorizer:
                 dictionary with at least the key specified by `data_key` after applying the collate_fn.
                 If a Table is provided,
                 it should contain both 'idx' and `data_key` columns.
+            restrict_to: Optional set of sample indices (`idx`) to restrict the
+                vectorization to. If provided, only the selected samples will be vectorized.
 
         Returns:
             A GoldPxtTorchDataset containing at least the vectorized data in the `vectorized_key` key
                 and `idx` (index of the sample) and `idx_vector` (index of the vector) keys as well.
         """
-        vectorized_table = self.vectorize_in_table(to_vectorize)
+        vectorized_table = self.vectorize_in_table(
+            to_vectorize,
+            restrict_to=restrict_to,
+        )
 
         vectorized_dataset = GoldPxtTorchDataset(vectorized_table, keep_cache=True)
 
@@ -629,6 +640,7 @@ class GoldVectorizer:
     def vectorize_in_table(
         self,
         to_vectorize: Dataset | Table,
+        restrict_to: set[int] | None = None,
     ) -> Table:
         """Extract and flatten vectors from samples and store results in a PixelTable table.
 
@@ -645,6 +657,8 @@ class GoldVectorizer:
                 dictionary with at least the key specified by `data_key` after applying the collate_fn.
                 If a Table is provided,
                 it should contain both 'idx' and `data_key` columns.
+            restrict_to: Optional set of sample indices (`idx`) to restrict the
+                vectorization to. If provided, only the selected samples will be vectorized.
 
         Returns:
             A PixelTable Table containing at least the vectorized data in the `vectorized_key` column
@@ -685,12 +699,17 @@ class GoldVectorizer:
             )
 
             if vectorized_table.count() > 0 and "idx" in to_vectorize.columns():
-                to_vectorize_indices = set(
-                    [
-                        row["idx"]
-                        for row in to_vectorize.select(to_vectorize.idx).collect()
-                    ]
-                )
+                source_for_indices: Table | Query = to_vectorize
+                if restrict_to is not None:
+                    source_for_indices = to_vectorize.where(
+                        to_vectorize.idx.isin(restrict_to)
+                    )
+                to_vectorize_indices = {
+                    row["idx"]
+                    for row in source_for_indices.select(to_vectorize.idx)
+                    .distinct()
+                    .collect()
+                }
                 already_vectorized = set(
                     [
                         row["idx"]
@@ -714,11 +733,13 @@ class GoldVectorizer:
 
         if self.distribute:
             vectorized = self._distributed_vectorize(
-                vectorized_table, to_vectorize_dataset
+                vectorized_table, to_vectorize_dataset, restrict_to=restrict_to
             )
         else:
             vectorized = self._sequential_vectorize(
-                vectorized_table, to_vectorize_dataset
+                vectorized_table,
+                to_vectorize_dataset,
+                restrict_to=restrict_to,
             )
 
         logger.info(
@@ -748,7 +769,7 @@ class GoldVectorizer:
             logger.info(f"Add the Vectorized column in {self.table_path}")
             sample = get_sample_row_from_idx(
                 to_vectorize,
-                collate_fn=pxt_torch_dataset_collate_fn,
+                collate_fn=collate_keeping_sequences_as_sequences,
                 expected_keys=[self.data_key],
             )
             vectorized = self.vectorizer.vectorize(
@@ -828,12 +849,14 @@ class GoldVectorizer:
         self,
         vectorized_table: Table,
         to_vectorize_dataset: Dataset,
+        restrict_to: set[int] | None = None,
     ) -> Table:
         """Run distributed vectorization process (not implemented).
 
         Args:
             vectorized_table: The table to store vectorized outputs.
             to_vectorize_dataset: The dataset to vectorize.
+            restrict_to: Optional set of sample indices to restrict to.
 
         Returns:
             The populated vectorized table.
@@ -850,6 +873,7 @@ class GoldVectorizer:
         start_idx: int,
         not_empty: bool,
         already_vectorized: set[int],
+        restrict_to: set[int] | None = None,
     ) -> tuple[list[dict[str, Any]] | None, int]:
         """Process a single batch: assign indices, filter, vectorize, and prepare for insertion.
 
@@ -859,6 +883,17 @@ class GoldVectorizer:
         if "idx" not in batch:
             starts = batch_idx * self.batch_size
             batch["idx"] = [starts + idx for idx in range(len(batch[self.data_key]))]
+
+        if restrict_to is not None:
+            to_remove = {
+                int(idx.item()) if isinstance(idx, torch.Tensor) else int(idx)
+                for idx in batch["idx"]
+            } - restrict_to
+            if to_remove:
+                batch = filter_batch_from_indices(batch, to_remove)
+
+                if len(batch) == 0:
+                    return None, start_idx
 
         if not_empty:
             batch = filter_batch_from_indices(batch, already_vectorized)
@@ -904,6 +939,7 @@ class GoldVectorizer:
         self,
         vectorized_table: Table,
         to_vectorize_dataset: Dataset,
+        restrict_to: set[int] | None = None,
     ) -> Table:
         """Run sequential (single-process) vectorization process.
 
@@ -914,6 +950,7 @@ class GoldVectorizer:
         Args:
             vectorized_table: The table to store vectorized outputs.
             to_vectorize_dataset: The dataset to vectorize.
+            restrict_to: Optional set of sample indices to restrict to.
 
         Returns:
             The populated vectorized table.
@@ -969,7 +1006,7 @@ class GoldVectorizer:
                 break
 
             batch_as_list, start_idx = self._compute_batch(
-                batch, batch_idx, start_idx, not_empty, already_vectorized
+                batch, batch_idx, start_idx, not_empty, already_vectorized, restrict_to
             )
 
             if batch_as_list is None:

@@ -4,7 +4,7 @@ from typing import Callable, Any
 import torch
 
 import pixeltable as pxt
-from pixeltable import Error
+from pixeltable import Error, Query
 from pixeltable.catalog import Table
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
@@ -14,13 +14,15 @@ from goldener.pxt_utils import (
     GoldPxtTorchDataset,
     get_expr_from_column_name,
     get_sample_row_from_idx,
-    pxt_torch_dataset_collate_fn,
     get_valid_table,
     make_batch_ready_for_table,
     check_pxt_table_has_primary_key,
     get_max_value_in_column,
 )
-from goldener.torch_utils import get_dataset_sample_dict
+from goldener.torch_utils import (
+    collate_keeping_sequences_as_sequences,
+    get_dataset_sample_dict,
+)
 from goldener.utils import filter_batch_from_indices
 from goldener.vectorize import (
     GoldTensorVectorizationTool,
@@ -56,8 +58,8 @@ class GoldDescriptor:
             applied by the `collate_fn`.
         collate_fn: Optional function to collate dataset samples into batches composed of
             dictionaries with at least the key specified by `data_key` returning a PyTorch Tensor.
-            If None, `pxt_torch_dataset_collate_fn` is used, which preserves list-valued
-            fields as one list per sample. It should format
+            If None, `collate_keeping_sequences_as_sequences` is used, which preserves sequence-valued
+            fields as one sequence per sample. It should format
             the value at `data_key` in the format expected by the embedder.
         data_key: Key in the batch dictionary that contains the data to compute embeddings from. Default is "data".
         target_key: Key in the batch dictionary that contains the target/label information. Default is "target".
@@ -122,7 +124,7 @@ class GoldDescriptor:
             vectorizer: Optional GoldTensorVectorizationTool to further vectorize the computed embeddings.
             transform: Optional transformation to apply before embedding computation.
             collate_fn: Optional function to collate dataset samples into batches.
-                If None, `pxt_torch_dataset_collate_fn` is used.
+                If None, `collate_keeping_sequences_as_sequences` is used.
             data_key: Key in the batch dictionary containing the data. Defaults to "data".
             target_key: Key in the batch dictionary containing the target/label. Defaults to "target".
             label_key: Optional key for labels in the batch dictionary. Default is None.
@@ -152,7 +154,9 @@ class GoldDescriptor:
         self.vectorizer = vectorizer
         self.transform = transform
         self.collate_fn = (
-            collate_fn if collate_fn is not None else pxt_torch_dataset_collate_fn
+            collate_fn
+            if collate_fn is not None
+            else collate_keeping_sequences_as_sequences
         )
         self.data_key = data_key
         self.target_key = target_key
@@ -201,6 +205,7 @@ class GoldDescriptor:
     def describe_in_dataset(
         self,
         to_describe: Dataset | Table,
+        restrict_to: set[int] | None = None,
     ) -> GoldPxtTorchDataset:
         """Compute embeddings from samples and return results as a GoldPxtTorchDataset.
 
@@ -218,13 +223,18 @@ class GoldDescriptor:
                 dictionary with at least the key specified by `data_key` after applying the collate_fn.
                 If a Table is provided,
                 it should contain both 'idx' and `data_key` columns.
+            restrict_to: Optional set of sample indices (`idx`) to restrict the
+                description to. If provided, only the selected samples will be described.
 
         Returns:
             A GoldPxtTorchDataset containing at least the computed embeddings in the `description_key` key
                 and an `idx` key as well.
         """
 
-        description_table = self.describe_in_table(to_describe)
+        description_table = self.describe_in_table(
+            to_describe,
+            restrict_to=restrict_to,
+        )
 
         description_dataset = GoldPxtTorchDataset(description_table, keep_cache=True)
 
@@ -236,6 +246,7 @@ class GoldDescriptor:
     def describe_in_table(
         self,
         to_describe: Dataset | Table,
+        restrict_to: set[int] | None = None,
     ) -> Table:
         """Compute embeddings from samples and store results in a PixelTable table.
 
@@ -252,6 +263,8 @@ class GoldDescriptor:
                 dictionary with at least the key specified by `data_key` after applying the collate_fn.
                 If a Table is provided,
                 it should contain both 'idx' and `data_key` columns.
+            restrict_to: Optional set of sample indices (`idx`) to restrict the
+                description to. If provided, only the selected samples will be described.
 
         Returns:
             A PixelTable Table containing at least the computed embeddings in the `description_key` column
@@ -291,12 +304,15 @@ class GoldDescriptor:
             )
 
             if description_table.count() > 0 and "idx" in to_describe.columns():
-                to_describe_indices = set(
-                    [
-                        row["idx"]
-                        for row in to_describe.select(to_describe.idx).collect()
-                    ]
-                )
+                source_for_indices: Table | Query = to_describe
+                if restrict_to is not None:
+                    source_for_indices = to_describe.where(
+                        to_describe.idx.isin(restrict_to)
+                    )
+                to_describe_indices = {
+                    row["idx"]
+                    for row in source_for_indices.select(to_describe.idx).collect()
+                }
                 already_described = set(
                     [
                         row["idx"]
@@ -321,11 +337,13 @@ class GoldDescriptor:
 
         if self.distribute:
             described = self._distributed_describe(
-                description_table, to_describe_dataset
+                description_table, to_describe_dataset, restrict_to=restrict_to
             )
         else:
             described = self._sequential_describe(
-                description_table, to_describe_dataset
+                description_table,
+                to_describe_dataset,
+                restrict_to=restrict_to,
             )
 
         logger.info(
@@ -355,7 +373,7 @@ class GoldDescriptor:
             logger.info(f"Add the description column in {self.table_path}")
             sample = get_sample_row_from_idx(
                 to_describe,
-                collate_fn=pxt_torch_dataset_collate_fn,
+                collate_fn=collate_keeping_sequences_as_sequences,
                 expected_keys=[self.data_key],
             )
             sample_data = sample[self.data_key]
@@ -463,12 +481,14 @@ class GoldDescriptor:
         self,
         description_table: Table,
         to_describe_dataset: Dataset,
+        restrict_to: set[int] | None = None,
     ) -> Table:
         """Run distributed description process (not implemented).
 
         Args:
             description_table: The table to store descriptions.
             to_describe_dataset: The dataset to describe.
+            restrict_to: Optional set of sample indices to restrict to.
 
         Returns:
             The populated description table.
@@ -482,6 +502,7 @@ class GoldDescriptor:
         self,
         description_table: Table,
         to_describe_dataset: Dataset,
+        restrict_to: set[int] | None = None,
     ) -> Table:
         """Run sequential (single-process) description process.
 
@@ -492,6 +513,7 @@ class GoldDescriptor:
         Args:
             description_table: The table to store descriptions.
             to_describe_dataset: The dataset to describe.
+            restrict_to: Optional set of sample indices to restrict to.
 
         Returns:
             The populated description table.
@@ -560,6 +582,16 @@ class GoldDescriptor:
                 batch["idx"] = [
                     starts + idx for idx in range(len(batch[self.data_key]))
                 ]
+
+            if restrict_to is not None:
+                to_remove = {
+                    int(idx.item()) if isinstance(idx, torch.Tensor) else int(idx)
+                    for idx in batch["idx"]
+                } - restrict_to
+                if to_remove:
+                    batch = filter_batch_from_indices(batch, to_remove)
+                    if len(batch) == 0:
+                        continue
 
             # Keep only not yet described samples in the batch
             if not_empty:

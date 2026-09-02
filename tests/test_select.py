@@ -11,7 +11,7 @@ from sklearn.decomposition import PCA
 import pixeltable as pxt
 from torch.utils.data import Dataset
 
-from goldener.pxt_utils import GoldPxtTorchDataset, pxt_torch_dataset_collate_fn
+from goldener.pxt_utils import GoldPxtTorchDataset
 from goldener.reduce import GoldSKLearnReductionTool
 from goldener.select import (
     GoldSelector,
@@ -24,6 +24,7 @@ from goldener.select import (
     GoldGreedyKernelPointsSelectionTool,
     GoldZCoreSelectionTool,
 )
+from goldener.torch_utils import collate_keeping_sequences_as_sequences
 
 
 class DummyDataset(Dataset):
@@ -64,9 +65,9 @@ class TestGoldSelector:
             selector.distribute = True
         assert selector.distribute is False
 
-    def test_collate_fn_defaults_to_pxt_torch_dataset_collate_fn(self):
+    def test_collate_fn_defaults_to_collate_keeping_sequences_as_sequences(self):
         selector = GoldSelector(table_path="unit_test.select_default_collate")
-        assert selector.collate_fn is pxt_torch_dataset_collate_fn
+        assert selector.collate_fn is collate_keeping_sequences_as_sequences
 
         def custom_collate_fn(batch):
             return batch
@@ -686,6 +687,119 @@ class TestGoldSelector:
         assert selected_count == 3
 
         dataset.keep_cache = False
+
+    def test_select_from_dataset_with_restrict_to(self):
+        table_path = "unit_test.test_restrict_to"
+
+        dataset = DummyDataset(
+            [
+                {"vectorized": torch.rand(5), "idx": idx, "idx_vector": idx}
+                for idx in range(20)
+            ]
+        )
+
+        selector = GoldSelector(
+            table_path=table_path, allow_existing=False, batch_size=10, max_batches=None
+        )
+
+        dataset = selector.select_in_dataset(
+            dataset, select_size=3, value="train", restrict_to={0, 1, 2, 3, 4}
+        )
+
+        selected_indices = set()
+        for item in dataset:
+            if item["selected"] == "train":
+                selected_indices.add(item["idx_vector"])
+
+        assert len(selected_indices) == 3
+        assert selected_indices.issubset({0, 1, 2, 3, 4})
+
+        dataset.keep_cache = False
+
+    def test_select_from_table_with_restrict_to(self):
+        src_path = "unit_test.src_table_restrict"
+        src_table = pxt.create_table(
+            src_path,
+            source=[
+                {
+                    "vectorized": torch.rand(5).numpy().astype(np.float32),
+                    "idx": idx,
+                    "idx_vector": idx,
+                }
+                for idx in range(10)
+            ],
+            if_exists="replace_force",
+            primary_key="idx_vector",
+        )
+
+        selector = GoldSelector(
+            table_path="unit_test.test_select_from_table_restrict", allow_existing=True
+        )
+
+        result_table = selector.select_in_table(
+            src_table, select_size=2, value="train", restrict_to={2, 5, 7}
+        )
+
+        assert result_table.count() == 10  # full table preserved
+
+        selected_indices = selector.get_selection_indices(
+            result_table, "train", selector.selection_key
+        )
+        assert len(selected_indices) == 2
+        assert selected_indices.issubset({2, 5, 7})
+
+    def test_select_in_dataset_with_restriction_idx_key(self):
+        table_path = "unit_test.test_restriction_idx_key"
+
+        dataset = DummyDataset(
+            [
+                {"vectorized": torch.rand(5), "idx": idx, "idx_vector": idx + 100}
+                for idx in range(20)
+            ]
+        )
+        selector = GoldSelector(
+            table_path=table_path, allow_existing=False, batch_size=10, max_batches=None
+        )
+        dataset = selector.select_in_dataset(
+            dataset,
+            select_size=3,
+            value="train",
+            restrict_to={0, 1, 4},
+            restriction_idx_key="idx",
+        )
+        selected_indices = set()
+        selected_idx_vector = set()
+        for item in dataset:
+            if item["selected"] == "train":
+                assert item["idx_vector"] == item["idx"] + 100
+                selected_indices.add(item["idx"])
+                selected_idx_vector.add(item["idx_vector"])
+
+        assert len(selected_indices) == 3
+        assert selected_indices.issubset({0, 1, 4})
+        assert selected_idx_vector.issubset({100, 101, 104})
+
+        dataset.keep_cache = False
+
+    def test_select_in_dataset_with_restrict_to_exceeding_size(self):
+        table_path = "unit_test.test_restrict_to"
+
+        dataset = DummyDataset(
+            [
+                {"vectorized": torch.rand(5), "idx": idx, "idx_vector": idx}
+                for idx in range(20)
+            ]
+        )
+        selector = GoldSelector(
+            table_path=table_path, allow_existing=False, batch_size=10, max_batches=None
+        )
+
+        with pytest.raises(
+            ValueError, match="cannot be greater than the total number of samples"
+        ):
+            selector.select_in_dataset(
+                dataset, select_size=5, value="train", restrict_to={0, 1, 2}
+            )
 
     def test_select_in_table_from_dataset_with_already_selected(self):
         table_path = "unit_test.test_select_from_dataset"
