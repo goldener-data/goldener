@@ -180,14 +180,20 @@ class TestGetSamplingCountFromSize:
         )
         assert count == 5
 
-    def test_float_sampling_size(self):
-        sampling_size = 0.5
-        total_size = 10
+    @pytest.mark.parametrize(
+        "sampling_size,total_size,expected_count",
+        [
+            (0.5, 10, 5),
+            (0.8, 11, 8),
+            (0.001, 2, 1),
+        ],
+    )
+    def test_float_sampling_size(self, sampling_size, total_size, expected_count):
         count = get_sampling_count_from_size(
             sampling_size,
             total_size,
         )
-        assert count == 5
+        assert count == expected_count
 
     def test_invalid_integer_sampling_raises(self):
         sampling_size = 0
