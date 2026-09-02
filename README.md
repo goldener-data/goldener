@@ -292,4 +292,112 @@ To release a new version of the `goldener` package:
 # Contributors
 
 <!-- readme: contributors -start -->
+<table>
+	<tbody>
+		<tr>
+            <td align="center">
+                <a href="https://github.com/Yann-CV">
+                    <img src="https://avatars.githubusercontent.com/u/54800486?v=4" width="100;" alt="Yann-CV"/>
+                    <br />
+                    <sub><b>Yann Chéné</b></sub>
+                </a>
+            </td>
+            <td align="center">
+                <a href="https://github.com/AshleyAHuang">
+                    <img src="https://avatars.githubusercontent.com/u/125787623?v=4" width="100;" alt="AshleyAHuang"/>
+                    <br />
+                    <sub><b>Ashley Huang</b></sub>
+                </a>
+            </td>
+            <td align="center">
+                <a href="https://github.com/abhiramvsmg">
+                    <img src="https://avatars.githubusercontent.com/u/141956198?v=4" width="100;" alt="abhiramvsmg"/>
+                    <br />
+                    <sub><b>Abhiram V</b></sub>
+                </a>
+            </td>
+            <td align="center">
+                <a href="https://github.com/AnayGarodia">
+                    <img src="https://avatars.githubusercontent.com/u/76836303?v=4" width="100;" alt="AnayGarodia"/>
+                    <br />
+                    <sub><b>Anay Garodia</b></sub>
+                </a>
+            </td>
+            <td align="center">
+                <a href="https://github.com/jason-scheffel">
+                    <img src="https://avatars.githubusercontent.com/u/80598885?v=4" width="100;" alt="jason-scheffel"/>
+                    <br />
+                    <sub><b>Jason Scheffel</b></sub>
+                </a>
+            </td>
+            <td align="center">
+                <a href="https://github.com/HafidIdrissi">
+                    <img src="https://avatars.githubusercontent.com/u/57899900?v=4" width="100;" alt="HafidIdrissi"/>
+                    <br />
+                    <sub><b>Hafid Idrissi</b></sub>
+                </a>
+            </td>
+		</tr>
+		<tr>
+            <td align="center">
+                <a href="https://github.com/TaniaW777">
+                    <img src="https://avatars.githubusercontent.com/u/200526578?v=4" width="100;" alt="TaniaW777"/>
+                    <br />
+                    <sub><b>Wendtoin Filomène Tania ZABRE</b></sub>
+                </a>
+            </td>
+            <td align="center">
+                <a href="https://github.com/Mr-Neutr0n">
+                    <img src="https://avatars.githubusercontent.com/u/64578610?v=4" width="100;" alt="Mr-Neutr0n"/>
+                    <br />
+                    <sub><b>hari</b></sub>
+                </a>
+            </td>
+            <td align="center">
+                <a href="https://github.com/pre765">
+                    <img src="https://avatars.githubusercontent.com/u/199960263?v=4" width="100;" alt="pre765"/>
+                    <br />
+                    <sub><b>pre765</b></sub>
+                </a>
+            </td>
+            <td align="center">
+                <a href="https://github.com/AhmadBilalDSA">
+                    <img src="https://avatars.githubusercontent.com/u/315737484?v=4" width="100;" alt="AhmadBilalDSA"/>
+                    <br />
+                    <sub><b>Ahmad Bilal</b></sub>
+                </a>
+            </td>
+            <td align="center">
+                <a href="https://github.com/Dhruv06000">
+                    <img src="https://avatars.githubusercontent.com/u/196720010?v=4" width="100;" alt="Dhruv06000"/>
+                    <br />
+                    <sub><b>Dhruv Kumar</b></sub>
+                </a>
+            </td>
+            <td align="center">
+                <a href="https://github.com/Josequevedov08">
+                    <img src="https://avatars.githubusercontent.com/u/170109140?v=4" width="100;" alt="Josequevedov08"/>
+                    <br />
+                    <sub><b>Jose Quevedo</b></sub>
+                </a>
+            </td>
+		</tr>
+		<tr>
+            <td align="center">
+                <a href="https://github.com/panosfrantzolas">
+                    <img src="https://avatars.githubusercontent.com/u/182676512?v=4" width="100;" alt="panosfrantzolas"/>
+                    <br />
+                    <sub><b>Panos Frantzolas</b></sub>
+                </a>
+            </td>
+            <td align="center">
+                <a href="https://github.com/SHEKHAR-Y">
+                    <img src="https://avatars.githubusercontent.com/u/242377436?v=4" width="100;" alt="SHEKHAR-Y"/>
+                    <br />
+                    <sub><b>Shekhar</b></sub>
+                </a>
+            </td>
+		</tr>
+	<tbody>
+</table>
 <!-- readme: contributors -end -->
