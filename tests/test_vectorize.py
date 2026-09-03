@@ -481,6 +481,16 @@ class TestGoldVectorizer:
             vectorizer.distribute = True
         assert vectorizer.distribute is False
 
+    def test_estimation_time_batch_count_must_be_positive(self):
+        with pytest.raises(
+            ValueError, match="estimation_time_batch_count must be a positive integer"
+        ):
+            GoldVectorizer(
+                table_path="unit_test.test_estimation_time_batch_count",
+                vectorizer=GoldTensorVectorizationTool(),
+                estimation_time_batch_count=0,
+            )
+
     def test_collate_fn_defaults_to_collate_keeping_sequences_as_sequences(self):
         gv = GoldVectorizer(
             table_path="unit_test.vectorize_default_collate",

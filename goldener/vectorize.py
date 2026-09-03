@@ -1,5 +1,6 @@
 import math
 import time
+from itertools import islice
 from dataclasses import dataclass
 from functools import partial
 from logging import getLogger
@@ -574,9 +575,18 @@ class GoldVectorizer:
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.allow_existing = allow_existing
-        self.distribute = distribute
+        if distribute:
+            raise NotImplementedError(
+                "Distributed processing is not implemented for GoldVectorizer."
+            )
+        self._distribute = distribute
         self.drop_table = drop_table
         self.max_batches = max_batches
+        if (
+            not isinstance(estimation_time_batch_count, int)
+            or estimation_time_batch_count <= 0
+        ):
+            raise ValueError("estimation_time_batch_count must be a positive integer.")
         self.estimation_time_batch_count = estimation_time_batch_count
 
     @property
@@ -875,11 +885,7 @@ class GoldVectorizer:
         already_vectorized: set[int],
         restrict_to: set[int] | None = None,
     ) -> tuple[list[dict[str, Any]] | None, int]:
-        """Process a single batch: assign indices, filter, vectorize, and prepare for insertion.
-
-        This factors out the per-batch processing shared by `_sequential_vectorize` and
-        `estimate_computation_time`, so both paths run the exact same vectorization logic.
-        """
+        """Process a single batch: assign indices, filter, vectorize, and prepare for insertion."""
         if "idx" not in batch:
             starts = batch_idx * self.batch_size
             batch["idx"] = [starts + idx for idx in range(len(batch[self.data_key]))]
@@ -1038,22 +1044,15 @@ class GoldVectorizer:
         )
 
         start_idx = 0
+        batch_idx = 0
         already_vectorized: set[int] = set()
-        elapsed = 0.0
         batches_measured = 0
 
-        iterator = enumerate(dataloader)
-        for _ in range(self.estimation_time_batch_count):
-            start = time.perf_counter()
-            try:
-                batch_idx, batch = next(iterator)
-            except StopIteration:
-                break
-            _, start_idx = self._compute_batch(
-                batch, batch_idx, start_idx, False, already_vectorized
-            )
-            elapsed += time.perf_counter() - start
+        start = time.perf_counter()
+        for batch in islice(dataloader, self.estimation_time_batch_count):
+            self._compute_batch(batch, batch_idx, start_idx, False, already_vectorized)
             batches_measured += 1
+        elapsed = time.perf_counter() - start
 
         if batches_measured == 0:
             return None
@@ -1064,7 +1063,9 @@ class GoldVectorizer:
             total_batches = math.ceil(len(dataset) / self.batch_size)
             return avg_time_per_batch * total_batches
 
-        logger.info(f"Average computation time per batch: {avg_time_per_batch:.4f}s")
+        logger.info(
+            f"Goldvectorizer: average computation time per batch: {avg_time_per_batch:.4f}s"
+        )
         return None
 
 
