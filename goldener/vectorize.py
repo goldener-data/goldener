@@ -554,6 +554,12 @@ class GoldVectorizer:
             distribute: Whether to use distributed processing. Defaults to False.
             drop_table: Whether to drop the table after dataset creation. Defaults to False.
             max_batches: Optional maximum number of batches to process.
+            estimation_time_batch_count: Number of initial batches used to estimate the total
+                computation time. Defaults to 2.
+
+        Raises:
+            NotImplementedError: If `distribute` is True.
+            ValueError: If `estimation_time_batch_count` is not a positive integer.
         """
         self.table_path = table_path
         self.vectorizer = vectorizer
@@ -600,6 +606,7 @@ class GoldVectorizer:
 
         Raises:
             NotImplementedError: If `value` is True.
+
         """
         if value:
             raise NotImplementedError(
@@ -884,7 +891,7 @@ class GoldVectorizer:
         not_empty: bool,
         already_vectorized: set[int],
         restrict_to: set[int] | None = None,
-    ) -> tuple[list[dict[str, Any]] | None, int]:
+    ) -> tuple[list[dict[str, Any]], int]:
         """Process a single batch: assign indices, filter, vectorize, and prepare for insertion."""
         if "idx" not in batch:
             starts = batch_idx * self.batch_size
@@ -899,12 +906,12 @@ class GoldVectorizer:
                 batch = filter_batch_from_indices(batch, to_remove)
 
                 if len(batch) == 0:
-                    return None, start_idx
+                    return [], start_idx
 
         if not_empty:
             batch = filter_batch_from_indices(batch, already_vectorized)
-            if len(batch) == 0:
-                return None, start_idx
+            if not batch:
+                return [], start_idx
 
         already_vectorized.update(
             [
@@ -932,7 +939,7 @@ class GoldVectorizer:
         )
 
         if not batch:
-            return None, start_idx
+            return [], start_idx
 
         start_idx = max(batch["idx_vector"]) + 1
 
@@ -1015,7 +1022,7 @@ class GoldVectorizer:
                 batch, batch_idx, start_idx, not_empty, already_vectorized, restrict_to
             )
 
-            if batch_as_list is None:
+            if not batch_as_list:
                 continue
 
             ready_to_insert.extend(batch_as_list)
