@@ -481,6 +481,16 @@ class TestGoldVectorizer:
             vectorizer.distribute = True
         assert vectorizer.distribute is False
 
+    def test_estimation_time_batch_count_must_be_positive(self):
+        with pytest.raises(
+            ValueError, match="estimation_time_batch_count must be a positive integer"
+        ):
+            GoldVectorizer(
+                table_path="unit_test.test_estimation_time_batch_count",
+                vectorizer=GoldTensorVectorizationTool(),
+                estimation_time_batch_count=0,
+            )
+
     def test_collate_fn_defaults_to_collate_keeping_sequences_as_sequences(self):
         gv = GoldVectorizer(
             table_path="unit_test.vectorize_default_collate",
@@ -1226,3 +1236,60 @@ class TestVectorizeAndUnwrapInBatch:
         )
         vectors = result["vectorized"]
         assert len(vectors) == 2
+
+
+class TestEstimateComputationTime:
+    def setup_method(self):
+        pxt.drop_dir("unit_test", force=True)
+        pxt.create_dir("unit_test", if_exists="ignore")
+
+    def teardown_method(self):
+        pxt.drop_dir("unit_test", force=True)
+
+    def test_returns_estimate_when_dataset_size_known(self):
+        gv = GoldVectorizer(
+            table_path="unit_test.vectorize_estimate",
+            vectorizer=GoldTensorVectorizationTool(),
+            batch_size=2,
+        )
+        dataset = DummyDataset(dataset_len=10)
+
+        estimate = gv.estimate_computation_time(dataset)
+
+        assert estimate is not None
+        assert estimate > 0
+
+    def test_returns_none_when_dataset_size_unknown(self):
+        from torch.utils.data import IterableDataset
+
+        class NoLenDataset(IterableDataset):
+            def __init__(self):
+                self.data = [
+                    {"embeddings": torch.zeros(3, 8, 8), "idx": i, "label": "dummy"}
+                    for i in range(4)
+                ]
+
+            def __iter__(self):
+                return iter(self.data)
+
+        gv = GoldVectorizer(
+            table_path="unit_test.vectorize_estimate_nolen",
+            vectorizer=GoldTensorVectorizationTool(),
+            batch_size=2,
+        )
+
+        estimate = gv.estimate_computation_time(NoLenDataset())
+
+        assert estimate is None
+
+    def test_returns_none_when_dataset_is_empty(self):
+        gv = GoldVectorizer(
+            table_path="unit_test.vectorize_estimate_empty",
+            vectorizer=GoldTensorVectorizationTool(),
+            batch_size=2,
+        )
+        dataset = DummyDataset(dataset_len=0)
+
+        estimate = gv.estimate_computation_time(dataset)
+
+        assert estimate is None
