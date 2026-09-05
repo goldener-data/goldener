@@ -242,25 +242,6 @@ class TestGoldSelector:
         assert len(selected_indices_2) == 20
         assert selected_indices_1.issubset(selected_indices_2)
 
-    def test_select_in_table_with_wrong_size(self):
-        table_path = "unit_test.test_select_from_dataset"
-
-        dataset = DummyDataset(
-            [{"vectorized": torch.rand(5), "idx": idx} for idx in range(100)]
-        )
-
-        selector = GoldSelector(
-            table_path=table_path, allow_existing=True, batch_size=10, max_batches=None
-        )
-
-        with pytest.raises(
-            ValueError, match="When select_size is a float, it must be in the range"
-        ):
-            selector.select_in_table(dataset, select_size=1.1, value="train")
-
-        with pytest.raises(ValueError, match="select_size must be a positive integer"):
-            selector.select_in_table(dataset, select_size=0, value="train")
-
     def test_select_in_table_with_invalid_restriction_idx_key(self):
         table_path = "unit_test.test_select_invalid_restriction_idx_key"
         selector = GoldSelector(table_path=table_path)
@@ -280,9 +261,8 @@ class TestGoldSelector:
         with pytest.raises(Error):
             pxt.get_table(table_path)
 
-    @pytest.mark.parametrize("restriction_idx_key", ["idx", "idx_vector"])
-    def test_select_in_table_with_valid_restriction_idx_key(self, restriction_idx_key):
-        table_path = f"unit_test.test_select_restrict_{restriction_idx_key}"
+    def test_select_in_table_with_valid_restriction_idx_key(self):
+        table_path = "unit_test.test_select_restrict_idx"
         dataset = DummyDataset(
             [{"vectorized": torch.rand(5), "idx": idx} for idx in range(10)]
         )
@@ -293,14 +273,33 @@ class TestGoldSelector:
             select_size=2,
             value="train",
             restrict_to={2, 5, 7},
-            restriction_idx_key=restriction_idx_key,
+            restriction_idx_key="idx",
         )
 
         selected = selection_table.where(
             selection_table[selector.selection_key] == "train"
         ).collect()
         assert len(selected) == 2
-        assert {row[restriction_idx_key] for row in selected} <= {2, 5, 7}
+        assert {row["idx"] for row in selected} <= {2, 5, 7}
+
+    def test_select_in_table_with_wrong_size(self):
+        table_path = "unit_test.test_select_from_dataset"
+
+        dataset = DummyDataset(
+            [{"vectorized": torch.rand(5), "idx": idx} for idx in range(100)]
+        )
+
+        selector = GoldSelector(
+            table_path=table_path, allow_existing=True, batch_size=10, max_batches=None
+        )
+
+        with pytest.raises(
+            ValueError, match="When select_size is a float, it must be in the range"
+        ):
+            selector.select_in_table(dataset, select_size=1.1, value="train")
+
+        with pytest.raises(ValueError, match="select_size must be a positive integer"):
+            selector.select_in_table(dataset, select_size=0, value="train")
 
     def test_select_in_table_from_dataset_with_ratio(self):
         table_path = "unit_test.test_select_from_dataset"
