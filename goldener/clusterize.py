@@ -448,8 +448,14 @@ class GoldClusterizer:
                 and `idx` (index of the sample) and `idx_vector` (index of the vector) columns as well.
 
         Raises:
-            ValueError: If n_clusters is less than or equal to 1.
+            ValueError: If `restriction_idx_key` is not `"idx"` or `"idx_vector"`,
+                or if n_clusters is less than or equal to 1.
         """
+        if restriction_idx_key not in ("idx", "idx_vector"):
+            raise ValueError(
+                "restriction_idx_key must be either 'idx' or 'idx_vector'."
+            )
+
         if n_clusters <= 1:
             raise ValueError(
                 "cluster_in_table requires n_clusters to be greater than 1."

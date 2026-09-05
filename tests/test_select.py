@@ -243,6 +243,46 @@ class TestGoldSelector:
         assert len(selected_indices_2) == 20
         assert selected_indices_1.issubset(selected_indices_2)
 
+    def test_select_in_table_with_invalid_restriction_idx_key(self):
+        table_path = "unit_test.test_select_invalid_restriction_idx_key"
+        selector = GoldSelector(table_path=table_path)
+
+        with pytest.raises(
+            ValueError,
+            match="restriction_idx_key must be either 'idx' or 'idx_vector'",
+        ):
+            selector.select_in_table(
+                DummyDataset([]),
+                select_size=1,
+                value="train",
+                restrict_to={0},
+                restriction_idx_key="invalid",
+            )
+
+        with pytest.raises(Error):
+            pxt.get_table(table_path)
+
+    def test_select_in_table_with_valid_restriction_idx_key(self):
+        table_path = "unit_test.test_select_restrict_idx"
+        dataset = DummyDataset(
+            [{"vectorized": torch.rand(5), "idx": idx} for idx in range(10)]
+        )
+        selector = GoldSelector(table_path=table_path, batch_size=5)
+
+        selection_table = selector.select_in_table(
+            dataset,
+            select_size=2,
+            value="train",
+            restrict_to={2, 5, 7},
+            restriction_idx_key="idx",
+        )
+
+        selected = selection_table.where(
+            selection_table[selector.selection_key] == "train"
+        ).collect()
+        assert len(selected) == 2
+        assert {row["idx"] for row in selected} <= {2, 5, 7}
+
     def test_select_in_table_with_wrong_size(self):
         table_path = "unit_test.test_select_from_dataset"
 
