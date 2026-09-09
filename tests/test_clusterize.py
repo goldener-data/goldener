@@ -720,6 +720,50 @@ class TestGoldClusterizer:
         )
         assert {row["idx"] for row in clustered} == {2, 5, 7}
 
+    def test_cluster_in_table_with_invalid_restriction_idx_key(self):
+        table_path = "unit_test.test_cluster_invalid_restriction_idx_key"
+        clusterizer = GoldClusterizer(
+            table_path=table_path,
+            clustering_tool=GoldRandomClusteringTool(random_state=0),
+        )
+
+        with pytest.raises(
+            ValueError,
+            match="restriction_idx_key must be either 'idx' or 'idx_vector'",
+        ):
+            clusterizer.cluster_in_table(
+                DummyDataset([]),
+                n_clusters=2,
+                restrict_to={0},
+                restriction_idx_key="invalid",
+            )
+
+        with pytest.raises(pxt.Error):
+            pxt.get_table(table_path)
+
+    def test_cluster_in_table_with_valid_restriction_idx_key(self):
+        table_path = "unit_test.test_cluster_restrict_idx"
+        dataset = DummyDataset(
+            [{"vectorized": torch.rand(4), "idx": idx} for idx in range(10)]
+        )
+        clusterizer = GoldClusterizer(
+            table_path=table_path,
+            clustering_tool=GoldRandomClusteringTool(random_state=0),
+            batch_size=5,
+        )
+
+        cluster_table = clusterizer.cluster_in_table(
+            dataset,
+            n_clusters=3,
+            restrict_to={2, 5, 7},
+            restriction_idx_key="idx",
+        )
+
+        assert cluster_table.count() == 3
+        assert {
+            row["idx"] for row in cluster_table.select(cluster_table.idx).collect()
+        } == {2, 5, 7}
+
     def test_cluster_in_table_with_reducer(self):
         table_path = "unit_test.test_cluster_reducer"
 
