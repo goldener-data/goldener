@@ -1,3 +1,6 @@
+import math
+import time
+from itertools import islice
 from dataclasses import dataclass
 from functools import partial
 from logging import getLogger
@@ -9,7 +12,6 @@ from typing_extensions import assert_never
 from typing import Callable, Any
 
 from enum import Enum
-
 import torch
 from torch import Generator
 
@@ -526,6 +528,7 @@ class GoldVectorizer:
         distribute: bool = False,
         drop_table: bool = False,
         max_batches: int | None = None,
+        estimation_time_batch_count: int = 2,
     ) -> None:
         """Initialize the GoldVectorizer.
 
@@ -551,9 +554,12 @@ class GoldVectorizer:
             distribute: Whether to use distributed processing. Defaults to False.
             drop_table: Whether to drop the table after dataset creation. Defaults to False.
             max_batches: Optional maximum number of batches to process.
+            estimation_time_batch_count: Number of initial batches used to estimate the total
+                computation time. Defaults to 2.
 
         Raises:
             NotImplementedError: If `distribute` is True.
+            ValueError: If `estimation_time_batch_count` is not a positive integer.
         """
         self.table_path = table_path
         self.vectorizer = vectorizer
@@ -582,6 +588,12 @@ class GoldVectorizer:
         self._distribute = distribute
         self.drop_table = drop_table
         self.max_batches = max_batches
+        if (
+            not isinstance(estimation_time_batch_count, int)
+            or estimation_time_batch_count <= 0
+        ):
+            raise ValueError("estimation_time_batch_count must be a positive integer.")
+        self.estimation_time_batch_count = estimation_time_batch_count
 
     @property
     def distribute(self) -> bool:
@@ -594,6 +606,7 @@ class GoldVectorizer:
 
         Raises:
             NotImplementedError: If `value` is True.
+
         """
         if value:
             raise NotImplementedError(
@@ -870,6 +883,71 @@ class GoldVectorizer:
         """
         raise NotImplementedError("Distributed Vectorization is not implemented yet.")
 
+    def _compute_batch(
+        self,
+        batch: dict[str, Any],
+        batch_idx: int,
+        start_idx: int,
+        not_empty: bool,
+        already_vectorized: set[int],
+        restrict_to: set[int] | None = None,
+    ) -> tuple[list[dict[str, Any]], int]:
+        """Process a single batch: assign indices, filter, vectorize, and prepare for insertion."""
+        if "idx" not in batch:
+            starts = batch_idx * self.batch_size
+            batch["idx"] = [starts + idx for idx in range(len(batch[self.data_key]))]
+
+        if restrict_to is not None:
+            to_remove = {
+                int(idx.item()) if isinstance(idx, torch.Tensor) else int(idx)
+                for idx in batch["idx"]
+            } - restrict_to
+            if to_remove:
+                batch = filter_batch_from_indices(batch, to_remove)
+
+                if len(batch) == 0:
+                    return [], start_idx
+
+        if not_empty:
+            batch = filter_batch_from_indices(batch, already_vectorized)
+            if not batch:
+                return [], start_idx
+
+        already_vectorized.update(
+            [
+                int(idx.item()) if isinstance(idx, torch.Tensor) else int(idx)
+                for idx in batch["idx"]
+            ]
+        )
+
+        to_keep_keys = (
+            list(self.to_keep_schema.keys()) if self.to_keep_schema is not None else []
+        )
+        batch = vectorize_and_unwrap_in_batch(
+            batch=batch,
+            vectorizer=self.vectorizer,
+            data_key=self.data_key,
+            vectorized_key=self.vectorized_key,
+            target_key=self.target_key,
+            to_keep=to_keep_keys,
+            starts=start_idx,
+            target_to_label=self.target_to_label,
+            merge_multilabels=self.merge_multilabels,
+            label_key=self.label_key,
+            exclude_full_zero_target=self.exclude_full_zero_target,
+            exclude_labels=self.exclude_labels,
+        )
+
+        if not batch:
+            return [], start_idx
+
+        start_idx = max(batch["idx_vector"]) + 1
+
+        to_insert_keys = [self.vectorized_key, "idx"] + to_keep_keys
+        batch_as_list = make_batch_ready_for_table(batch, to_insert_keys, "idx_vector")
+
+        return batch_as_list, start_idx
+
     def _sequential_vectorize(
         self,
         vectorized_table: Table,
@@ -940,73 +1018,12 @@ class GoldVectorizer:
             if self.max_batches is not None and batch_idx >= self.max_batches:
                 break
 
-            # add idx if it is not provided by the dataset
-            if "idx" not in batch:
-                starts = batch_idx * self.batch_size
-                batch["idx"] = [
-                    starts + idx for idx in range(len(batch[self.data_key]))
-                ]
-
-            if restrict_to is not None:
-                to_remove = {
-                    int(idx.item()) if isinstance(idx, torch.Tensor) else int(idx)
-                    for idx in batch["idx"]
-                } - restrict_to
-                if to_remove:
-                    batch = filter_batch_from_indices(batch, to_remove)
-
-                    if len(batch) == 0:
-                        continue
-
-            # Keep only not yet described samples in the batch
-            if not_empty:
-                batch = filter_batch_from_indices(
-                    batch,
-                    already_vectorized,
-                )
-
-                if len(batch) == 0:
-                    continue  # all samples already described
-
-            already_vectorized.update(
-                [
-                    idx.item() if isinstance(idx, torch.Tensor) else idx
-                    for idx in batch["idx"]
-                ]
+            batch_as_list, start_idx = self._compute_batch(
+                batch, batch_idx, start_idx, not_empty, already_vectorized, restrict_to
             )
 
-            # vectorize data
-            to_keep_keys = (
-                list(self.to_keep_schema.keys())
-                if self.to_keep_schema is not None
-                else []
-            )
-            batch = vectorize_and_unwrap_in_batch(
-                batch=batch,
-                vectorizer=self.vectorizer,
-                data_key=self.data_key,
-                vectorized_key=self.vectorized_key,
-                target_key=self.target_key,
-                to_keep=to_keep_keys,
-                starts=start_idx,
-                target_to_label=self.target_to_label,
-                merge_multilabels=self.merge_multilabels,
-                label_key=self.label_key,
-                exclude_full_zero_target=self.exclude_full_zero_target,
-                exclude_labels=self.exclude_labels,
-            )
-
-            if not batch:
+            if not batch_as_list:
                 continue
-
-            start_idx = max(batch["idx_vector"]) + 1
-
-            to_insert_keys = [self.vectorized_key, "idx"] + to_keep_keys
-            batch_as_list = make_batch_ready_for_table(
-                batch,
-                to_insert_keys,
-                "idx_vector",
-            )
 
             ready_to_insert.extend(batch_as_list)
             if len(ready_to_insert) >= self.min_pxt_insert_size:
@@ -1017,6 +1034,46 @@ class GoldVectorizer:
             vectorized_table.batch_update(ready_to_insert, if_not_exists="insert")
 
         return vectorized_table
+
+    def estimate_computation_time(self, dataset: Dataset) -> float | None:
+        """Estimate the total computation time for vectorizing a dataset.
+
+        Times `self.estimation_time_batch_count` initial batches — including data loading,
+        preprocessing, and vectorization — running the exact same steps as
+        `_sequential_vectorize` (via `_compute_batch`), then extrapolates if the dataset's
+        size is known.
+        """
+        dataloader = DataLoader(
+            dataset,
+            batch_size=self.batch_size,
+            num_workers=self.num_workers,
+            collate_fn=self.collate_fn,
+        )
+
+        start_idx = 0
+        batch_idx = 0
+        already_vectorized: set[int] = set()
+        batches_measured = 0
+
+        start = time.perf_counter()
+        for batch in islice(dataloader, self.estimation_time_batch_count):
+            self._compute_batch(batch, batch_idx, start_idx, False, already_vectorized)
+            batches_measured += 1
+        elapsed = time.perf_counter() - start
+
+        if batches_measured == 0:
+            return None
+
+        avg_time_per_batch = elapsed / batches_measured
+
+        if hasattr(dataset, "__len__"):
+            total_batches = math.ceil(len(dataset) / self.batch_size)
+            return avg_time_per_batch * total_batches
+
+        logger.info(
+            f"Goldvectorizer: average computation time per batch: {avg_time_per_batch:.4f}s"
+        )
+        return None
 
 
 def unwrap_vectors_in_batch(
