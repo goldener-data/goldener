@@ -331,19 +331,19 @@ To release a new version of the `goldener` package:
                 </a>
             </td>
             <td align="center">
-                <a href="https://github.com/TaniaW777">
-                    <img src="https://avatars.githubusercontent.com/u/200526578?v=4" width="100;" alt="TaniaW777"/>
+                <a href="https://github.com/HafidIdrissi">
+                    <img src="https://avatars.githubusercontent.com/u/57899900?v=4" width="100;" alt="HafidIdrissi"/>
                     <br />
-                    <sub><b>Wendtoin Filomène Tania ZABRE</b></sub>
+                    <sub><b>Hafid Idrissi</b></sub>
                 </a>
             </td>
 		</tr>
 		<tr>
             <td align="center">
-                <a href="https://github.com/HafidIdrissi">
-                    <img src="https://avatars.githubusercontent.com/u/57899900?v=4" width="100;" alt="HafidIdrissi"/>
+                <a href="https://github.com/TaniaW777">
+                    <img src="https://avatars.githubusercontent.com/u/200526578?v=4" width="100;" alt="TaniaW777"/>
                     <br />
-                    <sub><b>Hafid Idrissi</b></sub>
+                    <sub><b>Wendtoin Filomène Tania ZABRE</b></sub>
                 </a>
             </td>
             <td align="center">
