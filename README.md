@@ -317,17 +317,17 @@ To release a new version of the `goldener` package:
                 </a>
             </td>
             <td align="center">
-                <a href="https://github.com/AnayGarodia">
-                    <img src="https://avatars.githubusercontent.com/u/76836303?v=4" width="100;" alt="AnayGarodia"/>
-                    <br />
-                    <sub><b>Anay Garodia</b></sub>
-                </a>
-            </td>
-            <td align="center">
                 <a href="https://github.com/jason-scheffel">
                     <img src="https://avatars.githubusercontent.com/u/80598885?v=4" width="100;" alt="jason-scheffel"/>
                     <br />
                     <sub><b>Jason Scheffel</b></sub>
+                </a>
+            </td>
+            <td align="center">
+                <a href="https://github.com/AnayGarodia">
+                    <img src="https://avatars.githubusercontent.com/u/76836303?v=4" width="100;" alt="AnayGarodia"/>
+                    <br />
+                    <sub><b>Anay Garodia</b></sub>
                 </a>
             </td>
             <td align="center">
