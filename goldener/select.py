@@ -1693,11 +1693,11 @@ class GoldSelector:
             restrict_to=restrict_to,
             restriction_idx_key=restriction_idx_key,
         )
-        if available_samples_for_selection_count < (
-            select_count - current_selected_count
-        ):
+        still_to_select = select_count - current_selected_count
+        if available_samples_for_selection_count < still_to_select:
             raise ValueError(
-                "Cannot select more unique data points than available in the dataset."
+                f"Cannot select more unique data points ({still_to_select}) "
+                f"than still available in the dataset ({available_samples_for_selection_count})."
             )
 
         # The coresubset selection is done from all the vectors (after filtering) of all data points

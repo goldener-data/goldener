@@ -351,7 +351,7 @@ def get_sampling_count_from_size(
     if total_size is None:
         raise ValueError("Total size must be provided when sampling size is a float.")
 
-    return math.ceil(sampling_size * total_size)
+    return max(1, math.floor(sampling_size * total_size))
 
 
 def transform_batch_from_multiple_to_binarized_targets(
