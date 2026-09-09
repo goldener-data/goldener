@@ -3,6 +3,7 @@ import pytest
 import torch
 
 import pixeltable as pxt
+from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset
 
 from goldener.clusterize import GoldClusterizer, GoldRandomClusteringTool
@@ -134,7 +135,7 @@ class TestGoldSplitter:
         pxt.get_table(basic_splitter.vectorizer.table_path)
         pxt.get_table(basic_splitter.selector.table_path)
 
-    def test_split_in_table_from_table(self, basic_splitter):
+    def test_split_in_table_from_table(self, descriptor, selector, vectorizer):
         src_path = "unit_test.test_split_in_table"
         src_table = pxt.create_table(
             src_path,
@@ -149,17 +150,113 @@ class TestGoldSplitter:
             if_exists="replace_force",
         )
 
-        split_table = basic_splitter.split_in_table(to_split=src_table)
+        splitter = GoldSplitter(
+            sets=[
+                GoldSet(name="train", size=0.5),
+                GoldSet(name="val", size=0.3),
+                GoldSet(name="test", size=0.2),
+            ],
+            descriptor=descriptor,
+            selector=selector,
+            vectorizer=vectorizer,
+        )
 
-        splitted = basic_splitter.get_split_indices(
+        split_table = splitter.split_in_table(to_split=src_table)
+
+        splitted = splitter.get_split_indices(
             split_table,
-            selection_key=basic_splitter.selector.selection_key,
+            selection_key=splitter.selector.selection_key,
             idx_key="idx",
         )
 
-        assert len(splitted) == 2
+        assert len(splitted) == 3
         assert len(splitted["train"]) == 5
-        assert len(splitted["val"]) == 5
+        assert len(splitted["val"]) == 3
+        assert len(splitted["test"]) == 2
+
+    def test_split_population_matches_sklearn(self, selector):
+        sample_count = 11
+        train_ratio = 0.8
+        splitter = GoldSplitter(
+            sets=[
+                GoldSet(name="train", size=train_ratio),
+                GoldSet(name="val", size=1 - train_ratio),
+            ],
+            selector=selector,
+        )
+
+        dataset = DummyDataset(
+            [
+                {
+                    "vectorized": torch.rand(4),
+                    "idx": idx,
+                    "label": "dummy",
+                }
+                for idx in range(sample_count)
+            ]
+        )
+        split_table = splitter.split_in_table(to_split=dataset)
+        split_indices = splitter.get_split_indices(
+            split_table,
+            selection_key=splitter.selector.selection_key,
+            idx_key="idx",
+        )
+        sklearn_train, sklearn_val = train_test_split(
+            range(sample_count), train_size=train_ratio, shuffle=False
+        )
+
+        assert len(split_indices["train"]) == len(sklearn_train)
+        assert len(split_indices["val"]) == len(sklearn_val)
+
+        repeated_table = splitter.split_in_table(to_split=dataset)
+        repeated_indices = splitter.get_split_indices(
+            repeated_table,
+            selection_key=splitter.selector.selection_key,
+            idx_key="idx",
+        )
+        assert repeated_indices == split_indices
+
+    def test_split_population_with_multiple_sets_failures(
+        self,
+        selector,
+    ):
+        dataset = DummyDataset(
+            [
+                {
+                    "vectorized": torch.rand(4),
+                    "idx": idx,
+                    "label": "dummy",
+                }
+                for idx in range(3)
+            ]
+        )
+
+        # failure before the last set
+        with pytest.raises(ValueError, match="Cannot select more unique data points"):
+            GoldSplitter(
+                sets=[
+                    GoldSet(name="train", size=0.9),
+                    GoldSet(name="val", size=0.05),
+                    GoldSet(name="test", size=0.025),
+                    GoldSet(name="cal", size=0.025),
+                ],
+                selector=selector,
+            ).split_in_table(
+                to_split=dataset,
+            )
+
+        # failure on the last set
+        with pytest.raises(ValueError, match="Not enough data to split among"):
+            GoldSplitter(
+                sets=[
+                    GoldSet(name="train", size=0.9),
+                    GoldSet(name="val", size=0.05),
+                    GoldSet(name="test", size=0.05),
+                ],
+                selector=selector,
+            ).split_in_table(
+                to_split=dataset,
+            )
 
     def test_split_with_label(self, descriptor, selector, vectorizer):
         sets = [

@@ -436,10 +436,22 @@ class GoldSplitter:
             check_sets_validity(self._sets, total=sample_count, force_max=True)
 
         # select data for all sets
+        remaining_count = sample_count
         for idx_set, gold_set in enumerate(self._sets):
-            set_count = get_sampling_count_from_size(
-                sampling_size=gold_set.size, total_size=sample_count
-            )
+            if idx_set == len(self._sets) - 1:
+                set_count = remaining_count
+            else:
+                set_count = get_sampling_count_from_size(
+                    sampling_size=gold_set.size, total_size=sample_count
+                )
+                remaining_count -= set_count
+
+            if set_count <= 0:
+                raise ValueError(
+                    f"Not enough data to split among {len(self._sets)} sets. "
+                    f"Last set '{gold_set.name}' has no remaining samples to select from."
+                )
+
             already_selected_count = self.selector.get_selection_count(
                 selection_table,
                 selection_key=self.selector.selection_key,
@@ -490,7 +502,8 @@ class GoldSplitter:
                 )
                 if not_yet_selected_count == 0 and already_in_set_count == 0:
                     raise ValueError(
-                        f"Not enough data to split among {len(self._sets)} sets."
+                        f"Not enough data to split among {len(self._sets)} sets. "
+                        f"Last set '{gold_set.name}' has no remaining samples to select from."
                     )
 
                 if (already_in_set_count + not_yet_selected_count) != set_count:
