@@ -435,33 +435,23 @@ class GoldSplitter:
         if sample_count is not None:
             check_sets_validity(self._sets, total=sample_count, force_max=True)
 
-        # Round non-final ratios down while reserving one sample for each
-        # remaining set, then assign the remainder to the final set.
-        set_counts = []
+        # select data for all sets
         remaining_count = sample_count
         for idx_set, gold_set in enumerate(self._sets):
-            remaining_sets = len(self._sets) - idx_set - 1
-            if remaining_sets == 0:
+            if idx_set == len(self._sets) - 1:
                 set_count = remaining_count
             else:
-                requested_count = get_sampling_count_from_size(
+                set_count = get_sampling_count_from_size(
                     sampling_size=gold_set.size, total_size=sample_count
                 )
-                set_count = min(
-                    requested_count,
-                    remaining_count - remaining_sets,
-                )
+                remaining_count -= set_count
 
             if set_count <= 0:
                 raise ValueError(
-                    f"Not enough data to split among {len(self._sets)} sets."
+                    f"Not enough data to split among {len(self._sets)} sets. "
+                    f"Last set '{gold_set.name}' has no remaining samples to select from."
                 )
 
-            set_counts.append(set_count)
-            remaining_count -= set_count
-
-        # select data for all sets
-        for idx_set, (gold_set, set_count) in enumerate(zip(self._sets, set_counts)):
             already_selected_count = self.selector.get_selection_count(
                 selection_table,
                 selection_key=self.selector.selection_key,
@@ -512,7 +502,8 @@ class GoldSplitter:
                 )
                 if not_yet_selected_count == 0 and already_in_set_count == 0:
                     raise ValueError(
-                        f"Not enough data to split among {len(self._sets)} sets."
+                        f"Not enough data to split among {len(self._sets)} sets. "
+                        f"Last set '{gold_set.name}' has no remaining samples to select from."
                     )
 
                 if (already_in_set_count + not_yet_selected_count) != set_count:
