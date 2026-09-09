@@ -322,8 +322,8 @@ def get_sampling_count_from_size(
 
     Args:
         sampling_size: The sampling size (can be int or float). If int, it represents the exact number of samples
-        and it is required to be less than total_size. If float, it represents the fraction of total size and it
-        is required to be in the range (0.0, 1.0].
+        and it is required to be less than total_size. If float, it represents the fraction of total size, rounded
+        down with a minimum of one sample, and it is required to be in the range (0.0, 1.0].
         total_size: The total size of the data (Optional, required if sampling_size is float).
 
     Returns:
