@@ -1017,14 +1017,11 @@ class GoldSelector:
                 restriction_idx_key=restriction_idx_key,
             )
 
+        selected_count = len(
+            self.get_selection_indices(selection_table, value, self.selection_key)
+        )
         logger.info(
-            f"Selection table populated {
-                len(
-                    self.get_selection_indices(
-                        selection_table, value, self.selection_key
-                    )
-                )
-            } rows with value {value} at {self.table_path}"
+            f"Selection table populated {selected_count} rows with value {value} at {self.table_path}"
         )
 
         return selection_table

@@ -4,7 +4,7 @@ version = "6.6.0"
 description = "Goldener - Make your data even more valuable"
 readme = "README.md"
 license-files= ["LICENSE"]
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 authors = [
     {name = "goldener-data", email = "yann.chene.tni@gmail.com"},
 ]
@@ -39,7 +39,7 @@ dev = [
 ]
 
 gpu = [
-  "jax[cuda]",
+  "jax[cuda13]",
 ]
 
 [project.urls]
