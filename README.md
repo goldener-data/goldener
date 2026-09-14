@@ -53,7 +53,7 @@ the possible solutions in one place, universal for all data and task types.
 Artificial intelligence is deployed everywhere, and the data it processes can have multiple shapes. To deal
 with the diversity of data and tasks, Goldener is designed to be:
 
-- **Modality-agnostic**: The same feature is actionable for any data modalities (text, image, video, tabular, etc.)
+- **Modality-agnostic**: All the features are actionable for any data modalities (text, image, video, tabular, etc.)
 and even for multimodality data.
 - **Customizable**: All features leverage specifiable tools. These tools are defined following standard API patterns
 allowing anyone to implement their own tools to customize the behavior of the features.
@@ -63,7 +63,7 @@ compatibility with the most common AI pipelines limiting the need for new depend
 The AI life cycle is often iterative and incremental. The success of an AI pipeline is a trade-off between the speed
 to release it for a real life confrontation and its performance. At the same time, the computing resources
 are often scarce (distributed across different locations, restricted throughput and memory) and the datasets often large
-and continuously growing. In order to keep the lifecycle fast enough and to adapt to the computing resources,
+and continuously growing. In order to keep the lifecycle fast enough and be adaptable for any computing resources,
 Goldener is articulated around the following principles:
 
 - **Progressive batch processing**: Each task can be stopped and restarted on demand (or failure).
