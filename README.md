@@ -310,17 +310,17 @@ To release a new version of the `goldener` package:
                 </a>
             </td>
             <td align="center">
-                <a href="https://github.com/abhiramvsmg">
-                    <img src="https://avatars.githubusercontent.com/u/141956198?v=4" width="100;" alt="abhiramvsmg"/>
-                    <br />
-                    <sub><b>Abhiram V</b></sub>
-                </a>
-            </td>
-            <td align="center">
                 <a href="https://github.com/jason-scheffel">
                     <img src="https://avatars.githubusercontent.com/u/80598885?v=4" width="100;" alt="jason-scheffel"/>
                     <br />
                     <sub><b>Jason Scheffel</b></sub>
+                </a>
+            </td>
+            <td align="center">
+                <a href="https://github.com/abhiramvsmg">
+                    <img src="https://avatars.githubusercontent.com/u/141956198?v=4" width="100;" alt="abhiramvsmg"/>
+                    <br />
+                    <sub><b>Abhiram V</b></sub>
                 </a>
             </td>
             <td align="center">
@@ -331,19 +331,19 @@ To release a new version of the `goldener` package:
                 </a>
             </td>
             <td align="center">
-                <a href="https://github.com/HafidIdrissi">
-                    <img src="https://avatars.githubusercontent.com/u/57899900?v=4" width="100;" alt="HafidIdrissi"/>
+                <a href="https://github.com/TaniaW777">
+                    <img src="https://avatars.githubusercontent.com/u/200526578?v=4" width="100;" alt="TaniaW777"/>
                     <br />
-                    <sub><b>Hafid Idrissi</b></sub>
+                    <sub><b>Wendtoin Filomène Tania ZABRE</b></sub>
                 </a>
             </td>
 		</tr>
 		<tr>
             <td align="center">
-                <a href="https://github.com/TaniaW777">
-                    <img src="https://avatars.githubusercontent.com/u/200526578?v=4" width="100;" alt="TaniaW777"/>
+                <a href="https://github.com/pre765">
+                    <img src="https://avatars.githubusercontent.com/u/199960263?v=4" width="100;" alt="pre765"/>
                     <br />
-                    <sub><b>Wendtoin Filomène Tania ZABRE</b></sub>
+                    <sub><b>pre765</b></sub>
                 </a>
             </td>
             <td align="center">
@@ -354,10 +354,10 @@ To release a new version of the `goldener` package:
                 </a>
             </td>
             <td align="center">
-                <a href="https://github.com/pre765">
-                    <img src="https://avatars.githubusercontent.com/u/199960263?v=4" width="100;" alt="pre765"/>
+                <a href="https://github.com/HafidIdrissi">
+                    <img src="https://avatars.githubusercontent.com/u/57899900?v=4" width="100;" alt="HafidIdrissi"/>
                     <br />
-                    <sub><b>pre765</b></sub>
+                    <sub><b>Hafid Idrissi</b></sub>
                 </a>
             </td>
             <td align="center">
@@ -368,12 +368,21 @@ To release a new version of the `goldener` package:
                 </a>
             </td>
             <td align="center">
+                <a href="https://github.com/LyViolz">
+                    <img src="https://avatars.githubusercontent.com/u/67195096?v=4" width="100;" alt="LyViolz"/>
+                    <br />
+                    <sub><b>Ali Berke Kahraman</b></sub>
+                </a>
+            </td>
+            <td align="center">
                 <a href="https://github.com/Dhruv06000">
                     <img src="https://avatars.githubusercontent.com/u/196720010?v=4" width="100;" alt="Dhruv06000"/>
                     <br />
                     <sub><b>Dhruv Kumar</b></sub>
                 </a>
             </td>
+		</tr>
+		<tr>
             <td align="center">
                 <a href="https://github.com/Josequevedov08">
                     <img src="https://avatars.githubusercontent.com/u/170109140?v=4" width="100;" alt="Josequevedov08"/>
@@ -381,8 +390,6 @@ To release a new version of the `goldener` package:
                     <sub><b>Jose Quevedo</b></sub>
                 </a>
             </td>
-		</tr>
-		<tr>
             <td align="center">
                 <a href="https://github.com/panosfrantzolas">
                     <img src="https://avatars.githubusercontent.com/u/182676512?v=4" width="100;" alt="panosfrantzolas"/>
