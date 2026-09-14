@@ -6,7 +6,7 @@
     />
 </picture>
 
-A Python library orchestrating data during the full life cycle of Machine Learning pipelines.
+A Python library for data-centric orchestration during the full life cycle of Artificial Intelligence pipelines.
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-0530AD.svg)](https://opensource.org/licenses/Apache-2.0)
 [![PyPI Package](https://img.shields.io/pypi/v/goldener?color=6D165C)](https://pypi.org/project/goldener/)
@@ -21,15 +21,20 @@ A Python library orchestrating data during the full life cycle of Machine Learni
 # Overview
 
 Goldener is an **open-source Python library** (Apache 2 licence) designed to manage the **orchestration
-of data** during the full life cycle of Machine Learning (ML) pipelines.
+of data** during the full life cycle of Artificial Intelligence (AI) pipelines.
 
-In the artificial intelligence (AI) era, the data is the new gold. Being able to collect it is already something
+In the AI era, the data is the new gold. Being able to collect it is already something
 but **creating value from it is the real challenge**. Goldener is designed to help to make the most of the available data.
-It provides tools to orchestrate data during the full life cycle of Machine Learning pipelines,
+It provides tools to orchestrate data during the full life cycle of Artificial Intelligence pipelines,
 from the training phase to the monitoring phase.
 
-Goldener makes the **right data** available at the **right time**, allowing to **optimize the performance**
-of any ML pipelines while **minimizing the costs** (time, performance, computing resources).
+All Goldener's features are built from the same core principle: the semantics of data can be described
+by embeddings extracted from pre-trained/foundational models. This semantic representation is general enough
+to emphasize the differences or similarities between the data samples.
+
+Goldener applies data-centric processes/algorithms from these representations to make the **right data**
+available at the **right time**, allowing to **optimize the performance** of any AI pipelines
+while **minimizing the costs** (time, performance, computing resources).
 
 When it's time to annotate data, Goldener finds the most representative subset to annotate. During annotation, it can help
 to define annotation guidelines by spotting specific cases or as well run annotation quality checks.
@@ -38,24 +43,36 @@ of the task variability. During the training phase, Goldener can efficiently bal
 to optimize the training time and the model performance. Finally, when the model is deployed, Goldener can find
 the most informative data to monitor the model performance and detect any drift in the data distribution.
 
+Like illustrated in the [Goldener's open research](https://github.com/goldener-data/goldener-research) repository,
+the possibilities are endless. Every step of the AI life cycle includes inefficiencies that can be solved
+by data-centric processes based on pre-trained/foundational embeddings. Goldener aims to gather all
+the possible solutions in one place, universal for all data and task types.
+
 # Key design principles
 
-Goldener is designed to process large datasets efficiently. It is built on the assumption
-that every AI lifecycle is most of the time iterative and incremental. Its design principles are:
+Artificial intelligence is deployed everywhere, and the data it processes can have multiple shapes. To deal
+with the diversity of data and tasks, Goldener is designed to be:
+
+- **Modality-agnostic**: The same feature is actionable for any data modalities (text, image, video, tabular, etc.)
+and even for multimodality data.
+- **Customizable**: All features leverage specifiable tools. These tools are defined following standard API patterns
+allowing anyone to implement their own tools to customize the behavior of the features.
+- **Standard dependencies**: Goldener is built on standard dependencies (PyTorch, numpy, scikit-learn, etc.) to ensure
+compatibility with the most common AI pipelines limiting the need for new dependencies.
+
+The AI life cycle is often iterative and incremental. The success of an AI pipeline is a trade-off between the speed
+to release it for a real life confrontation and its performance. At the same time, the computing resources
+are often scarce (distributed across different locations, restricted throughput and memory) and the datasets often large
+and continuously growing. In order to keep the lifecycle fast enough and to adapt to the computing resources,
+Goldener is articulated around the following principles:
 
 - **Progressive batch processing**: Each task can be stopped and restarted on demand (or failure).
 Already computed results are not recomputed.
-- **Multipurposes embeddings**: The same embeddings are used for
-the different for different tasks (selection, splitting, monitoring, etc.).
-- **Modality-agnostic**: The same tool is actionable for any data modalities (text, image, video, tabular, etc.)
-and even for multimodality data.
-
-This is not yet applied, but for the next iterations, the following principles will be as well followed:
-
+- **Multipurposes embeddings**: The same embeddings are used for different tasks (selection, splitting, monitoring, etc.).
+They are computed once and stored for later use. This allows to save time and computing resources.
 - **Distributed first**: Any task can be distributed across multiple machines.
 - **On demand access to pipelines**: All processing pipelines are serializable.
 They are stored and available whenever a new request is made.
-
 
 # Example of features
 
