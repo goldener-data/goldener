@@ -1,0 +1,713 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Goldener — Make your data even more valuable</title>
+<meta name="description" content="Goldener is an open-source Python library for data centric orchestration across the full AI lifecycle: smart sampling, splitting, clustering and monitoring, powered by embeddings." />
+<meta property="og:title" content="Goldener — Make your data even more valuable" />
+<meta property="og:description" content="Data centric orchestration for the full AI lifecycle, built on embeddings from pre-trained models." />
+<meta property="og:image" content="../statics/goldener-catch-blue.png" />
+<link rel="icon" href="../statics/goldener-logo-transparent.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --navy-900:#12172c;
+    --navy-800:#171e38;
+    --navy-700:#222b47;
+    --navy-600:#2b3557;
+    --navy-500:#3a4570;
+    --gold-500:#d5b71b;
+    --gold-400:#e6c948;
+    --gold-300:#f0da76;
+    --text-primary:#f5f3ec;
+    --text-secondary:#b7bdd6;
+    --text-muted:#7f88ab;
+    --border:rgba(213,183,27,0.22);
+    --border-soft:rgba(183,189,214,0.14);
+    --shadow:0 20px 50px -20px rgba(0,0,0,0.55);
+    --radius:16px;
+    color-scheme: dark;
+  }
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{
+    margin:0;
+    background:
+      radial-gradient(1100px 620px at 82% -8%, rgba(213,183,27,0.12), transparent 60%),
+      radial-gradient(900px 500px at -10% 15%, rgba(213,183,27,0.07), transparent 55%),
+      var(--navy-800);
+    color:var(--text-secondary);
+    font-family:'Inter', system-ui, -apple-system, "Segoe UI", sans-serif;
+    line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+  }
+  h1,h2,h3,h4{
+    font-family:'Quicksand', ui-rounded, 'Inter', sans-serif;
+    color:var(--text-primary);
+    margin:0 0 0.5em;
+    font-weight:600;
+    letter-spacing:0.01em;
+  }
+  p{margin:0 0 1em;}
+  a{color:inherit;}
+  img{max-width:100%; display:block;}
+  code, .mono{font-family:'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;}
+
+  .wrap{max-width:1120px; margin:0 auto; padding:0 24px;}
+  section{padding:96px 0;}
+  section + section{border-top:1px solid var(--border-soft);}
+
+  .eyebrow{
+    display:inline-flex; align-items:center; gap:8px;
+    color:var(--gold-400); font-family:'Quicksand',sans-serif; font-weight:600;
+    text-transform:uppercase; letter-spacing:0.14em; font-size:12.5px;
+    margin-bottom:14px;
+  }
+  .eyebrow::before{content:""; width:18px; height:2px; background:var(--gold-500); display:inline-block; border-radius:2px;}
+  .section-head{max-width:680px; margin-bottom:48px;}
+  .section-head h2{font-size:clamp(26px,3.2vw,36px);}
+  .section-head p{font-size:17px; color:var(--text-secondary);}
+
+  /* Nav */
+  header.nav{
+    position:sticky; top:0; z-index:50;
+    background:rgba(18,23,44,0.78);
+    backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--border-soft);
+  }
+  .nav-inner{
+    max-width:1120px; margin:0 auto; padding:14px 24px;
+    display:flex; align-items:center; justify-content:space-between; gap:20px;
+  }
+  .brand{display:flex; align-items:center; gap:10px; text-decoration:none; flex-shrink:0;}
+  .brand img{width:26px; height:26px;}
+  .brand span{
+    font-family:'Quicksand',sans-serif; font-weight:700; letter-spacing:0.08em;
+    color:var(--text-primary); font-size:17px;
+  }
+  .nav-links{display:flex; gap:28px; list-style:none; margin:0; padding:0; font-size:14.5px;}
+  .nav-links a{text-decoration:none; color:var(--text-secondary); transition:color .15s;}
+  .nav-links a:hover{color:var(--gold-400);}
+  .nav-cta{
+    display:inline-flex; align-items:center; gap:8px;
+    background:var(--gold-500); color:var(--navy-900) !important;
+    font-weight:600; font-size:14px; text-decoration:none;
+    padding:9px 16px; border-radius:999px; white-space:nowrap;
+    transition:background .15s, transform .15s;
+  }
+  .nav-cta:hover{background:var(--gold-400); transform:translateY(-1px);}
+  @media (max-width:820px){ .nav-links{display:none;} }
+
+  /* Buttons */
+  .btn{
+    display:inline-flex; align-items:center; gap:10px;
+    padding:13px 24px; border-radius:12px; font-weight:600; font-size:15px;
+    text-decoration:none; border:1px solid transparent; transition:transform .15s, background .15s, border-color .15s;
+  }
+  .btn-primary{background:var(--gold-500); color:var(--navy-900);}
+  .btn-primary:hover{background:var(--gold-400); transform:translateY(-2px);}
+  .btn-ghost{border-color:var(--border); color:var(--text-primary); background:rgba(213,183,27,0.05);}
+  .btn-ghost:hover{border-color:var(--gold-500); transform:translateY(-2px);}
+  .btn svg{width:18px; height:18px;}
+
+  /* Hero */
+  .hero{padding:88px 0 90px; border-top:none;}
+  .hero-inner{display:flex; flex-direction:column; align-items:center; text-align:center; gap:26px;}
+  .hero img.brandmark{max-width:560px; width:100%; filter:drop-shadow(0 18px 40px rgba(0,0,0,0.45));}
+  .hero-tagline{font-size:clamp(17px,2vw,19px); color:var(--text-secondary); max-width:640px;}
+  .hero-actions{display:flex; gap:14px; flex-wrap:wrap; justify-content:center; margin-top:6px;}
+  .badges{display:flex; gap:10px; flex-wrap:wrap; justify-content:center; margin-top:18px;}
+  .badges img{height:22px; border-radius:4px;}
+  .hero .install{
+    margin-top:8px; display:inline-flex; align-items:center; gap:12px;
+    background:var(--navy-700); border:1px solid var(--border-soft);
+    padding:10px 18px; border-radius:999px; font-size:14.5px; color:var(--gold-300);
+  }
+  .hero .install .prompt{color:var(--text-muted);}
+
+  /* Overview / two-col */
+  .cols{display:grid; grid-template-columns:1.1fr 0.9fr; gap:56px; align-items:center;}
+  @media (max-width:860px){ .cols{grid-template-columns:1fr;} }
+  .lede{font-size:18px; color:var(--text-primary);}
+  .callout{
+    margin-top:22px; padding:20px 22px; border-left:3px solid var(--gold-500);
+    background:rgba(213,183,27,0.06); border-radius:0 12px 12px 0; color:var(--text-primary);
+    font-size:15.5px;
+  }
+  .callout b{color:var(--gold-400);}
+
+  .art-card{
+    background:var(--navy-700); border:1px solid var(--border-soft); border-radius:var(--radius);
+    padding:24px; box-shadow:var(--shadow);
+  }
+  .art-card figcaption{margin-top:14px; font-size:13px; color:var(--text-muted); text-align:center;}
+
+  /* Principles grid */
+  .principle-groups{display:grid; gap:36px;}
+  .group-label{font-size:13px; text-transform:uppercase; letter-spacing:0.1em; color:var(--text-muted); margin-bottom:16px; font-weight:600;}
+  .grid{display:grid; gap:18px;}
+  .grid.cols-3{grid-template-columns:repeat(3,1fr);}
+  .grid.cols-4{grid-template-columns:repeat(4,1fr);}
+  @media (max-width:900px){ .grid.cols-3, .grid.cols-4{grid-template-columns:repeat(2,1fr);} }
+  @media (max-width:560px){ .grid.cols-3, .grid.cols-4{grid-template-columns:1fr;} }
+  .card{
+    background:var(--navy-700); border:1px solid var(--border-soft); border-radius:14px;
+    padding:22px; transition:border-color .15s, transform .15s;
+  }
+  .card:hover{border-color:var(--border); transform:translateY(-3px);}
+  .card .icon{
+    width:40px; height:40px; border-radius:10px; background:rgba(213,183,27,0.1);
+    display:flex; align-items:center; justify-content:center; margin-bottom:14px;
+  }
+  .card .icon svg{width:22px; height:22px; stroke:var(--gold-400);}
+  .card h4{font-size:16px; margin-bottom:6px;}
+  .card p{font-size:14.5px; margin:0; color:var(--text-secondary);}
+
+  /* Data centric AI flow */
+  .flow{display:flex; align-items:stretch; gap:0; margin:0 -4px;}
+  .flow-node{
+    flex:1 1 0; min-width:0; text-align:center; position:relative; padding:0 8px;
+  }
+  .flow-node .dot{
+    width:48px; height:48px; border-radius:50%; margin:0 auto 12px;
+    background:var(--navy-700); border:2px solid var(--gold-500);
+    display:flex; align-items:center; justify-content:center;
+    box-shadow:0 0 0 6px rgba(213,183,27,0.06);
+  }
+  .flow-node .dot svg{width:22px; height:22px; stroke:var(--gold-400);}
+  .flow-node h4{font-size:13.5px; margin-bottom:4px; color:var(--text-primary);}
+  .flow-node p{font-size:11.5px; color:var(--text-muted); margin:0;}
+  .flow-node::before{
+    content:""; position:absolute; top:24px; left:-8px; right:calc(50% + 24px);
+    height:2px; background:linear-gradient(90deg, transparent, var(--border));
+  }
+  .flow-node:first-child::before{display:none;}
+  @media (max-width:900px){
+    .flow{flex-direction:column; gap:22px;}
+    .flow-node::before{display:none;}
+    .flow-node{display:flex; align-items:center; gap:16px; text-align:left; padding:0;}
+    .flow-node .dot{margin:0; flex-shrink:0;}
+  }
+
+  /* Features */
+  .feature{
+    display:grid; grid-template-columns:56px 1fr auto; gap:18px; align-items:start;
+    padding:26px 0; border-top:1px solid var(--border-soft);
+  }
+  .feature:first-of-type{border-top:none;}
+  .feature .icon{
+    width:48px; height:48px; border-radius:12px; background:rgba(213,183,27,0.1);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .feature .icon svg{width:24px; height:24px; stroke:var(--gold-400);}
+  .feature h4{font-size:17px; margin-bottom:6px; color:var(--text-primary);}
+  .feature p{font-size:14.5px; margin:0; color:var(--text-secondary); max-width:560px;}
+  .feature .go{
+    align-self:center; font-size:13.5px; font-weight:600; color:var(--gold-400);
+    text-decoration:none; white-space:nowrap; border:1px solid var(--border); padding:8px 14px; border-radius:999px;
+  }
+  .feature .go:hover{background:rgba(213,183,27,0.08);}
+  @media (max-width:640px){
+    .feature{grid-template-columns:48px 1fr;}
+    .feature .go{grid-column:2; justify-self:start;}
+  }
+
+  /* Research */
+  .research-panel{
+    background:linear-gradient(135deg, rgba(213,183,27,0.08), rgba(213,183,27,0.02));
+    border:1px solid var(--border); border-radius:20px; padding:44px;
+    display:grid; grid-template-columns:1fr 1fr; gap:40px; align-items:center;
+  }
+  @media (max-width:860px){ .research-panel{grid-template-columns:1fr; padding:28px;} }
+  .rr-diagram{display:flex; flex-direction:column; gap:0; align-items:stretch;}
+  .rr-box{
+    background:var(--navy-700); border:1px solid var(--border-soft); border-radius:12px;
+    padding:16px 18px; display:flex; align-items:center; gap:12px;
+  }
+  .rr-box.gold{border-color:var(--gold-500); background:rgba(213,183,27,0.08);}
+  .rr-box svg{width:22px; height:22px; stroke:var(--gold-400); flex-shrink:0;}
+  .rr-box b{color:var(--text-primary); font-size:14.5px; display:block;}
+  .rr-box span{font-size:12.5px; color:var(--text-muted);}
+  .rr-arrow{display:flex; align-items:center; gap:8px; padding:10px 0 10px 22px; font-size:12px; color:var(--text-muted);}
+  .rr-arrow svg{width:16px; height:22px; stroke:var(--gold-500);}
+  .theme-tags{display:flex; flex-wrap:wrap; gap:8px; margin:16px 0 20px;}
+  .theme-tag{
+    font-size:12.5px; color:var(--gold-300); background:rgba(213,183,27,0.08);
+    border:1px solid var(--border); border-radius:999px; padding:5px 12px;
+  }
+
+  /* Install */
+  .install-panel{display:flex; justify-content:center;}
+  .code-block{
+    background:var(--navy-900); border:1px solid var(--border-soft); border-radius:14px;
+    padding:22px 24px; font-size:14px; color:#dfe3f2;
+    max-width:420px; width:100%; text-align:center;
+  }
+  .code-block .l1{color:var(--text-muted);}
+  .code-block .cmd::before{content:"$ "; color:var(--gold-500);}
+  .code-block div{margin-bottom:8px;}
+  .code-block div:last-child{margin-bottom:0;}
+  /* Contribute */
+  .card .icon.step-num{font:700 16px 'Quicksand',sans-serif; color:var(--gold-400);}
+
+  .links-row{display:grid; grid-template-columns:repeat(3,1fr); gap:18px; margin-top:40px;}
+  @media (max-width:760px){ .links-row{grid-template-columns:1fr;} }
+  .link-card{
+    background:var(--navy-700); border:1px solid var(--border-soft); border-radius:14px; padding:24px;
+  }
+  .link-card .icon{
+    width:38px; height:38px; border-radius:10px; background:rgba(213,183,27,0.1);
+    display:flex; align-items:center; justify-content:center; margin-bottom:14px;
+  }
+  .link-card .icon svg{width:20px; height:20px; stroke:var(--gold-400);}
+  .link-card h4{font-size:15.5px; margin-bottom:6px;}
+  .link-card p{font-size:13.5px; margin:0 0 14px; color:var(--text-secondary);}
+  .link-card a.link{font-size:13.5px; font-weight:600; color:var(--gold-400); text-decoration:none;}
+  .link-card a.link:hover{text-decoration:underline;}
+
+  footer{padding:44px 0; border-top:1px solid var(--border-soft);}
+  .footer-inner{display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px; font-size:13.5px; color:var(--text-muted);}
+  .footer-links{display:flex; gap:20px; list-style:none; margin:0; padding:0;}
+  .footer-links a{text-decoration:none; color:var(--text-muted);}
+  .footer-links a:hover{color:var(--gold-400);}
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="#top">
+      <img src="../statics/goldener-logo-transparent.png" alt="" />
+      <span>GOLDENER</span>
+    </a>
+    <ul class="nav-links">
+      <li><a href="#overview">Overview</a></li>
+      <li><a href="#data-centric">Data centric AI</a></li>
+      <li><a href="#features">Features</a></li>
+      <li><a href="#principles">Principles</a></li>
+      <li><a href="#research">Research</a></li>
+      <li><a href="#get-started">Get started</a></li>
+      <li><a href="#contribute">Contribute</a></li>
+    </ul>
+    <a class="nav-cta" href="https://github.com/goldener-data/goldener" target="_blank" rel="noopener">
+      <svg viewBox="0 0 16 16" width="15" height="15" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+      View on GitHub
+    </a>
+  </div>
+</header>
+
+<main id="top">
+
+  <!-- HERO -->
+  <section class="hero">
+    <div class="wrap hero-inner">
+      <img class="brandmark" src="../statics/goldener-catch-transparent.png" alt="Goldener — Make your data even more valuable" />
+      <p class="hero-tagline">
+        An open-source Python library <br>for <b style="color:var(--text-primary)">data centric orchestration</b>
+        across the full lifecycle of AI pipelines, <br>from raw samples to a model in production.
+      </p>
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="https://github.com/goldener-data/goldener" target="_blank" rel="noopener">
+          <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+          Explore the repository
+        </a>
+        <a class="btn btn-ghost" href="#features">See the features</a>
+      </div>
+      <div class="install">
+        <span class="prompt mono">$</span>
+        <span class="mono">pip install goldener</span>
+      </div>
+      <div class="badges">
+        <a href="https://opensource.org/licenses/Apache-2.0" target="_blank" rel="noopener"><img src="https://img.shields.io/badge/License-Apache%202.0-0530AD.svg" alt="License Apache 2.0" /></a>
+        <a href="https://pypi.org/project/goldener/" target="_blank" rel="noopener"><img src="https://img.shields.io/pypi/v/goldener?color=6D165C" alt="PyPI package" /></a>
+      </div>
+    </div>
+  </section>
+
+  <!-- OVERVIEW -->
+  <section id="overview">
+    <div class="wrap cols">
+      <div>
+        <div class="eyebrow">Overview</div>
+        <h2>Data is the new gold. Turning it into value is the real challenge.</h2>
+        <p class="lede">
+          Goldener helps you make the most of the data you already have. It orchestrates data across
+          the full lifecycle of an AI pipeline (sampling, labeling, training, evaluation, monitoring), so the
+          <b style="color:var(--text-primary)">right data</b> is available at the
+          <b style="color:var(--text-primary)">right time</b>.
+        </p>
+        <p>
+          Every feature is built on one core idea: the semantics of a data sample can be captured by
+          <b style="color:var(--text-primary)">embeddings</b> extracted from a pre-trained or foundational model.
+          That representation is general enough to reveal what makes samples similar, redundant, or uniquely
+          informative.
+        </p>
+        <div class="callout">
+          Applying data centric processes on top of these embeddings lets teams
+          <b>optimize pipeline performance</b> while <b>minimizing cost</b> in annotation time, compute,
+          and iteration cycles.
+        </div>
+      </div>
+
+      <figure class="art-card">
+        <svg viewBox="0 0 380 300" width="100%" height="auto" role="img" aria-label="Raw data points organized by an embedding space as semantic representations.">
+          <defs>
+            <radialGradient id="glow" cx="50%" cy="50%" r="60%">
+              <stop offset="0%" stop-color="#d5b71b" stop-opacity="0.18"/>
+              <stop offset="100%" stop-color="#d5b71b" stop-opacity="0"/>
+            </radialGradient>
+          </defs>
+          <rect x="0" y="0" width="380" height="300" fill="url(#glow)"/>
+          <!-- raw scattered cloud -->
+          <g fill="#3a4570">
+            <circle cx="34" cy="60" r="5"/><circle cx="58" cy="40" r="4"/><circle cx="70" cy="90" r="6"/>
+            <circle cx="30" cy="120" r="4"/><circle cx="90" cy="55" r="4"/><circle cx="50" cy="150" r="5"/>
+            <circle cx="100" cy="140" r="4"/><circle cx="65" cy="190" r="6"/><circle cx="25" cy="200" r="4"/>
+            <circle cx="110" cy="200" r="5"/><circle cx="40" cy="240" r="4"/><circle cx="85" cy="230" r="4"/>
+            <circle cx="60" cy="20" r="4"/><circle cx="110" cy="100" r="4"/><circle cx="20" cy="160" r="4"/>
+          </g>
+          <text x="65" y="278" text-anchor="middle" fill="#7f88ab" font-size="11" font-family="Inter, sans-serif">raw data</text>
+
+          <!-- arrow -->
+          <path d="M140 150 L225 150" stroke="#d5b71b" stroke-width="2" stroke-dasharray="4 5"/>
+          <path d="M218 143 L228 150 L218 157" fill="none" stroke="#d5b71b" stroke-width="2"/>
+          <text x="182" y="135" text-anchor="middle" fill="#e6c948" font-size="10.5" font-family="Inter, sans-serif">embed</text>
+
+          <!-- clustered groups -->
+          <g>
+            <circle cx="270" cy="80" r="26" fill="none" stroke="#3a4570" stroke-width="1.4" stroke-dasharray="3 4"/>
+            <circle cx="262" cy="72" r="4.5" fill="#5a6595"/><circle cx="278" cy="68" r="4.5" fill="#5a6595"/>
+            <circle cx="282" cy="88" r="4.5" fill="#5a6595"/><circle cx="260" cy="90" r="4.5" fill="#5a6595"/>
+
+            <circle cx="320" cy="150" r="30" fill="none" stroke="#3a4570" stroke-width="1.4" stroke-dasharray="3 4"/>
+            <circle cx="310" cy="140" r="4.5" fill="#5a6595"/><circle cx="332" cy="138" r="4.5" fill="#5a6595"/>
+            <circle cx="335" cy="160" r="4.5" fill="#5a6595"/><circle cx="308" cy="162" r="4.5" fill="#5a6595"/>
+            <circle cx="322" cy="150" r="6.5" fill="#d5b71b"/>
+
+            <circle cx="255" cy="215" r="24" fill="none" stroke="#3a4570" stroke-width="1.4" stroke-dasharray="3 4"/>
+            <circle cx="246" cy="208" r="4.5" fill="#5a6595"/><circle cx="264" cy="206" r="4.5" fill="#5a6595"/>
+            <circle cx="262" cy="224" r="4.5" fill="#5a6595"/>
+            <circle cx="272" cy="70" r="6.5" fill="#d5b71b"/>
+            <circle cx="250" cy="222" r="6.5" fill="#d5b71b"/>
+          </g>
+          <text x="290" y="278" text-anchor="middle" fill="#7f88ab" font-size="11" font-family="Inter, sans-serif">semantic representation</text>
+        </svg>
+        <figcaption>The same embeddings powers all the data centric features optimizing the AI lifecycle.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <!-- DATA CENTRIC -->
+  <section id="data-centric">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="eyebrow">End to end</div>
+        <h2>One framework, all of data centric AI</h2>
+        <p>From raw samples to a model watched in production, Goldener stays in the loop.</p>
+      </div>
+
+      <div class="flow">
+        <div class="flow-node">
+          <div class="dot"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/><path d="M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg></div>
+          <h4>Collect</h4>
+          <p>Raw, unlabeled data</p>
+        </div>
+        <div class="flow-node">
+          <div class="dot"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8"><circle cx="7" cy="8" r="2.2"/><circle cx="17" cy="8" r="2.2"/><circle cx="12" cy="17" r="2.2"/><path d="M9 9l6 0M8 10l3 5.5M16 10l-3 5.5"/></svg></div>
+          <h4>Describe</h4>
+          <p>Embeddings from pre-trained models</p>
+        </div>
+        <div class="flow-node">
+          <div class="dot"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></div>
+          <h4>Select</h4>
+          <p>Representative subset</p>
+        </div>
+        <div class="flow-node">
+          <div class="dot"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8"><path d="M12.6 2.6l8.8 8.8a2 2 0 010 2.8l-7.2 7.2a2 2 0 01-2.8 0l-8.8-8.8V3a.4.4 0 01.4-.4h9.6z"/><circle cx="7.5" cy="7.5" r="1.4"/></svg></div>
+          <h4>Annotate</h4>
+          <p>Speed up &amp; curate</p>
+        </div>
+        <div class="flow-node">
+          <div class="dot"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8"><path d="M12 3v18"/><path d="M6 8l-3 4 3 4M18 8l3 4-3 4"/></svg></div>
+          <h4>Split</h4>
+          <p>Optimal distribution</p>
+        </div>
+        <div class="flow-node">
+          <div class="dot"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8"><path d="M12 3v4"/><path d="M5 7h14"/><path d="M5 7l-3 7a3 3 0 006 0l-3-7z"/><path d="M19 7l-3 7a3 3 0 006 0l-3-7z"/><path d="M8 21h8"/><path d="M12 17v4"/></svg></div>
+          <h4>Organize</h4>
+          <p>Balanced batches</p>
+        </div>
+        <div class="flow-node">
+          <div class="dot"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8"><rect x="2" y="3" width="6" height="6" rx="1.2"/><rect x="9" y="3" width="6" height="6" rx="1.2"/><rect x="16" y="3" width="6" height="6" rx="1.2"/><path d="M5 9v3a3 3 0 003 3h1M12 9v3M19 9v3a3 3 0 01-3 3h-1"/><circle cx="12" cy="19" r="3"/><path d="M10.5 19l1 1 2-2"/></svg></div>
+          <h4>Model selection</h4>
+          <p>Faster iterations</p>
+        </div>
+        <div class="flow-node">
+          <div class="dot"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg></div>
+          <h4>Monitor</h4>
+          <p>Drift &amp; performance in production</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FEATURES -->
+  <section id="features">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="eyebrow">Example of features</div>
+        <h2>Data centric AI with Goldener today</h2>
+        <p>A growing set of data centric building blocks, each one usable on its own, or composed into a pipeline.</p>
+      </div>
+
+      <div class="feature-list">
+        <div class="feature">
+          <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></div>
+          <div>
+            <h4>Smart sampling for annotation</h4>
+            <p>Find the most representative subset of unannotated data to send for labeling, using semantic knowledge extracted from embeddings. The annotation budget goes where it matters.</p>
+          </div>
+          <a class="go" href="https://github.com/goldener-data/goldener/blob/main/docs/posts/GOLD_SELECTION.md" target="_blank" rel="noopener">Read the guide →</a>
+        </div>
+
+        <div class="feature">
+          <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8"><path d="M12 3v18"/><path d="M6 8l-3 4 3 4M18 8l3 4-3 4"/></svg></div>
+          <div>
+            <h4>Representative train / validation splits</h4>
+            <p>Split annotated data so the training set captures the full variability of the task, while validation stays lean and informative.</p>
+          </div>
+          <a class="go" href="https://github.com/goldener-data/goldener/blob/main/docs/posts/GOLD_SPLIT.md" target="_blank" rel="noopener">Read the guide →</a>
+        </div>
+
+        <div class="feature">
+          <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8"><circle cx="7" cy="7" r="2.5"/><circle cx="17" cy="7" r="2.5"/><circle cx="12" cy="17" r="2.5"/><path d="M9 8.5L15 8.5M8 9l3 6M16 9l-3 6"/></svg></div>
+          <div>
+            <h4>Clustering for annotation guidelines</h4>
+            <p>Surface the different "modes" hiding in a dataset, then use each cluster to write sharper, mode-specific annotation guidelines.</p>
+          </div>
+          <a class="go" href="https://github.com/goldener-data/goldener" target="_blank" rel="noopener">See the docs →</a>
+        </div>
+
+        <div class="feature">
+          <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v3l9 5 9-5V8"/><path d="M3 15v0l9 5 9-5"/></svg></div>
+          <div>
+            <h4>Dimensionality reduction</h4>
+            <p>Shrink the memory footprint and speed up downstream tasks, it is a lever for tight hardware budgets or time-constrained requests.</p>
+          </div>
+          <a class="go" href="https://github.com/goldener-data/goldener" target="_blank" rel="noopener">See the docs →</a>
+        </div>
+
+        <div class="feature">
+          <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8"><path d="M12 3v4"/><path d="M5 7h14"/><path d="M5 7l-3 7a3 3 0 006 0l-3-7z"/><path d="M19 7l-3 7a3 3 0 006 0l-3-7z"/><path d="M8 21h8"/><path d="M12 17v4"/></svg></div>
+          <div>
+            <h4>Balanced batch sampling</h4>
+            <p>Group data into content clusters and draw each training batch evenly across them, so underrepresented cases stop getting drowned out.</p>
+          </div>
+          <a class="go" href="https://github.com/goldener-data/goldener/blob/main/docs/posts/GOLD_BATCHER.md" target="_blank" rel="noopener">Read the guide →</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PRINCIPLES -->
+  <section id="principles">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="eyebrow">Core principles</div>
+        <h2>Built for messy data and real-world constraints</h2>
+        <p>AI is deployed everywhere, on every kind of data. Successful AI are built through fast iterative loops
+          leveraging scarse and uneven compute resources dealing with continuous ever-growing datasets.
+          Goldener is designed around that reality.</p>
+      </div>
+
+      <div class="principle-groups">
+        <div>
+          <div class="group-label">Deals with the diversity of data and pipelines</div>
+          <div class="grid cols-3">
+            <div class="card">
+              <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1.5"/><circle cx="17.5" cy="6.5" r="3.5"/><path d="M3 21l7-7M14 14l7 7"/></svg></div>
+              <h4>Modality-agnostic</h4>
+              <p>Every feature works on any data modality: text, image, video, tabular even multimodal data.</p>
+            </div>
+            <div class="card">
+              <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l1.3-1.3a4 4 0 01-5.4 5.4L8 19H5v-3l6.6-6.6a4 4 0 015.4-5.4z"/></svg></div>
+              <h4>Customizable</h4>
+              <p>Features are built on pluggable tools with standard APIs, so anyone can implement their own.</p>
+            </div>
+            <div class="card">
+              <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/></svg></div>
+              <h4>Standard dependencies</h4>
+              <p>Built on PyTorch, NumPy and scikit-learn, thus compatible with the pipelines you already run.</p>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div class="group-label">Built to iterate faster with constrained computing resources</div>
+          <div class="grid cols-4">
+            <div class="card">
+              <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8"><path d="M4 12a8 8 0 1016 0 8 8 0 00-16 0z"/><path d="M12 8v4l3 2"/></svg></div>
+              <h4>Progressive batching</h4>
+              <p>Every task can stop and resume on demand or on failure. Nothing already computed is recomputed.</p>
+            </div>
+            <div class="card">
+              <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8"><circle cx="7" cy="7" r="2.5"/><circle cx="17" cy="7" r="2.5"/><circle cx="12" cy="17" r="2.5"/><path d="M9 8.5L15 8.5M8 9l3 6M16 9l-3 6"/></svg></div>
+              <h4>Multipurpose embeddings</h4>
+              <p>Computed once, reused for any data centric process all over the AI lifecycle.</p>
+            </div>
+            <div class="card">
+              <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8"><rect x="3" y="4" width="7" height="7" rx="1.2"/><rect x="14" y="4" width="7" height="7" rx="1.2"/><rect x="3" y="15" width="7" height="7" rx="1.2"/><rect x="14" y="15" width="7" height="7" rx="1.2"/></svg></div>
+              <h4>Distributed first</h4>
+              <p>Any task can be distributed across multiple machines, adapting to your computing resources.</p>
+            </div>
+            <div class="card">
+              <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8"><path d="M12 3v4M12 17v4M3 12h4M17 12h4"/><circle cx="12" cy="12" r="4.5"/></svg></div>
+              <h4>On-demand pipelines</h4>
+              <p>Processing pipelines are serializable, stored and ready whenever a new request comes in.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- RESEARCH -->
+  <section id="research">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="eyebrow">Open research</div>
+        <h2>Go farther in data centric AI</h2>
+        <p>
+          Every step of the AI lifecycle hides inefficiencies that data centric processes based on embeddings can solve.
+          <a href="https://github.com/goldener-data/goldener-research" target="_blank" rel="noopener" style="color:var(--gold-400); font-weight:600; text-decoration:none;">goldener-research</a>
+          is the community's open lab for gathering bibliography, ideas, research plans and experiment results on those problems,
+          so the strongest ones can graduate into Goldener.
+        </p>
+      </div>
+
+      <div class="research-panel">
+        <div>
+          <h3 style="font-size:19px;">One theme, one folder</h3>
+          <p style="font-size:14.5px;">
+            The repository is organized around focused research themes. Each one gathers the resources worth knowing,
+            open ideas and questions, concrete research plans, and documented results. This is a shared foundation for
+            researchers, contributors and AI agents alike.
+          </p>
+          <a class="btn btn-ghost" href="https://github.com/goldener-data/goldener-research" target="_blank" rel="noopener" style="margin-top:8px;">
+            Visit goldener-research →
+          </a>
+        </div>
+        <div class="rr-diagram">
+          <div class="rr-box">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8"><path d="M9 3h6M10 3v5l-5 8a2 2 0 002 3h10a2 2 0 002-3l-5-8V3"/></svg>
+            <div><b>goldener-research</b><span>Bibliography, ideas, plans &amp; results, organized by theme</span></div>
+          </div>
+          <div class="rr-arrow">
+            <svg viewBox="0 0 16 24" fill="none" stroke-width="2"><path d="M8 2v18M2 14l6 6 6-6"/></svg>
+            validated ideas graduate
+          </div>
+          <div class="rr-box gold">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8"><path d="M21 16V8a2 2 0 00-1-1.7l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.7l7 4a2 2 0 002 0l7-4a2 2 0 001-1.7z"/><path d="M3.3 7l8.7 5 8.7-5M12 22V12"/></svg>
+            <div><b>goldener</b><span>Stable, production-ready data centric library</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- GET STARTED -->
+  <section id="get-started">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="eyebrow">Get started</div>
+        <h2>Install it and put it to work</h2>
+        <p>Goldener installs in one line and plugs straight into any PyTorch-based pipeline through a handful of composable building blocks.</p>
+      </div>
+
+      <div class="install-panel">
+        <div class="code-block mono">
+          <div class="l1">// install from PyPI</div>
+          <div class="cmd">pip install goldener</div>
+        </div>
+      </div>
+
+      <div class="links-row">
+        <div class="link-card">
+          <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 015 0c0 1.7-2.5 2-2.5 3.5"/><circle cx="12" cy="16.5" r="0.6" fill="currentColor"/></svg></div>
+          <h4>Have a question or a bug?</h4>
+          <p>Open an issue on GitHub, it's the fastest way to reach a maintainer.</p>
+          <a class="link" href="https://github.com/goldener-data/goldener/issues" target="_blank" rel="noopener">Open an issue →</a>
+        </div>
+        <div class="link-card">
+          <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8"><path d="M4 19.5A2.5 2.5 0 016.5 17H20M4 19.5A2.5 2.5 0 006.5 22H20V2H6.5A2.5 2.5 0 004 4.5v15z"/></svg></div>
+          <h4>Want to see it in action?</h4>
+          <p>Browse the feature walkthroughs with runnable code for each building block.</p>
+          <a class="link" href="#features">See the features →</a>
+        </div>
+        <div class="link-card">
+          <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8"><path d="M17 21v-2a4 4 0 00-4-4H7a4 4 0 00-4 4v2"/><circle cx="10" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg></div>
+          <h4>Curious about the research?</h4>
+          <p>Explore the experiments feeding future Goldener features.</p>
+          <a class="link" href="https://github.com/goldener-data/goldener-research" target="_blank" rel="noopener">Visit goldener-research →</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CONTRIBUTE -->
+  <section id="contribute">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="eyebrow">Contribute</div>
+        <h2>Pick an issue, ship a feature or a fix</h2>
+        <p>Goldener is Apache-2.0 licensed and grows through its contributors.
+      </div>
+
+      <div class="grid cols-4">
+        <div class="card">
+          <div class="icon step-num">1</div>
+          <h4>Browse <code>ready</code> issues</h4>
+          <p>Look through issues labeled <code>ready</code>, and pick your favorite.</p>
+        </div>
+        <div class="card">
+          <div class="icon step-num">2</div>
+          <h4>Claim it</h4>
+          <p>Comment on the issue to get assigned to it, so no one else duplicates the work.</p>
+        </div>
+        <div class="card">
+          <div class="icon step-num">3</div>
+          <h4>Implement</h4>
+          <p>Fork the repo, and integrate your changes on a branch.</p>
+        </div>
+        <div class="card">
+          <div class="icon step-num">4</div>
+          <h4>Open a pull request</h4>
+          <p>A maintainer will review it and help you get it merged.</p>
+        </div>
+      </div>
+
+      <a class="btn btn-ghost" href="https://github.com/goldener-data/goldener/issues?q=is%3Aissue+is%3Aopen+label%3Aready" target="_blank" rel="noopener" style="margin-top:32px;">
+        Browse ready issues →
+      </a>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap footer-inner">
+    <span>© 2026 Goldener contributors · Apache 2.0 License</span>
+    <ul class="footer-links">
+      <li><a href="https://github.com/goldener-data/goldener" target="_blank" rel="noopener">GitHub</a></li>
+      <li><a href="https://github.com/goldener-data/goldener-research" target="_blank" rel="noopener">Research</a></li>
+      <li><a href="https://pypi.org/project/goldener/" target="_blank" rel="noopener">PyPI</a></li>
+      <li><a href="https://github.com/goldener-data/goldener/issues" target="_blank" rel="noopener">Issues</a></li>
+    </ul>
+  </div>
+</footer>
+
+</body>
+</html>
