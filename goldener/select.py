@@ -21,6 +21,7 @@ from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 
 from goldener.clusterize import get_random_chunk_assignment
+from goldener.do import GoldDoerWithTable
 from goldener.distance import cosine_distance
 from goldener.pxt_utils import (
     set_value_to_idx_rows,
@@ -32,10 +33,7 @@ from goldener.pxt_utils import (
     get_sample_row_from_idx,
 )
 from goldener.reduce import GoldReductionTool, GoldReductionToolWithFit
-from goldener.torch_utils import (
-    collate_keeping_sequences_as_sequences,
-    get_dataset_sample_dict,
-)
+from goldener.torch_utils import get_dataset_sample_dict
 from goldener.utils import (
     filter_batch_from_indices,
     get_indices_with_labels,
@@ -629,7 +627,7 @@ class GoldZCoreSelectionTool(GoldSelectionTool):
         return scores.argsort(descending=True)[:k].cpu().tolist()
 
 
-class GoldSelector:
+class GoldSelector(GoldDoerWithTable):
     """Select a subset of data points from vectorized samples.
 
     The GoldSelector processes a dataset or PixelTable table to perform coresubset selection using a
@@ -733,15 +731,20 @@ class GoldSelector:
             ValueError: If `exclude_labels` is provided but `label_key` is None.
             NotImplementedError: If `distribute` is True.
         """
+        super().__init__(
+            allow_existing=allow_existing,
+            drop_table=drop_table,
+            max_batches=max_batches,
+            collate_fn=collate_fn,
+            to_keep_schema=to_keep_schema,
+            min_pxt_insert_size=min_pxt_insert_size,
+            batch_size=batch_size,
+            num_workers=num_workers,
+        )
         self.table_path = table_path
         self.selection_tool = selection_tool
         self.reducer = reducer
         self.chunk = chunk
-        self.collate_fn = (
-            collate_fn
-            if collate_fn is not None
-            else collate_keeping_sequences_as_sequences
-        )
         self.vectorized_key = vectorized_key
         self.include_vectorized_in_table = include_vectorized_in_table
         self.selection_key = selection_key
@@ -751,18 +754,11 @@ class GoldSelector:
             )
         self.label_key = label_key
         self.exclude_labels = exclude_labels
-        self.to_keep_schema = to_keep_schema
-        self.min_pxt_insert_size = min_pxt_insert_size
-        self.batch_size = batch_size
-        self.num_workers = num_workers
-        self.allow_existing = allow_existing
         if distribute:
             raise NotImplementedError(
                 "Distributed processing is not implemented for GoldSelector."
             )
         self._distribute = distribute
-        self.drop_table = drop_table
-        self.max_batches = max_batches
         self.random_state = random_state
 
     @property

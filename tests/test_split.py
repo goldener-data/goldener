@@ -8,6 +8,7 @@ from torch.utils.data import Dataset
 
 from goldener.clusterize import GoldClusterizer, GoldRandomClusteringTool
 from goldener.describe import GoldDescriptor
+from goldener.do import GoldDoer
 from goldener.embed import GoldTorchEmbeddingToolConfig, GoldTorchEmbeddingTool
 from goldener.torch_utils import collate_keeping_sequences_as_sequences
 from goldener.split import GoldSplitter, GoldSet, check_sets_validity
@@ -85,6 +86,44 @@ def basic_splitter(descriptor, vectorizer, selector):
     return GoldSplitter(
         sets=sets, descriptor=descriptor, selector=selector, vectorizer=vectorizer
     )
+
+
+@pytest.mark.parametrize(
+    "use_descriptor, use_vectorizer", [(True, True), (False, True), (False, False)]
+)
+def test_shared_initialization(
+    descriptor, vectorizer, selector, use_descriptor, use_vectorizer
+):
+    descriptor.allow_existing = True
+    descriptor = descriptor if use_descriptor else None
+    vectorizer = vectorizer if use_vectorizer else None
+    splitter = GoldSplitter(
+        sets=[GoldSet("train", 0.8), GoldSet("val", 0.2)],
+        descriptor=descriptor,
+        vectorizer=vectorizer,
+        selector=selector,
+        allow_existing=False,
+        drop_table=True,
+        max_batches=3,
+    )
+
+    assert isinstance(splitter, GoldDoer)
+    assert splitter.allow_existing is False
+    assert splitter.drop_table is True
+    assert splitter.max_batches == 3
+    components = [
+        component
+        for component in (descriptor, vectorizer, selector)
+        if component is not None
+    ]
+    assert all(component.allow_existing is False for component in components)
+    assert components[0].max_batches == 3
+    assert all(component.max_batches is None for component in components[1:])
+
+    splitter.allow_existing = True
+    splitter.max_batches = None
+    assert all(component.allow_existing is True for component in components)
+    assert components[0].max_batches is None
 
 
 class TestGoldSplitter:

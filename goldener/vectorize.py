@@ -18,6 +18,7 @@ from torch import Generator
 import pixeltable as pxt
 from pixeltable.catalog import Table
 
+from goldener.do import GoldDoerWithTable
 from goldener.embed import EmbeddingFusionStrategy, GoldEmbeddingFusionTool
 from goldener.select import GoldSelectionTool
 from goldener.pxt_utils import (
@@ -457,7 +458,7 @@ class GoldTensorVectorizationTool:
         return x[y.bool().squeeze(-1)]
 
 
-class GoldVectorizer:
+class GoldVectorizer(GoldDoerWithTable):
     """Extract and flatten vectors from dataset samples and store results in a PixelTable table.
 
     The GoldVectorizer processes a dataset or PixelTable table to extract and flatten vectors using a
@@ -561,13 +562,18 @@ class GoldVectorizer:
             NotImplementedError: If `distribute` is True.
             ValueError: If `estimation_time_batch_count` is not a positive integer.
         """
+        super().__init__(
+            allow_existing=allow_existing,
+            drop_table=drop_table,
+            max_batches=max_batches,
+            collate_fn=collate_fn,
+            to_keep_schema=to_keep_schema,
+            min_pxt_insert_size=min_pxt_insert_size,
+            batch_size=batch_size,
+            num_workers=num_workers,
+        )
         self.table_path = table_path
         self.vectorizer = vectorizer
-        self.collate_fn = (
-            collate_fn
-            if collate_fn is not None
-            else collate_keeping_sequences_as_sequences
-        )
         self.data_key = data_key
         self.target_key = target_key
         self.label_key = label_key
@@ -576,18 +582,11 @@ class GoldVectorizer:
         self.exclude_full_zero_target = exclude_full_zero_target
         self.merge_multilabels = merge_multilabels
         self.vectorized_key = vectorized_key
-        self.to_keep_schema = to_keep_schema
-        self.min_pxt_insert_size = min_pxt_insert_size
-        self.batch_size = batch_size
-        self.num_workers = num_workers
-        self.allow_existing = allow_existing
         if distribute:
             raise NotImplementedError(
                 "Distributed processing is not implemented for GoldVectorizer."
             )
         self._distribute = distribute
-        self.drop_table = drop_table
-        self.max_batches = max_batches
         if (
             not isinstance(estimation_time_batch_count, int)
             or estimation_time_batch_count <= 0

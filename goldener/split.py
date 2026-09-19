@@ -10,6 +10,7 @@ from torch.utils.data import Dataset, DataLoader
 
 from goldener.clusterize import GoldClusterizer
 from goldener.describe import GoldDescriptor
+from goldener.do import GoldDoer
 from goldener.pxt_utils import (
     get_expr_from_column_name,
     set_value_to_idx_rows,
@@ -79,7 +80,7 @@ def check_sets_validity(
         raise ValueError(f"Set names must be unique, got {set_names}")
 
 
-class GoldSplitter:
+class GoldSplitter(GoldDoer):
     """Split a dataset into multiple sets based on embeddings.
 
     The GoldSplitter leverages a GoldDescriptor to compute embeddings from the dataset,
@@ -203,10 +204,12 @@ class GoldSplitter:
         self.n_clusters = n_clusters
         self.selector = selector
         self.in_described_table = in_described_table
-        self.drop_table = drop_table
-        self._max_batches = max_batches
-        self.allow_existing = allow_existing
-        self.max_batches = max_batches
+        # The shared settings' setters need the components assigned above.
+        super().__init__(
+            allow_existing=allow_existing,
+            drop_table=drop_table,
+            max_batches=max_batches,
+        )
 
     @property
     def max_batches(self) -> int | None:
