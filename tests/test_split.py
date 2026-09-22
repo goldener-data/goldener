@@ -8,7 +8,6 @@ from torch.utils.data import Dataset
 
 from goldener.clusterize import GoldClusterizer, GoldRandomClusteringTool
 from goldener.describe import GoldDescriptor
-from goldener.do import GoldDoer
 from goldener.embed import GoldTorchEmbeddingToolConfig, GoldTorchEmbeddingTool
 from goldener.torch_utils import collate_keeping_sequences_as_sequences
 from goldener.split import GoldSplitter, GoldSet, check_sets_validity
@@ -86,44 +85,6 @@ def basic_splitter(descriptor, vectorizer, selector):
     return GoldSplitter(
         sets=sets, descriptor=descriptor, selector=selector, vectorizer=vectorizer
     )
-
-
-@pytest.mark.parametrize(
-    "use_descriptor, use_vectorizer", [(True, True), (False, True), (False, False)]
-)
-def test_shared_initialization(
-    descriptor, vectorizer, selector, use_descriptor, use_vectorizer
-):
-    descriptor.allow_existing = True
-    descriptor = descriptor if use_descriptor else None
-    vectorizer = vectorizer if use_vectorizer else None
-    splitter = GoldSplitter(
-        sets=[GoldSet("train", 0.8), GoldSet("val", 0.2)],
-        descriptor=descriptor,
-        vectorizer=vectorizer,
-        selector=selector,
-        allow_existing=False,
-        drop_table=True,
-        max_batches=3,
-    )
-
-    assert isinstance(splitter, GoldDoer)
-    assert splitter.allow_existing is False
-    assert splitter.drop_table is True
-    assert splitter.max_batches == 3
-    components = [
-        component
-        for component in (descriptor, vectorizer, selector)
-        if component is not None
-    ]
-    assert all(component.allow_existing is False for component in components)
-    assert components[0].max_batches == 3
-    assert all(component.max_batches is None for component in components[1:])
-
-    splitter.allow_existing = True
-    splitter.max_batches = None
-    assert all(component.allow_existing is True for component in components)
-    assert components[0].max_batches is None
 
 
 class TestGoldSplitter:
@@ -507,16 +468,32 @@ class TestGoldSplitter:
             )
 
     def test_max_batches(self, descriptor, selector, vectorizer):
+        descriptor.allow_existing = True
         sets = [GoldSet(name="train", size=0.5), GoldSet(name="val", size=0.5)]
         splitter = GoldSplitter(
             sets=sets,
             descriptor=descriptor,
             selector=selector,
             vectorizer=vectorizer,
+            allow_existing=False,
             max_batches=1,
         )
 
-        assert splitter.descriptor.max_batches == 1
+        assert splitter.max_batches == 1
+        assert descriptor.max_batches == 1
+        assert vectorizer.max_batches is None
+        assert selector.max_batches is None
+        assert splitter.allow_existing is False
+        assert all(
+            component.allow_existing is False
+            for component in (descriptor, vectorizer, selector)
+        )
+
+        splitter.allow_existing = True
+        assert all(
+            component.allow_existing is True
+            for component in (splitter, descriptor, vectorizer, selector)
+        )
 
         split_table = splitter.split_in_table(
             to_split=DummyDataset(
@@ -535,6 +512,12 @@ class TestGoldSplitter:
         assert len(splitted) == 2
         # Only 2 items total (1 batch with batch_size=2)
         assert len(splitted["train"]) + len(splitted["val"]) == 2
+
+        splitter.max_batches = None
+        assert all(
+            component.max_batches is None
+            for component in (splitter, descriptor, vectorizer, selector)
+        )
 
     def test_with_no_remaining_indices(self, descriptor, selector, vectorizer):
         sets = [GoldSet(name="train", size=0.5), GoldSet(name="val", size=0.5)]
@@ -628,8 +611,16 @@ class TestGoldSplitter:
 
         split_dataset.keep_cache = False
 
-    def test_split_in_table_from_dataset_with_drop_table(self, basic_splitter):
-        basic_splitter.drop_table = True
+    def test_split_in_table_from_dataset_with_drop_table(
+        self, descriptor, vectorizer, selector
+    ):
+        basic_splitter = GoldSplitter(
+            sets=[GoldSet("train", 0.5), GoldSet("val", 0.5)],
+            descriptor=descriptor,
+            vectorizer=vectorizer,
+            selector=selector,
+            drop_table=True,
+        )
         basic_splitter.split_in_table(
             to_split=DummyDataset(
                 [
@@ -782,10 +773,30 @@ class TestGoldSplitter:
         # Only 2 items total (1 batch with batch_size=2)
         assert len(splitted["train"]) + len(splitted["val"]) == 2
 
-    def test_without_descriptor(self, basic_splitter):
-        basic_splitter.descriptor = None
-        basic_splitter.vectorizer.collate_fn = None
-        split_table = basic_splitter.split_in_table(
+    def test_without_descriptor(self, vectorizer, selector):
+        splitter = GoldSplitter(
+            sets=[GoldSet("train", 0.5), GoldSet("val", 0.5)],
+            vectorizer=vectorizer,
+            selector=selector,
+            allow_existing=False,
+            max_batches=1,
+        )
+        assert splitter.max_batches == 1
+        assert vectorizer.max_batches == 1
+        assert selector.max_batches is None
+        assert all(
+            component.allow_existing is False
+            for component in (splitter, vectorizer, selector)
+        )
+
+        splitter.allow_existing = True
+        splitter.max_batches = None
+        assert all(
+            component.allow_existing is True and component.max_batches is None
+            for component in (splitter, vectorizer, selector)
+        )
+        splitter.vectorizer.collate_fn = None
+        split_table = splitter.split_in_table(
             to_split=DummyDataset(
                 [
                     {"embeddings": torch.rand(4, 8, 8), "idx": idx, "label": "dummy"}
@@ -793,9 +804,9 @@ class TestGoldSplitter:
                 ]
             )
         )
-        splitted = basic_splitter.get_split_indices(
+        splitted = splitter.get_split_indices(
             split_table,
-            selection_key=basic_splitter.selector.selection_key,
+            selection_key=splitter.selector.selection_key,
             idx_key="idx",
         )
 
@@ -803,10 +814,25 @@ class TestGoldSplitter:
         # Only 2 items total (1 batch with batch_size=2)
         assert len(splitted["train"]) + len(splitted["val"]) == 10
 
-    def test_without_descriptor_nor_vectorizer(self, basic_splitter):
-        basic_splitter.descriptor = None
-        basic_splitter.vectorizer = None
-        split_table = basic_splitter.split_in_table(
+    def test_without_descriptor_nor_vectorizer(self, selector):
+        splitter = GoldSplitter(
+            sets=[GoldSet("train", 0.5), GoldSet("val", 0.5)],
+            selector=selector,
+            allow_existing=False,
+            max_batches=1,
+        )
+        assert splitter.allow_existing is False
+        assert selector.allow_existing is False
+        assert splitter.max_batches == 1
+        assert selector.max_batches == 1
+
+        splitter.allow_existing = True
+        splitter.max_batches = None
+        assert splitter.allow_existing is True
+        assert selector.allow_existing is True
+        assert splitter.max_batches is None
+        assert selector.max_batches is None
+        split_table = splitter.split_in_table(
             to_split=DummyDataset(
                 [
                     {
@@ -820,9 +846,9 @@ class TestGoldSplitter:
                 ]
             )
         )
-        splitted = basic_splitter.get_split_indices(
+        splitted = splitter.get_split_indices(
             split_table,
-            selection_key=basic_splitter.selector.selection_key,
+            selection_key=splitter.selector.selection_key,
             idx_key="idx",
         )
 
