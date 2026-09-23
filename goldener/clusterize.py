@@ -13,6 +13,7 @@ from sklearn.base import ClusterMixin
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 
+from goldener.do import GoldDoerWithTable
 from goldener.pxt_utils import (
     set_value_to_idx_rows,
     GoldPxtTorchDataset,
@@ -23,10 +24,7 @@ from goldener.pxt_utils import (
     get_sample_row_from_idx,
 )
 from goldener.reduce import GoldReductionTool, GoldReductionToolWithFit
-from goldener.torch_utils import (
-    collate_keeping_sequences_as_sequences,
-    get_dataset_sample_dict,
-)
+from goldener.torch_utils import get_dataset_sample_dict
 from goldener.utils import (
     filter_batch_from_indices,
 )
@@ -212,7 +210,7 @@ class GoldSKLearnClusteringTool(GoldClusteringTool):
         return torch.from_numpy(self.tool.predict(x_np))
 
 
-class GoldClusterizer:
+class GoldClusterizer(GoldDoerWithTable):
     """Cluster data points from vectorized samples.
 
     The GoldClusterizer processes a dataset or PixelTable table to perform clustering using a
@@ -322,33 +320,31 @@ class GoldClusterizer:
             ValueError: If `chunk` is not a positive integer or None.
             NotImplementedError: If `distribute` is True.
         """
+        super().__init__(
+            allow_existing=allow_existing,
+            drop_table=drop_table,
+            max_batches=max_batches,
+            collate_fn=collate_fn,
+            to_keep_schema=to_keep_schema,
+            min_pxt_insert_size=min_pxt_insert_size,
+            batch_size=batch_size,
+            num_workers=num_workers,
+        )
         self.table_path = table_path
         self.clustering_tool = clustering_tool
         self.reducer = reducer
         if chunk is not None and chunk <= 0:
             raise ValueError("chunk must be a positive integer or None.")
         self.chunk = chunk
-        self.collate_fn = (
-            collate_fn
-            if collate_fn is not None
-            else collate_keeping_sequences_as_sequences
-        )
         self.vectorized_key = vectorized_key
         self.include_vectorized_in_table = include_vectorized_in_table
         self.cluster_key = cluster_key
         self.label_key = label_key
-        self.to_keep_schema = to_keep_schema
-        self.min_pxt_insert_size = min_pxt_insert_size
-        self.batch_size = batch_size
-        self.num_workers = num_workers
-        self.allow_existing = allow_existing
         if distribute:
             raise NotImplementedError(
                 "Distributed processing is not implemented for GoldClusterizer."
             )
         self._distribute = distribute
-        self.drop_table = drop_table
-        self.max_batches = max_batches
         self.random_state = random_state
         self.force_same_cluster = force_same_cluster
 

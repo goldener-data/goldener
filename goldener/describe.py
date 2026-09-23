@@ -9,6 +9,7 @@ from pixeltable.catalog import Table
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 
+from goldener.do import GoldDoerWithTable
 from goldener.embed import GoldEmbeddingTool
 from goldener.pxt_utils import (
     GoldPxtTorchDataset,
@@ -32,7 +33,7 @@ from goldener.vectorize import (
 logger = getLogger(__name__)
 
 
-class GoldDescriptor:
+class GoldDescriptor(GoldDoerWithTable):
     """Compute embeddings from dataset samples using a pretrained model.
 
     The GoldDescriptor processes a dataset or PixelTable table to compute embeddings using a
@@ -149,15 +150,20 @@ class GoldDescriptor:
         Raises:
             NotImplementedError: If `distribute` is True.
         """
+        super().__init__(
+            allow_existing=allow_existing,
+            drop_table=drop_table,
+            max_batches=max_batches,
+            collate_fn=collate_fn,
+            to_keep_schema=to_keep_schema,
+            min_pxt_insert_size=min_pxt_insert_size,
+            batch_size=batch_size,
+            num_workers=num_workers,
+        )
         self.table_path = table_path
         self.embedder = embedder
         self.vectorizer = vectorizer
         self.transform = transform
-        self.collate_fn = (
-            collate_fn
-            if collate_fn is not None
-            else collate_keeping_sequences_as_sequences
-        )
         self.data_key = data_key
         self.target_key = target_key
         self.label_key = label_key
@@ -167,18 +173,11 @@ class GoldDescriptor:
         self.exclude_labels = exclude_labels
         self.description_key = description_key
         self.force_fix_description = force_fix_description
-        self.to_keep_schema = to_keep_schema
-        self.min_pxt_insert_size = min_pxt_insert_size
-        self.batch_size = batch_size
-        self.num_workers = num_workers
-        self.allow_existing = allow_existing
         if distribute:
             raise NotImplementedError(
                 "Distributed processing is not implemented for GoldDescriptor."
             )
         self._distribute = distribute
-        self.drop_table = drop_table
-        self.max_batches = max_batches
 
         if device is None:
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
