@@ -52,3 +52,52 @@ jobs:
           path: dist/
       - name: Publish distribution to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+
+  deploy-website:
+    name: Upload the website to the hosting provider through FTP
+    # the website shows the docs of the released version: it is only updated once the package is published
+    needs:
+      - publish-to-pypi
+    runs-on: ubuntu-latest
+    environment:
+      name: website
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install uv with caching
+        uses: astral-sh/setup-uv@22695119d769bdb6f7032ad67b9bca0ef8c4a174 # v5.4.0
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      # docs/api is regenerated from the released code: the commit of the API docs workflow may not be in the tag
+      - name: Generate API docs
+        run: ./scripts/generate_api_docs.sh
+
+      # the server root gets the landing page as index.html, the API docs in the api folder and the images it
+      # links to in the statics folder
+      - name: Stage the website
+        run: |
+          mkdir -p _site
+          cp docs/landing/index.html _site/index.html
+          cp -r docs/api _site/api
+          cp -r docs/statics _site/statics
+
+      - name: Upload the website
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          protocol: ftps
+          local-dir: ./_site/
+          server-dir: ${{ vars.FTP_SERVER_DIR || './' }}

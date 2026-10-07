@@ -1,0 +1,570 @@
+{#
+API docs of Goldener, with one page per source file:
+- the root package page is a landing page (hero, pipeline, module cards), sub-packages present their modules, and
+  modules are introduced by their docstring before their members.
+- the sidebar shows the tree of the package on every page: package drop-downs, file drop-downs (linking to their
+  page) and class drop-downs listing their members.
+#}
+{% extends "default/module.html.jinja2" %}
+
+{# relative url of the page of a module from the current page #}
+{% macro page_url(target) -%}
+    {%- if target != module.modulename -%}
+        {{ "../" * module.modulename.count(".") }}{{ target.replace(".", "/") }}.html
+    {%- endif -%}
+{%- endmacro %}
+
+{# relative url of the docs/ directory (containing statics/) from the current page #}
+{% macro docs_root() -%}
+    {{ "../" * (module.modulename.count(".") + 1) }}
+{%- endmacro %}
+
+{% macro child_modules(package_name) -%}
+    {%- for name in all_modules | sort if name.startswith(package_name ~ ".") and "." not in name[package_name | length + 1:] -%}
+        {{ name }}{{ " " }}
+    {%- endfor -%}
+{%- endmacro %}
+
+{% macro is_public(doc) %}
+    {% if doc.kind != "module" and doc.modulename in all_modules and all_modules[doc.modulename].is_package and doc.taken_from[0] != doc.modulename %}
+        {# members re-exported by a package are documented in the page of their own module #}
+    {% elif "@private" in doc.docstring %}
+        {# default pdoc rules below #}
+    {% elif "@public" in doc.docstring %}
+        true
+    {% elif not include_undocumented and not doc.docstring and doc.kind != "module" %}
+    {% elif doc.name == "__init__" and (doc.docstring or (doc.kind == "function" and doc.signature_without_self.parameters)) %}
+        true
+    {% elif doc.name == "__doc__" %}
+    {% elif doc.kind == "variable" and doc.is_typevar and not doc.docstring %}
+    {% elif doc.kind == "module" and doc.fullname not in all_modules %}
+    {% elif (doc.qualname or doc.name) is in(module.obj.__all__ or []) %}
+        true
+    {% elif not doc.name.startswith("_") %}
+        true
+    {% endif %}
+{% endmacro %}
+
+{# public members defined in a module (not imported nor re-exported) #}
+{% macro own_public_members(mod) -%}
+    {%- for m in mod.members.values() if m.taken_from[0] == mod.modulename and is_public(m) | trim -%}
+        {{ m.name }}{{ " " }}
+    {%- endfor -%}
+{%- endmacro %}
+
+{% macro version() -%}
+    {{ (footer_text or "").split()[-1] if footer_text }}
+{%- endmacro %}
+
+{% macro icon(name) -%}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    {%- if name == "describe" -%}
+        <path d="M12 3l1.8 4.7 4.7 1.8-4.7 1.8L12 16l-1.8-4.7-4.7-1.8 4.7-1.8z"/><path d="M19 15l.8 2.2 2.2.8-2.2.8L19 21l-.8-2.2-2.2-.8 2.2-.8z"/>
+    {%- elif name == "embed" -%}
+        <path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/><path d="M3 17.5l9 5 9-5" opacity=".5"/>
+    {%- elif name == "vectorize" -%}
+        <circle cx="4.5" cy="19.5" r="1.5"/><path d="M5.5 18.5L12 6"/><path d="M6 19l13-5"/><path d="M6 19.5h9"/><path d="M12 6l-.4 3M12 6l2.6 1.5"/>
+    {%- elif name == "reduce" -%}
+        <path d="M4 9h5V4"/><path d="M20 9h-5V4"/><path d="M4 15h5v5"/><path d="M20 15h-5v5"/>
+    {%- elif name == "clusterize" -%}
+        <circle cx="7" cy="8" r="3"/><circle cx="17" cy="7.5" r="2.5"/><circle cx="12.5" cy="17" r="3.5"/>
+    {%- elif name == "select" -%}
+        <circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1" fill="currentColor"/>
+    {%- elif name == "split" -%}
+        <path d="M12 21v-7"/><path d="M12 14L5.5 6.5"/><path d="M12 14l6.5-7.5"/><path d="M5 10.5V6h4.5"/><path d="M19 10.5V6h-4.5"/>
+    {%- elif name == "organize" -%}
+        <rect x="4" y="4" width="16" height="4" rx="1.2"/><rect x="4" y="10" width="16" height="4" rx="1.2"/><rect x="4" y="16" width="16" height="4" rx="1.2"/>
+    {%- elif name == "distance" -%}
+        <path d="M3 17L17 3l4 4L7 21z"/><path d="M7.5 12.5l2 2M10.5 9.5l2 2M13.5 6.5l2 2"/>
+    {%- elif name == "pxt_utils" -%}
+        <ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>
+    {%- elif name == "torch_utils" -%}
+        <path d="M12 3c1 3 5 5 5 10a5 5 0 0 1-10 0c0-2 1-3.5 2-4.5 0 2 1 3 2 3 0-3-1-5 1-8.5z"/>
+    {%- elif name == "utils" -%}
+        <path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/>
+    {%- elif name == "vision" -%}
+        <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>
+    {%- elif name == "transform" -%}
+        <rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 12h16M12 4v16"/>
+    {%- elif name == "vectorizers" -%}
+        <rect x="3.5" y="3.5" width="7" height="7" rx="1.2"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.2"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.2"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.2" fill="currentColor" opacity=".35"/>
+    {%- else -%}
+        <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/>
+    {%- endif -%}
+    </svg>
+{%- endmacro %}
+
+{% block title %}{{ module.modulename }} · Goldener API{% endblock %}
+
+{% block head %}
+    <meta name="description" content="Goldener API reference: {{ module.modulename }}">
+    <link rel="icon" href="{{ docs_root() }}statics/goldener-logo-transparent.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Quicksand:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+    <script>
+        /* apply the stored (or system) theme before the first paint */
+        (function () {
+            var theme = null;
+            try { theme = localStorage.getItem("goldener-docs-theme"); } catch (e) {}
+            if (!theme && window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) theme = "light";
+            document.documentElement.setAttribute("data-theme", theme || "dark");
+            document.documentElement.classList.add("js");
+        })();
+    </script>
+{% endblock %}
+
+{% block module_list_link %}{% endblock %}
+
+{% block nav_title %}
+    <div class="brand">
+        <a class="brand-link" href="{{ page_url(module.modulename.split(".")[0]) }}#">
+            <img src="{{ docs_root() }}statics/goldener-logo-transparent.png" alt="">
+            <span class="brand-name">GOLDENER</span>
+        </a>
+        {% if version() %}<span class="brand-version">v{{ version() }}</span>{% endif %}
+        <button class="theme-toggle" type="button" aria-label="Toggle light/dark theme" title="Toggle light/dark theme">
+            <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+            <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>
+        </button>
+    </div>
+    <div class="brand-sub">API reference</div>
+{% endblock %}
+
+{% block nav_submodules %}{% endblock %}
+
+{% block nav_members %}
+    {# the module is empty when pdoc renders this template to build the search index #}
+    {% if module.modulename %}
+        <h2>Modules</h2>
+        {{ nav_package(all_modules[module.modulename.split(".")[0]]) }}
+    {% endif %}
+{% endblock %}
+
+{% macro nav_package(package) %}
+    {% set is_current = module.modulename == package.modulename or module.modulename.startswith(package.modulename ~ ".") %}
+    <details class="nav-dropdown nav-module{% if module.modulename == package.modulename %} current{% endif %}" {% if is_current or "." not in package.modulename %}open{% endif %}>
+        <summary><a class="module" href="{{ page_url(package.modulename) }}#">{{ package.modulename }}</a></summary>
+        <ul class="memberlist">
+            {% for name in child_modules(package.modulename).split() %}
+                <li>
+                    {% if all_modules[name].is_package %}
+                        {{ nav_package(all_modules[name]) }}
+                    {% else %}
+                        {{ nav_file(all_modules[name]) }}
+                    {% endif %}
+                </li>
+            {% endfor %}
+        </ul>
+    </details>
+{% endmacro %}
+
+{% macro nav_file(mod) %}
+    {% set url = page_url(mod.modulename) %}
+    {% set is_current = mod.modulename == module.modulename %}
+    <details class="nav-dropdown nav-file{% if is_current %} current{% endif %}" {% if is_current %}open{% endif %}>
+        <summary><a class="file" href="{{ url }}#">{{ mod.modulename.split(".")[-1] }}.py</a></summary>
+        <ul class="memberlist">
+            {% for m in mod.members.values() if m.taken_from[0] == mod.modulename and is_public(m) | trim %}
+                <li>
+                    {% if m.kind == "class" %}
+                        {{ nav_class(m, url) }}
+                    {% else %}
+                        <a class="{{ m.kind }}" href="{{ url }}#{{ m.qualname }}">{{ m.name }}</a>
+                    {% endif %}
+                </li>
+            {% endfor %}
+        </ul>
+    </details>
+{% endmacro %}
+
+{% macro nav_class(cls, url) %}
+    {% set public_members = cls.own_members | list %}
+    {% if public_members %}
+        <details class="nav-dropdown nav-class">
+            <summary><a class="class" href="{{ url }}#{{ cls.qualname }}">{{ cls.qualname }}</a></summary>
+            <ul class="memberlist">
+                {% for m in public_members if is_public(m) | trim %}
+                    <li>
+                        {% if m.kind == "class" %}
+                            {{ nav_class(m, url) }}
+                        {% elif m.name == "__init__" %}
+                            <a class="function" href="{{ url }}#{{ m.qualname }}">{{ m.qualname.split(".")[-2] }}</a>
+                        {% else %}
+                            <a class="{{ m.kind }}" href="{{ url }}#{{ m.qualname }}">{{ m.name }}</a>
+                        {% endif %}
+                    </li>
+                {% endfor %}
+            </ul>
+        </details>
+    {% else %}
+        <a class="class" href="{{ url }}#{{ cls.qualname }}">{{ cls.qualname }}</a>
+    {% endif %}
+{% endmacro %}
+
+{% block nav_footer %}
+    {% if footer_text %}
+        <footer>{{ footer_text }} · <a href="https://www.goldener.ai/">Landing page</a></footer>
+    {% endif %}
+{% endblock %}
+
+{# header of the root package: the landing page of the API docs #}
+{% macro hero() %}
+    {% set paragraphs = module.docstring.split("\n\n", 1) %}
+    <section class="module-info hero">
+        <canvas class="constellation" aria-hidden="true"></canvas>
+        <div class="hero-inner">
+            <span class="eyebrow">API reference{% if version() %} · v{{ version() }}{% endif %}</span>
+            <h1 class="visually-hidden">Goldener</h1>
+            <img class="hero-brandmark" src="{{ docs_root() }}statics/goldener-catch-transparent.png"
+                 alt="Goldener — Make your data even more valuable">
+            <div class="hero-install">
+                <span class="prompt">$</span><code>pip install goldener</code>
+                <button class="copy-btn" type="button" data-copy="pip install goldener">Copy</button>
+            </div>
+            <div class="hero-actions">
+                <a class="btn btn-primary" href="#modules">Explore the API
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+                </a>
+                {% if logo_link %}
+                    <a class="btn btn-ghost" href="{{ logo_link }}">
+                        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5a11.5 11.5 0 0 0-3.6 22.4c.6.1.8-.3.8-.6v-2c-3.2.7-3.9-1.5-3.9-1.5-.5-1.3-1.3-1.7-1.3-1.7-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.7-1.6-2.6-.3-5.3-1.3-5.3-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.2 1.2a11 11 0 0 1 5.8 0C17.3 4.8 18.3 5 18.3 5c.6 1.6.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.4-2.7 5.4-5.3 5.7.4.4.8 1.1.8 2.2v3.2c0 .3.2.7.8.6A11.5 11.5 0 0 0 12 .5z"/></svg>
+                        GitHub
+                    </a>
+                {% endif %}
+                <a class="btn btn-ghost" href="https://www.goldener.ai/">Landing page</a>
+            </div>
+        </div>
+        <div class="hero-scroll" aria-hidden="true"><span></span></div>
+    </section>
+    {% if paragraphs | length > 1 %}
+        <section class="module-info hero-intro">
+            <div class="section-head">
+                <span class="eyebrow">How it works</span>
+                <h2>From raw data to golden data</h2>
+            </div>
+            <div class="docstring">{{ paragraphs[1] | to_markdown | to_html | linkify(namespace=module.qualname) }}</div>
+        </section>
+    {% endif %}
+{% endmacro %}
+
+{# header of a module or sub-package page #}
+{% macro module_header() %}
+    {% set parts = module.modulename.split(".") %}
+    {% set members = own_public_members(module).split() %}
+    {% set ns = namespace(classes=0, functions=0) %}
+    {% for name in members %}
+        {% if module.members[name].kind == "class" %}{% set ns.classes = ns.classes + 1 %}
+        {% elif module.members[name].kind == "function" %}{% set ns.functions = ns.functions + 1 %}{% endif %}
+    {% endfor %}
+    <section class="module-info module-header">
+        <div class="crumbs" role="navigation" aria-label="Breadcrumb">
+            {% for i in range(parts | length - 1) %}
+                <a href="{{ page_url(".".join(parts[:i + 1])) }}">{{ parts[i] }}</a><span class="sep">/</span>
+            {% endfor %}
+            <span class="current">{{ parts[-1] }}{{ "/" if module.is_package else ".py" }}</span>
+        </div>
+        <div class="module-title-row">
+            <div class="module-icon">{{ icon(parts[-1]) }}</div>
+            <div class="module-title">
+                <span class="eyebrow">{{ "Package" if module.is_package else "Module" }}</span>
+                <h1 class="modulename">{{ parts[-1] }}<span class="ext">{{ "/" if module.is_package else ".py" }}</span></h1>
+                <code class="module-import">import {{ module.modulename }}</code>
+            </div>
+            {% if edit_url %}
+                <a class="pdoc-button git-button" href="{{ edit_url }}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 18l6-6-6-6M8 6l-6 6 6 6"/></svg>
+                    View source
+                </a>
+            {% endif %}
+        </div>
+        {% if module.docstring %}
+            <div class="intro-card">{{ docstring(module) }}</div>
+        {% endif %}
+        {% if members %}
+            <div class="on-this-page">
+                <span class="label">On this page</span>
+                {% if ns.classes %}<span class="stat">{{ ns.classes }} class{{ "es" if ns.classes > 1 }}</span>{% endif %}
+                {% if ns.functions %}<span class="stat">{{ ns.functions }} function{{ "s" if ns.functions > 1 }}</span>{% endif %}
+                <div class="chips">
+                    {% for name in members %}
+                        {% set m = module.members[name] %}
+                        <a class="chip chip-{{ m.kind }}" href="#{{ m.qualname }}">{{ m.name }}{{ "()" if m.kind == "function" }}</a>
+                    {% endfor %}
+                </div>
+            </div>
+        {% endif %}
+    </section>
+{% endmacro %}
+
+{% block module_info %}
+    {% if module.modulename and module.is_package and "." not in module.modulename %}
+        {{ hero() }}
+    {% elif module.modulename %}
+        {{ module_header() }}
+    {% else %}
+        {{ super() }}
+    {% endif %}
+{% endblock %}
+
+{% block module_contents %}
+    {% if module.modulename and module.is_package %}
+        <section class="module-info modules-section" id="modules">
+            <div class="section-head">
+                <span class="eyebrow">Modules</span>
+                <h2>{{ "Explore the API" if "." not in module.modulename else "Inside " ~ module.modulename }}</h2>
+            </div>
+            <div class="module-grid">
+                {% for name in child_modules(module.modulename).split() %}
+                    {% set child = all_modules[name] %}
+                    {% set short = name.split(".")[-1] %}
+                    <a class="module-card reveal" href="{{ page_url(name) }}">
+                        <span class="card-top">
+                            <span class="card-icon">{{ icon(short) }}</span>
+                            <span class="card-file">{{ short }}{{ "/" if child.is_package else ".py" }}</span>
+                        </span>
+                        <span class="card-title">{{ child.docstring.split("\n\n")[0].replace("`", "") | striptags }}</span>
+                        <span class="card-meta">
+                            {% if child.is_package %}
+                                {% set n = child_modules(name).split() | length %}
+                                <span>{{ n }} module{{ "s" if n > 1 }}</span>
+                            {% else %}
+                                {% set ns = namespace(classes=0, functions=0) %}
+                                {% for m in own_public_members(child).split() %}
+                                    {% if child.members[m].kind == "class" %}{% set ns.classes = ns.classes + 1 %}
+                                    {% elif child.members[m].kind == "function" %}{% set ns.functions = ns.functions + 1 %}{% endif %}
+                                {% endfor %}
+                                {% if ns.classes %}<span>{{ ns.classes }} class{{ "es" if ns.classes > 1 }}</span>{% endif %}
+                                {% if ns.functions %}<span>{{ ns.functions }} function{{ "s" if ns.functions > 1 }}</span>{% endif %}
+                            {% endif %}
+                        </span>
+                        <span class="card-arrow" aria-hidden="true">→</span>
+                    </a>
+                {% endfor %}
+            </div>
+        </section>
+    {% endif %}
+    {{ super() }}
+{% endblock %}
+
+{% block search_js %}
+    {{ super() }}
+    <div class="scroll-progress" aria-hidden="true"></div>
+    <button class="back-to-top" type="button" aria-label="Back to top">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+    </button>
+    <script>
+        (function () {
+            var reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+            /* theme toggle */
+            document.querySelectorAll(".theme-toggle").forEach(function (button) {
+                button.addEventListener("click", function () {
+                    var root = document.documentElement;
+                    var theme = root.getAttribute("data-theme") === "light" ? "dark" : "light";
+                    root.setAttribute("data-theme", theme);
+                    try { localStorage.setItem("goldener-docs-theme", theme); } catch (e) {}
+                    window.dispatchEvent(new Event("themechange"));
+                });
+            });
+
+            /* open the drop-downs containing the sidebar link of the current anchor */
+            function openNavDropdownsForHash() {
+                var hash = decodeURIComponent(window.location.hash);
+                if (!hash || hash === "#") return;
+                var links = document.querySelectorAll("nav.pdoc .nav-dropdown a");
+                var link = null;
+                for (var i = 0; i < links.length; i++) {
+                    if (links[i].getAttribute("href") === hash) { link = links[i]; break; }
+                }
+                document.querySelectorAll("nav.pdoc a.active").forEach(function (a) { a.classList.remove("active"); });
+                if (!link) return;
+                link.classList.add("active");
+                for (var el = link.parentElement; el; el = el.parentElement) {
+                    if (el.tagName === "DETAILS") el.open = true;
+                }
+            }
+            window.addEventListener("hashchange", openNavDropdownsForHash);
+            openNavDropdownsForHash();
+
+            /* copy buttons: hero install command and code blocks of the docstrings */
+            function addCopy(button, getText) {
+                button.addEventListener("click", function () {
+                    var done = function () {
+                        button.classList.add("copied");
+                        button.textContent = "Copied";
+                        setTimeout(function () { button.classList.remove("copied"); button.textContent = "Copy"; }, 1600);
+                    };
+                    if (navigator.clipboard) navigator.clipboard.writeText(getText()).then(done, function () {});
+                });
+            }
+            document.querySelectorAll(".copy-btn[data-copy]").forEach(function (button) {
+                addCopy(button, function () { return button.getAttribute("data-copy"); });
+            });
+            document.querySelectorAll("main.pdoc .docstring pre").forEach(function (pre) {
+                var button = document.createElement("button");
+                button.type = "button";
+                button.className = "copy-btn code-copy";
+                button.textContent = "Copy";
+                pre.appendChild(button);
+                addCopy(button, function () { return pre.querySelector("code") ? pre.querySelector("code").innerText : pre.innerText; });
+            });
+
+            /* reveal the members and cards when they enter the viewport */
+            var revealed = document.querySelectorAll("main.pdoc > section:not(.module-info), .reveal");
+            if (!reduceMotion && "IntersectionObserver" in window) {
+                var observer = new IntersectionObserver(function (entries) {
+                    entries.forEach(function (entry) {
+                        if (entry.isIntersecting) { entry.target.classList.add("in"); observer.unobserve(entry.target); }
+                    });
+                }, { rootMargin: "0px 0px -6% 0px" });
+                revealed.forEach(function (el, i) {
+                    el.classList.add("reveal");
+                    el.style.setProperty("--reveal-delay", (el.classList.contains("module-card") ? (i % 3) * 70 : 0) + "ms");
+                    observer.observe(el);
+                });
+            } else {
+                revealed.forEach(function (el) { el.classList.add("in"); });
+            }
+
+            /* scroll progress and back to top */
+            var progress = document.querySelector(".scroll-progress");
+            var backToTop = document.querySelector(".back-to-top");
+            function onScroll() {
+                var max = document.documentElement.scrollHeight - window.innerHeight;
+                var ratio = max > 0 ? window.scrollY / max : 0;
+                progress.style.transform = "scaleX(" + ratio + ")";
+                backToTop.classList.toggle("visible", window.scrollY > 700);
+            }
+            window.addEventListener("scroll", onScroll, { passive: true });
+            onScroll();
+            backToTop.addEventListener("click", function () { window.scrollTo({ top: 0, behavior: reduceMotion ? "auto" : "smooth" }); });
+
+            /* hero: a constellation of embeddings drifting into clusters, a few of them selected as golden */
+            var canvas = document.querySelector(".hero .constellation");
+            if (!canvas || !canvas.getContext) return;
+            var ctx = canvas.getContext("2d");
+            var points = [], centers = [], colors = {}, width = 0, height = 0, ratio = 1, running = true, start = performance.now();
+
+            function readColors() {
+                var style = getComputedStyle(canvas.parentElement);
+                colors.dot = style.getPropertyValue("--text-body").trim() || "#c9cde0";
+                colors.gold = style.getPropertyValue("--gold-400").trim() || "#e6c948";
+                colors.line = style.getPropertyValue("--border-brand").trim() || "rgba(213,183,27,.3)";
+            }
+            function resize() {
+                var rect = canvas.parentElement.getBoundingClientRect();
+                ratio = Math.min(window.devicePixelRatio || 1, 2);
+                width = rect.width; height = rect.height;
+                canvas.width = width * ratio; canvas.height = height * ratio;
+                canvas.style.width = width + "px"; canvas.style.height = height + "px";
+                ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+                var nCenters = width < 700 ? 4 : 6;
+                centers = [];
+                for (var c = 0; c < nCenters; c++) {
+                    centers.push({ ax: 0.12 + 0.76 * Math.random(), ay: 0.15 + 0.7 * Math.random(), phase: Math.random() * 6.28, speed: 0.04 + Math.random() * 0.05 });
+                }
+                var n = Math.max(50, Math.min(170, Math.round(width * height / 7000)));
+                points = [];
+                for (var p = 0; p < n; p++) {
+                    points.push({
+                        cluster: p % nCenters, angle: Math.random() * 6.28, radius: 10 + Math.pow(Math.random(), 0.7) * 70,
+                        spin: (Math.random() - 0.5) * 0.25, x: 0, y: 0,
+                        size: 1 + Math.random() * 1.4, golden: 0, goldenTarget: 0
+                    });
+                }
+                /* start every point at its place in its cluster */
+                points.forEach(function (p) {
+                    var c = centerPosition(centers[p.cluster], 0);
+                    p.x = c.x + Math.cos(p.angle) * p.radius;
+                    p.y = c.y + Math.sin(p.angle) * p.radius * 0.75;
+                });
+                pickGolden();
+            }
+            function pickGolden() {
+                points.forEach(function (p) { p.goldenTarget = 0; });
+                centers.forEach(function (_, c) {
+                    var members = points.filter(function (p) { return p.cluster === c; });
+                    for (var k = 0; k < 2 && members.length; k++) members.splice(Math.floor(Math.random() * members.length), 1)[0].goldenTarget = 1;
+                });
+            }
+            function reassign() {
+                points.forEach(function (p) { if (Math.random() < 0.12) p.cluster = Math.floor(Math.random() * centers.length); });
+            }
+            function centerPosition(c, t) {
+                return {
+                    x: width * (c.ax + 0.05 * Math.sin(t * c.speed * 6.28 + c.phase)),
+                    y: height * (c.ay + 0.06 * Math.cos(t * c.speed * 5 + c.phase))
+                };
+            }
+            var lastShuffle = 0;
+            function frame(now) {
+                var t = (now - start) / 1000;
+                if (t - lastShuffle > 3.2) { lastShuffle = t; reassign(); pickGolden(); }
+                ctx.clearRect(0, 0, width, height);
+                var positions = centers.map(function (c) { return centerPosition(c, t); });
+                points.forEach(function (p) {
+                    var c = positions[p.cluster];
+                    p.angle += p.spin * 0.016;
+                    var breathe = 1 + 0.08 * Math.sin(t * 0.8 + p.radius);
+                    var tx = c.x + Math.cos(p.angle) * p.radius * breathe;
+                    var ty = c.y + Math.sin(p.angle) * p.radius * 0.75 * breathe;
+                    p.x += (tx - p.x) * 0.025; p.y += (ty - p.y) * 0.025;
+                    p.golden += (p.goldenTarget - p.golden) * 0.04;
+                });
+                ctx.lineWidth = 0.7;
+                ctx.strokeStyle = colors.line;
+                for (var i = 0; i < points.length; i++) {
+                    for (var j = i + 1; j < points.length; j++) {
+                        var a = points[i], b = points[j];
+                        if (a.cluster !== b.cluster) continue;
+                        var dx = a.x - b.x, dy = a.y - b.y, d2 = dx * dx + dy * dy;
+                        if (d2 < 2600) {
+                            ctx.globalAlpha = (1 - d2 / 2600) * 0.55;
+                            ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+                        }
+                    }
+                }
+                points.forEach(function (p) {
+                    ctx.globalAlpha = 0.8;
+                    ctx.fillStyle = colors.dot;
+                    ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, 6.29); ctx.fill();
+                    if (p.golden > 0.02) {
+                        /* golden (selected) points: glowing core and halo ring */
+                        ctx.globalAlpha = p.golden;
+                        ctx.fillStyle = colors.gold;
+                        ctx.shadowColor = colors.gold; ctx.shadowBlur = 18;
+                        ctx.beginPath(); ctx.arc(p.x, p.y, p.size + 2.4, 0, 6.29); ctx.fill();
+                        ctx.shadowBlur = 0;
+                        ctx.globalAlpha = 0.45 * p.golden;
+                        ctx.strokeStyle = colors.gold; ctx.lineWidth = 1;
+                        ctx.beginPath(); ctx.arc(p.x, p.y, p.size + 7 + 3 * Math.sin(t * 2 + p.radius), 0, 6.29); ctx.stroke();
+                    }
+                });
+                ctx.globalAlpha = 1;
+                if (running && !reduceMotion) requestAnimationFrame(frame);
+            }
+            readColors();
+            resize();
+            /* with reduced motion, a single settled frame is drawn instead of the animation */
+            function drawSettled() {
+                start = performance.now(); lastShuffle = 0;
+                for (var s = 0; s < 240; s++) frame(start + s * 16);
+            }
+            if (reduceMotion) {
+                drawSettled();
+            } else {
+                requestAnimationFrame(frame);
+                if ("IntersectionObserver" in window) {
+                    new IntersectionObserver(function (entries) {
+                        var visible = entries[0].isIntersecting;
+                        if (visible && !running) { running = true; requestAnimationFrame(frame); }
+                        running = visible;
+                    }).observe(canvas);
+                }
+            }
+            window.addEventListener("resize", function () { resize(); if (reduceMotion) drawSettled(); });
+            window.addEventListener("themechange", function () { readColors(); if (reduceMotion) drawSettled(); });
+        })();
+    </script>
+{% endblock %}

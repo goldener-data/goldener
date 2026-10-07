@@ -36,6 +36,7 @@ dev = [
   "mypy",
   "types-pillow",
   "types-tqdm",
+  "pdoc",
 ]
 
 gpu = [

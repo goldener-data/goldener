@@ -1,3 +1,14 @@
+"""Dimensionality reduction of vectors.
+
+The reduction tools reduce the dimension of 2D vectors, for instance to speed up the clustering or the selection
+on high dimensional embeddings:
+
+- `GoldReductionTool` is the abstract interface of all reduction tools.
+- `GoldReductionToolWithFit` is the interface for the reduction methods requiring to be fitted on data.
+- `GoldSKLearnReductionTool` wraps UMAP and scikit-learn methods (PCA, TSNE, GaussianRandomProjection).
+- `GoldTorchModuleReductionTool` uses any PyTorch module to reduce the vectors.
+"""
+
 import logging
 from abc import ABC, abstractmethod
 

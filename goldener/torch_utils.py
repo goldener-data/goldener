@@ -1,3 +1,9 @@
+"""Utilities to work with PyTorch tensors and datasets.
+
+This module gathers helpers to collate batches, convert tensors from/to numpy vectors and access the samples of
+datasets, as well as `ResetableTorchIterableDataset`, an iterable dataset that can be re-initialized.
+"""
+
 from collections.abc import Sequence
 from logging import getLogger
 from typing import Callable, Any, Iterator, TypeVar

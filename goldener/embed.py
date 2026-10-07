@@ -1,3 +1,14 @@
+"""Extraction of embeddings from models.
+
+The embedding tools are used by the `goldener.describe.GoldDescriptor` to compute the embeddings of the samples:
+
+- `GoldEmbeddingTool` is the abstract interface to implement to plug any model.
+- `GoldTorchEmbeddingTool` extracts the outputs of some layers of a PyTorch model through forward hooks.
+- `GoldMultiModalTorchEmbeddingTool` does the same for models taking multiple inputs (multimodal data).
+- `GoldEmbeddingFusionTool` and `EmbeddingFusionStrategy` define how the outputs of multiple layers are fused
+  (concatenation, addition, average, max) into a single embedding.
+"""
+
 from abc import abstractmethod, ABC
 from typing_extensions import assert_never
 from typing import Dict, List, Callable, Any

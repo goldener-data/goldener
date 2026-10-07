@@ -1,3 +1,15 @@
+"""Selection of the most representative subset of samples.
+
+The selection finds a coresubset: a subset of samples representing at best the full dataset from its vectors. It is
+used to choose the data to annotate and, by the `goldener.split.GoldSplitter`, to fill the sets of a split.
+
+- `GoldSelectionTool` is the abstract interface of the coresubset selection algorithms.
+- `GoldGreedyKernelPointsSelectionTool`, `GoldGreedyKCenterSelectionTool`, `GoldGreedyClosestPointSelectionTool`,
+  `GoldGreedyFarthestPointSelectionTool` and `GoldZCoreSelectionTool` implement different selection algorithms.
+- `GoldSelector` runs the selection on a whole dataset of vectors, possibly in chunks, after a dimensionality
+  reduction (`goldener.reduce`) or stratified by label, and stores the selected samples locally.
+"""
+
 import math
 from abc import ABC, abstractmethod
 from enum import Enum

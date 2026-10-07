@@ -1,0 +1,25 @@
+/* Pygments tokens (signatures and code blocks) mapped on the brand tokens of theme.css. */
+.pdoc-code .hll { background-color: var(--brand-soft); }
+.pdoc-code .c, .pdoc-code .ch, .pdoc-code .cm, .pdoc-code .cp, .pdoc-code .cpf, .pdoc-code .c1, .pdoc-code .cs {
+    color: var(--text-muted); font-style: italic;
+}
+.pdoc-code .k, .pdoc-code .kd, .pdoc-code .kn, .pdoc-code .kp, .pdoc-code .kr, .pdoc-code .ow {
+    color: var(--code-keyword); font-weight: 500;
+}
+.pdoc-code .kc { color: var(--code-number); }
+.pdoc-code .kt, .pdoc-code .nc { color: var(--code-type); }
+.pdoc-code .nb, .pdoc-code .bp { color: var(--code-builtin); }
+.pdoc-code .nf, .pdoc-code .fm { color: var(--code-name); }
+.pdoc-code .nd { color: var(--brand); }
+.pdoc-code .ne { color: var(--code-keyword); }
+.pdoc-code .n, .pdoc-code .nn, .pdoc-code .nv, .pdoc-code .na { color: var(--text-strong); }
+.pdoc-code .s, .pdoc-code .sa, .pdoc-code .sb, .pdoc-code .sc, .pdoc-code .dl, .pdoc-code .sd, .pdoc-code .s2,
+.pdoc-code .se, .pdoc-code .sh, .pdoc-code .si, .pdoc-code .sx, .pdoc-code .sr, .pdoc-code .s1, .pdoc-code .ss {
+    color: var(--code-string);
+}
+.pdoc-code .m, .pdoc-code .mb, .pdoc-code .mf, .pdoc-code .mh, .pdoc-code .mi, .pdoc-code .il, .pdoc-code .mo {
+    color: var(--code-number);
+}
+.pdoc-code .o { color: var(--brand); }
+.pdoc-code .p { color: var(--code-punct); }
+.pdoc-code .err { color: var(--code-keyword); }
