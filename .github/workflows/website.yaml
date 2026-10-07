@@ -1,0 +1,63 @@
+name: Update the website
+
+# Upload the website to the hosting provider through FTP. It runs at the end of the release workflow, and it can be
+# triggered manually (on the branch or tag chosen in the GitHub UI) to update the website without a release.
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # two uploads must not write on the server at the same time
+  group: website
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Upload the website to the hosting provider through FTP
+    runs-on: ubuntu-latest
+    environment:
+      name: website
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install uv with caching
+        uses: astral-sh/setup-uv@22695119d769bdb6f7032ad67b9bca0ef8c4a174 # v5.4.0
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      # docs/api is regenerated from the checked out code: the commit of the API docs workflow may not be in it
+      - name: Generate API docs
+        run: ./scripts/generate_api_docs.sh
+
+      # the server root gets the landing page as index.html, the API docs in the api folder and the images it
+      # links to in the statics folder
+      - name: Stage the website
+        run: |
+          mkdir -p _site
+          cp docs/landing/index.html _site/index.html
+          cp -r docs/api _site/api
+          cp -r docs/statics _site/statics
+
+      - name: Upload the website
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          protocol: ftps
+          local-dir: ./_site/
+          server-dir: ${{ vars.FTP_SERVER_DIR || './' }}

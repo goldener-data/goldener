@@ -320,6 +320,8 @@ Once the package is published on PyPI, the release workflow regenerates the API 
 to the hosting provider through FTPS: `docs/landing/index.html` as `index.html` at the root, `docs/api` as the
 `api` folder and `docs/statics` as the `statics` folder. It requires, in the `website` environment of the repository, the secrets `FTP_SERVER`, `FTP_USERNAME` and `FTP_PASSWORD`, and optionally the
 variable `FTP_SERVER_DIR` (the remote folder, ending with `/`, defaults to the FTP root).
+To update the website without a release (e.g. after a change of the landing page), run the `Update the website`
+workflow manually from the Actions tab of the repository, on the branch or tag to publish.
 
 # Contributors
 
