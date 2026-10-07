@@ -41,14 +41,22 @@ jobs:
 
       # docs/api is regenerated from the checked out code: the commit of the API docs workflow may not be in it
       - name: Generate API docs
+        env:
+          # the "View source" links point to the released tag (or the branch chosen for a manual run)
+          API_DOCS_SOURCE_REF: ${{ github.ref_name }}
         run: ./scripts/generate_api_docs.sh
 
       # the server root gets the landing page as index.html, the API docs in the api folder and the images it
-      # links to in the statics folder
+      # links to in the statics folder. The landing page links to ../api and ../statics from docs/landing: these
+      # paths are made relative to its deployed location, so that they stay in FTP_SERVER_DIR when it is nested.
       - name: Stage the website
         run: |
           mkdir -p _site
-          cp docs/landing/index.html _site/index.html
+          sed -e 's#\.\./api/#api/#g' -e 's#\.\./statics/#statics/#g' docs/landing/index.html > _site/index.html
+          if grep -q '\.\./' _site/index.html; then
+            echo "docs/landing/index.html links to a parent folder not deployed on the website." >&2
+            exit 1
+          fi
           cp -r docs/api _site/api
           cp -r docs/statics _site/statics
 

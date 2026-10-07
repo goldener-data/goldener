@@ -302,9 +302,16 @@ whenever you make a commit.
 ```
 
 The API documentation is generated with [pdoc](https://pdoc.dev) from the docstrings (Google style) and stored
-in [`docs/api`](docs/api) (open `docs/api/index.html` in a browser). On every pull request, the `API docs`
-GitHub action regenerates it and commits the changes to the pull request branch, so that the docs are merged with
-the code (for pull requests from forks, run the script and commit `docs/api` yourself).
+in [`docs/api`](docs/api) (open `docs/api/index.html` in a browser). You don't need to commit it in your pull
+request: after each merge on `main`, the `API docs` GitHub action regenerates it and commits the changes directly
+on `main` (it can also be run manually from the Actions tab).
+
+### API documentation
+
+Because `main` requires a reviewed pull request, the `API docs` action pushes with a GitHub App token. It requires:
+- a GitHub App installed on the repository, with the `Contents: Read and write` permission, and allowed to bypass
+  the pull request rule of `main` (in the branch protection or ruleset settings);
+- the repository secrets `API_DOCS_APP_ID` (the App ID) and `API_DOCS_APP_PRIVATE_KEY` (a private key of the App).
 
 ## Release Process
 

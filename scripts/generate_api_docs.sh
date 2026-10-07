@@ -6,6 +6,8 @@ cd "$(dirname "$0")/.."
 
 OUTPUT_DIR="docs/api"
 REPO_URL="https://github.com/goldener-data/goldener"
+# git ref of the "View source" links: main by default, the released tag when the website is deployed
+SOURCE_REF="${API_DOCS_SOURCE_REF:-main}"
 
 # goldener/__init__.py defines __all__, which hides its submodules from pdoc:
 # its direct submodules and subpackages must then be listed explicitly.
@@ -17,7 +19,7 @@ uv run --no-sync pdoc \
     --docformat google \
     --template-directory scripts/api_docs_templates \
     --no-show-source \
-    --edit-url "goldener=${REPO_URL}/blob/main/goldener/" \
+    --edit-url "goldener=${REPO_URL}/blob/${SOURCE_REF}/goldener/" \
     --logo-link "${REPO_URL}" \
     --footer-text "goldener $(grep -m1 '^version' pyproject.toml | cut -d'"' -f2)" \
     -o "$OUTPUT_DIR" \

@@ -1210,7 +1210,8 @@ nav.pdoc details.nav-dropdown li a.active {
     transition: opacity .2s;
 }
 
-.pdoc pre:hover .code-copy {
+.pdoc pre:hover .code-copy,
+.pdoc pre:focus-within .code-copy {
     opacity: 1;
 }
 
