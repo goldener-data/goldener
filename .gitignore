@@ -49,3 +49,6 @@ features.h5
 # Jupyter Notebook
 *.ipynb_checkpoints/
 *.ipynb
+
+# Generated API docs (scripts/generate_api_docs.sh)
+docs/api/
