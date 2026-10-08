@@ -12,7 +12,7 @@ SOURCE_REF="${API_DOCS_SOURCE_REF:-main}"
 # goldener/__init__.py defines __all__, which hides its submodules from pdoc:
 # its direct submodules and subpackages must then be listed explicitly.
 MODULES=$(find goldener -mindepth 1 -maxdepth 1 -name "*.py" ! -name "__init__.py" | sed 's#/#.#g; s#\.py$##' | sort)
-PACKAGES=$(find goldener -mindepth 2 -maxdepth 2 -name "__init__.py" | xargs -n1 dirname | sed 's#/#.#g' | sort)
+PACKAGES=$(find goldener -mindepth 2 -maxdepth 2 -name "__init__.py" | sed 's#/__init__\.py$##; s#/#.#g' | sort)
 
 rm -rf "$OUTPUT_DIR"
 uv run --no-sync pdoc \

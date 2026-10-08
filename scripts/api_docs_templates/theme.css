@@ -23,6 +23,7 @@
     --text-muted: #8a93b6;
     --brand: var(--gold-500);
     --brand-strong: var(--gold-400);
+    --brand-hover: var(--gold-500);
     --brand-soft: rgba(213, 183, 27, 0.12);
     --brand-glow: rgba(213, 183, 27, 0.35);
     --on-brand: var(--navy-900);
@@ -53,9 +54,10 @@
     --sidebar: rgba(255, 253, 246, 0.88);
     --text-strong: #12172c;
     --text-body: #343c5c;
-    --text-muted: #6a7193;
+    --text-muted: #5c6385;
     --brand: #b39407;
-    --brand-strong: #8a7000;
+    --brand-strong: #735e00;
+    --brand-hover: #5a4900;
     --brand-soft: rgba(213, 183, 27, 0.14);
     --brand-glow: rgba(213, 183, 27, 0.4);
     --on-brand: #12172c;
@@ -67,10 +69,10 @@
     --code-name: #1d2b6b;
     --code-keyword: #b0306a;
     --code-builtin: #2457c5;
-    --code-type: #1e7a66;
-    --code-string: #4d7c0f;
-    --code-number: #b45309;
-    --code-punct: #6a7193;
+    --code-type: #1a6e5b;
+    --code-string: #456f0d;
+    --code-number: #a04a07;
+    --code-punct: #5c6385;
 
     color-scheme: light;
 }
@@ -80,7 +82,7 @@
     --text: var(--text-body);
     --muted: var(--text-muted);
     --link: var(--brand-strong);
-    --link-hover: var(--brand);
+    --link-hover: var(--brand-hover);
     --code: var(--surface-sunken);
     --active: var(--brand-soft);
     --accent: var(--surface-sunken);

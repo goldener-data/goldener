@@ -19,6 +19,8 @@ jobs:
   deploy:
     name: Upload the website to the hosting provider through FTP
     runs-on: ubuntu-latest
+    # a hung upload must not block the next deployments waiting on the concurrency group
+    timeout-minutes: 30
     environment:
       name: website
     steps:

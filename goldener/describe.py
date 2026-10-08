@@ -1,7 +1,7 @@
 """Description of the samples of a dataset with embeddings.
 
 This is the first step of most of the Goldener pipelines. The `GoldDescriptor` iterates over a dataset in batches,
-computes the embedding of every sample with a `goldener.embed.GoldEmbeddingTool` and stores the embeddings
+computes the embedding of the samples with a `goldener.embed.GoldEmbeddingTool` and stores the embeddings
 locally. The description is idempotent: samples already described are not recomputed.
 
 The resulting embeddings are the input of the vectorization step (`goldener.vectorize`).

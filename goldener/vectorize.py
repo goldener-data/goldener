@@ -1,6 +1,6 @@
 """Vectorization of the embeddings into 2D tensors of vectors.
 
-An embedding can have any shape (e.g. one vector per token or per pixel). The algorithms of Goldener work on
+An embedding is a tensor of at least 3 dimensions (batch, channels and e.g. tokens or pixels). The algorithms of Goldener work on
 2D tensors of vectors, so the embeddings are flattened into vectors and, optionally, some of these vectors are
 filtered out (e.g. keeping only the vectors of a region of interest given by a target).
 

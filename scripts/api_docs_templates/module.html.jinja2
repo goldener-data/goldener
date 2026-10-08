@@ -370,7 +370,9 @@ API docs of Goldener, with one page per source file:
 
             /* open the drop-downs containing the sidebar link of the current anchor */
             function openNavDropdownsForHash() {
-                var hash = decodeURIComponent(window.location.hash);
+                var hash;
+                /* a malformed fragment must not stop the initialization of the page controls */
+                try { hash = decodeURIComponent(window.location.hash); } catch (e) { return; }
                 if (!hash || hash === "#") return;
                 var links = document.querySelectorAll("nav.pdoc .nav-dropdown a");
                 var link = null;
@@ -498,10 +500,10 @@ API docs of Goldener, with one page per source file:
                 };
             }
             var lastShuffle = 0;
-            function frame(now) {
+            /* move the points (simulation only, nothing is drawn) */
+            function step(now) {
                 var t = (now - start) / 1000;
                 if (t - lastShuffle > 3.2) { lastShuffle = t; reassign(); pickGolden(); }
-                ctx.clearRect(0, 0, width, height);
                 var positions = centers.map(function (c) { return centerPosition(c, t); });
                 points.forEach(function (p) {
                     var c = positions[p.cluster];
@@ -512,6 +514,10 @@ API docs of Goldener, with one page per source file:
                     p.x += (tx - p.x) * 0.025; p.y += (ty - p.y) * 0.025;
                     p.golden += (p.goldenTarget - p.golden) * 0.04;
                 });
+            }
+            function draw(now) {
+                var t = (now - start) / 1000;
+                ctx.clearRect(0, 0, width, height);
                 ctx.lineWidth = 0.7;
                 ctx.strokeStyle = colors.line;
                 for (var i = 0; i < points.length; i++) {
@@ -542,6 +548,10 @@ API docs of Goldener, with one page per source file:
                     }
                 });
                 ctx.globalAlpha = 1;
+            }
+            function frame(now) {
+                step(now);
+                draw(now);
                 if (running && !reduceMotion) requestAnimationFrame(frame);
             }
             readColors();
@@ -549,7 +559,8 @@ API docs of Goldener, with one page per source file:
             /* with reduced motion, a single settled frame is drawn instead of the animation */
             function drawSettled() {
                 start = performance.now(); lastShuffle = 0;
-                for (var s = 0; s < 240; s++) frame(start + s * 16);
+                for (var s = 0; s < 240; s++) step(start + s * 16);
+                draw(start + 239 * 16);
             }
             if (reduceMotion) {
                 drawSettled();

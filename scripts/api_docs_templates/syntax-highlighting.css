@@ -10,7 +10,7 @@
 .pdoc-code .kt, .pdoc-code .nc { color: var(--code-type); }
 .pdoc-code .nb, .pdoc-code .bp { color: var(--code-builtin); }
 .pdoc-code .nf, .pdoc-code .fm { color: var(--code-name); }
-.pdoc-code .nd { color: var(--brand); }
+.pdoc-code .nd { color: var(--brand-strong); }
 .pdoc-code .ne { color: var(--code-keyword); }
 .pdoc-code .n, .pdoc-code .nn, .pdoc-code .nv, .pdoc-code .na { color: var(--text-strong); }
 .pdoc-code .s, .pdoc-code .sa, .pdoc-code .sb, .pdoc-code .sc, .pdoc-code .dl, .pdoc-code .sd, .pdoc-code .s2,
@@ -20,6 +20,6 @@
 .pdoc-code .m, .pdoc-code .mb, .pdoc-code .mf, .pdoc-code .mh, .pdoc-code .mi, .pdoc-code .il, .pdoc-code .mo {
     color: var(--code-number);
 }
-.pdoc-code .o { color: var(--brand); }
+.pdoc-code .o { color: var(--brand-strong); }
 .pdoc-code .p { color: var(--code-punct); }
 .pdoc-code .err { color: var(--code-keyword); }

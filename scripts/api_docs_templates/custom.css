@@ -1246,13 +1246,17 @@ nav.pdoc details.nav-dropdown li a.active {
     opacity: 0;
     transform: translateY(16px) scale(.9);
     pointer-events: none;
-    transition: opacity .3s, transform .3s;
+    /* hidden: out of the tab order until it becomes visible (delayed to keep the fade out) */
+    visibility: hidden;
+    transition: opacity .3s, transform .3s, visibility 0s .3s;
 }
 
 .back-to-top.visible {
     opacity: 1;
     transform: none;
     pointer-events: auto;
+    visibility: visible;
+    transition: opacity .3s, transform .3s;
 }
 
 .back-to-top:hover {
