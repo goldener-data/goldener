@@ -67,10 +67,10 @@ jobs:
 
       # The OVH FTP server does not implement FTPS (it answers "500 This security scheme is not implemented" to
       # AUTH TLS), so the files go through SFTP with the same account. The api and statics folders are only written
-      # by this workflow: the files removed from them locally are also removed on the server. index.html is uploaded
-      # last so that the landing page never links to files not uploaded yet. The server must match the host key
-      # pinned in SFTP_KNOWN_HOSTS: an unknown key is refused instead of trusted, so the password is never sent to
-      # another server.
+      # by this workflow: the files removed from them locally are also removed on the server, but only once the new
+      # index.html is uploaded, so that neither the old nor the new landing page links to missing files. The server
+      # must match the host key pinned in SFTP_KNOWN_HOSTS: an unknown key is refused instead of trusted, so the
+      # password is never sent to another server.
       - name: Upload the website
         env:
           FTP_SERVER: ${{ secrets.FTP_SERVER }}
@@ -80,6 +80,10 @@ jobs:
           SFTP_PORT: ${{ vars.SFTP_PORT }}
           SFTP_KNOWN_HOSTS: ${{ vars.SFTP_KNOWN_HOSTS }}
         run: |
+          if [ -z "$SFTP_PORT" ]; then
+            echo "The SFTP_PORT variable must hold the SFTP port of the server." >&2
+            exit 1
+          fi
           if [ -z "$SFTP_KNOWN_HOSTS" ]; then
             echo "The SFTP_KNOWN_HOSTS variable must hold the known_hosts line of the server." >&2
             exit 1
@@ -92,8 +96,10 @@ jobs:
           set sftp:connect-program "ssh -a -x -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$known_hosts"
           lcd _site
           cd "$FTP_SERVER_DIR"
-          mirror --reverse --delete --parallel=4 --verbose api api
-          mirror --reverse --delete --parallel=4 --verbose statics statics
+          mirror --reverse --parallel=4 --verbose api api
+          mirror --reverse --parallel=4 --verbose statics statics
           put index.html
+          mirror --reverse --delete --verbose api api
+          mirror --reverse --delete --verbose statics statics
           bye
           EOF
