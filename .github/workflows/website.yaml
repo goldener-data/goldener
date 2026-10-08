@@ -41,7 +41,7 @@ jobs:
       - name: Install dependencies
         run: uv sync --extra dev
 
-      # docs/api is regenerated from the checked out code: the commit of the API docs workflow may not be in it
+      # docs/api is not committed: it is generated from the checked out code
       - name: Generate API docs
         env:
           # the "View source" links point to the released tag (or the branch chosen for a manual run)
