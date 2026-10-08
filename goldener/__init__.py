@@ -1,3 +1,24 @@
+"""Goldener - Make your data even more valuable.
+
+Goldener is a modality-agnostic library to orchestrate data during the full lifecycle of AI pipelines. All its
+features rely on the same principle: the semantics of the data is described by embeddings extracted from
+pre-trained/foundational models, and data-centric algorithms are applied on these embeddings.
+
+The features are built as a pipeline of steps. The data processing steps (description, vectorization, clustering,
+selection) store their results locally so that they can be stopped and restarted without recomputing what is
+already done:
+
+- `goldener.describe`: compute the embeddings of the samples of a dataset.
+- `goldener.vectorize`: turn the embeddings into 2D vectors (one or multiple vectors per sample).
+- `goldener.reduce`: reduce the dimension of the vectors.
+- `goldener.clusterize`: group the vectors in clusters.
+- `goldener.select`: select the most representative subset of samples.
+- `goldener.split`: split a dataset in multiple sets (train, validation, test, ...).
+- `goldener.organize`: balance the batches with the clusters of the data during training.
+
+Most of the main classes are re-exported at the root of the package, e.g. `from goldener import GoldSplitter`.
+"""
+
 from goldener.clusterize import (
     GoldClusteringTool,
     GoldSKLearnClusteringTool,

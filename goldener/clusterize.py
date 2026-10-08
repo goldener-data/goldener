@@ -1,3 +1,16 @@
+"""Clustering of vectorized samples.
+
+Clustering groups the vectorized samples in clusters, gathering similar content unless a random clustering is
+used. The clusters are used to keep the variability of the data
+when selecting or splitting it, and to balance the batches during training (`goldener.organize`).
+
+- `GoldClusteringTool` is the abstract interface of the clustering algorithms.
+- `GoldSKLearnClusteringTool` wraps a scikit-learn clustering estimator providing `predict` and `n_clusters`.
+- `GoldRandomClusteringTool` chunks the data randomly into clusters of almost equal size.
+- `GoldClusterizer` runs the clustering on a whole dataset of vectors, possibly in chunks, and stores the cluster
+  assignments locally (one per vector by default, a sample with multiple vectors can then have multiple clusters).
+"""
+
 import math
 from abc import ABC, abstractmethod
 from logging import getLogger

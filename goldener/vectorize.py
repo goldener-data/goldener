@@ -1,3 +1,17 @@
+"""Vectorization of the embeddings into 2D tensors of vectors.
+
+An embedding is a tensor of at least 3 dimensions (batch, channels and e.g. tokens or pixels). The algorithms of Goldener work on
+2D tensors of vectors, so the embeddings are flattened into vectors and, optionally, some of these vectors are
+filtered out (e.g. keeping only the vectors of a region of interest given by a target).
+
+- `GoldTensorVectorizationTool` transforms a tensor into vectors, using `Filter2DWithCount` and `FilterLocation`
+  to filter them, and returns a `Vectorized` object keeping track of the sample of each vector.
+- `GoldVectorizer` applies the vectorization on a whole dataset in batches and stores the vectors locally,
+  without recomputing already vectorized samples.
+
+The vectors are the input of the clustering (`goldener.clusterize`) and selection (`goldener.select`) steps.
+"""
+
 import math
 import time
 from itertools import islice

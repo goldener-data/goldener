@@ -1,3 +1,9 @@
+"""Vectorization tools for Vision Transformer (ViT) models.
+
+These functions build `goldener.vectorize.GoldTensorVectorizationTool` instances keeping only some of the tokens
+output by a ViT model: the class token, the prefix tokens (class and register tokens) or the patch tokens.
+"""
+
 from typing import Callable
 
 import torch

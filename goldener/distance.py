@@ -1,3 +1,5 @@
+"""Distance functions between vectors used by the selection algorithms."""
+
 import torch
 import torch.nn.functional as F
 

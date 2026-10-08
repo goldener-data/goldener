@@ -1,0 +1,94 @@
+/* Goldener brand tokens (same palette as docs/landing), dark by default with a light variant. */
+:root,
+:root[data-theme="dark"] {
+    --navy-950: #0d1122;
+    --navy-900: #12172c;
+    --navy-800: #171e38;
+    --navy-700: #222b47;
+    --navy-600: #2b3557;
+    --navy-500: #3a4570;
+    --gold-500: #d5b71b;
+    --gold-400: #e6c948;
+    --gold-300: #f0da76;
+
+    --bg: var(--navy-800);
+    --bg-glow-1: rgba(213, 183, 27, 0.13);
+    --bg-glow-2: rgba(120, 140, 255, 0.07);
+    --surface: rgba(34, 43, 71, 0.62);
+    --surface-strong: var(--navy-700);
+    --surface-sunken: rgba(13, 17, 34, 0.55);
+    --sidebar: rgba(13, 17, 34, 0.82);
+    --text-strong: #f5f3ec;
+    --text-body: #c9cde0;
+    --text-muted: #8a93b6;
+    --brand: var(--gold-500);
+    --brand-strong: var(--gold-400);
+    --brand-hover: var(--gold-500);
+    --brand-soft: rgba(213, 183, 27, 0.12);
+    --brand-glow: rgba(213, 183, 27, 0.35);
+    --on-brand: var(--navy-900);
+    --border: rgba(183, 189, 214, 0.13);
+    --border-brand: rgba(213, 183, 27, 0.32);
+    --shadow: 0 24px 60px -28px rgba(0, 0, 0, 0.7);
+    --shadow-hover: 0 28px 70px -24px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(213, 183, 27, 0.35);
+
+    --code-name: var(--gold-300);
+    --code-keyword: #f08fb3;
+    --code-builtin: #8fb7ff;
+    --code-type: #7fd8c4;
+    --code-string: #b5e48c;
+    --code-number: #ffb86b;
+    --code-punct: #8a93b6;
+
+    --pdoc-background: var(--bg);
+    color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+    --bg: #faf7ee;
+    --bg-glow-1: rgba(213, 183, 27, 0.18);
+    --bg-glow-2: rgba(58, 69, 112, 0.08);
+    --surface: rgba(255, 255, 255, 0.78);
+    --surface-strong: #ffffff;
+    --surface-sunken: #f3eedf;
+    --sidebar: rgba(255, 253, 246, 0.88);
+    --text-strong: #12172c;
+    --text-body: #343c5c;
+    --text-muted: #5c6385;
+    --brand: #b39407;
+    --brand-strong: #735e00;
+    --brand-hover: #5a4900;
+    --brand-soft: rgba(213, 183, 27, 0.14);
+    --brand-glow: rgba(213, 183, 27, 0.4);
+    --on-brand: #12172c;
+    --border: rgba(18, 23, 44, 0.1);
+    --border-brand: rgba(179, 148, 7, 0.38);
+    --shadow: 0 22px 50px -30px rgba(18, 23, 44, 0.35);
+    --shadow-hover: 0 26px 60px -26px rgba(18, 23, 44, 0.4), 0 0 0 1px rgba(179, 148, 7, 0.45);
+
+    --code-name: #1d2b6b;
+    --code-keyword: #b0306a;
+    --code-builtin: #2457c5;
+    --code-type: #1a6e5b;
+    --code-string: #456f0d;
+    --code-number: #a04a07;
+    --code-punct: #5c6385;
+
+    color-scheme: light;
+}
+
+/* pdoc variables mapped on the brand tokens */
+.pdoc {
+    --text: var(--text-body);
+    --muted: var(--text-muted);
+    --link: var(--brand-strong);
+    --link-hover: var(--brand-hover);
+    --code: var(--surface-sunken);
+    --active: var(--brand-soft);
+    --accent: var(--surface-sunken);
+    --accent2: var(--border);
+    --nav-hover: var(--brand-soft);
+    --name: var(--code-name);
+    --def: var(--code-keyword);
+    --annotation: var(--code-type);
+}

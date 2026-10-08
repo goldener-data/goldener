@@ -1,3 +1,9 @@
+"""Transforms for vision data.
+
+`PatchifyImageMask` patchifies a binary mask to align it with the tokens of a ViT model, so that the mask can be
+used to filter the token vectors during the vectorization (see `goldener.vectorize`).
+"""
+
 from typing import Any
 
 import torch

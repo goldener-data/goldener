@@ -1,3 +1,12 @@
+"""Organization of the data during training.
+
+With a random sampler, the content of the batches can vary a lot, which can harm the convergence of a model.
+The `GoldClusterizedBatchSampler` forces every batch to contain at least one sample of each cluster of the data
+(see `goldener.clusterize`), while keeping randomness in the selection of the samples within the clusters. When
+there are more clusters than the batch size, every batch contains samples from different clusters instead.
+`ExhaustedClusterStrategy` defines what to do when all the samples of a cluster have been used.
+"""
+
 from enum import Enum
 from logging import getLogger
 from typing import Sequence

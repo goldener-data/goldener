@@ -1,3 +1,13 @@
+"""Splitting of a dataset in multiple sets.
+
+The `GoldSplitter` splits a dataset into multiple sets (e.g. train, validation and test) defined by `GoldSet`
+configurations. Instead of a random split, every set but the last one is filled by selecting a representative
+subset of the samples (`goldener.select`), so that the sets reproduce the variability of the task. The last set
+gathers all the remaining samples. The splitter chains the
+whole pipeline: description (`goldener.describe`), vectorization (`goldener.vectorize`), optional clustering
+(`goldener.clusterize`) and selection.
+"""
+
 from collections import defaultdict
 from dataclasses import dataclass
 from logging import getLogger

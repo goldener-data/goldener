@@ -1,3 +1,10 @@
+"""Generic utilities shared by the Goldener features.
+
+This module gathers helpers to validate inputs (shapes, sampling sizes, types), to compute sampling counts from
+ratios and to distribute them among chunks, and to filter or transform batches (e.g. binarizing multiple targets,
+or splitting multilabel samples into independent labels).
+"""
+
 import math
 from collections import defaultdict
 from typing import Iterable, Any, TypeVar

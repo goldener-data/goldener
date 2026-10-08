@@ -1,3 +1,10 @@
+"""Utilities to store and read the results of Goldener.
+
+All the steps of Goldener store their results locally, in tables. This module gathers the helpers to create and
+query these tables, and `GoldPxtTorchDataset`, a PyTorch dataset reading such a table while restoring the original
+shape of the array columns.
+"""
+
 from typing import Literal, Any, Iterator, Callable
 import shutil
 

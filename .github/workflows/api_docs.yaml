@@ -1,0 +1,83 @@
+name: API docs
+
+# Regenerate the developer API docs (docs/api) from the code merged on main and commit them directly on main.
+#
+# The push is made with a GitHub App token because main requires a reviewed pull request: the App must be
+# allowed to bypass this rule (see the "API documentation" section of the README for the setup).
+
+on:
+  push:
+    branches: [main]
+    # the commit of this workflow only changes docs/api: it must not trigger a new run
+    paths-ignore:
+      - "docs/api/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # a newer push on main cancels the generation for an older one
+  group: api-docs-main
+  cancel-in-progress: true
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Create GitHub App token
+      id: app-token
+      uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2.2.2
+      with:
+        app-id: ${{ secrets.API_DOCS_APP_ID }}
+        private-key: ${{ secrets.API_DOCS_APP_PRIVATE_KEY }}
+
+    - uses: actions/checkout@v4
+      with:
+        ref: main
+        token: ${{ steps.app-token.outputs.token }}
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.13"
+
+    - name: Install uv with caching
+      uses: astral-sh/setup-uv@22695119d769bdb6f7032ad67b9bca0ef8c4a174 # v5.4.0
+      with:
+        enable-cache: true
+
+    - name: Install dependencies
+      run: uv sync --extra dev
+
+    - name: Generate API docs
+      run: ./scripts/generate_api_docs.sh
+
+    - name: Commit API docs on main
+      env:
+        APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+        GH_TOKEN: ${{ steps.app-token.outputs.token }}
+      run: |
+        git add --all docs/api
+        if git diff --cached --quiet; then
+          echo "API docs are up to date."
+          exit 0
+        fi
+        git fetch origin main
+        if [ "$(git rev-parse origin/main)" != "$(git rev-parse HEAD)" ]; then
+          echo "main has moved since the checkout: the run triggered by the newer commit regenerates the docs."
+          exit 0
+        fi
+        BOT_ID=$(gh api "/users/${APP_SLUG}%5Bbot%5D" --jq .id)
+        git config user.name "${APP_SLUG}[bot]"
+        git config user.email "${BOT_ID}+${APP_SLUG}[bot]@users.noreply.github.com"
+        git commit -m "docs(api): regenerate API documentation"
+        if ! git push origin HEAD:main; then
+          git fetch origin main
+          if [ "$(git rev-parse origin/main)" != "$(git rev-parse HEAD~1)" ]; then
+            echo "main has moved before the push: the run triggered by the newer commit regenerates the docs."
+            exit 0
+          fi
+          exit 1
+        fi

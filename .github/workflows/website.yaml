@@ -1,0 +1,73 @@
+name: Update the website
+
+# Upload the website to the hosting provider through FTP. It runs at the end of the release workflow, and it can be
+# triggered manually (on the branch or tag chosen in the GitHub UI) to update the website without a release.
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # two uploads must not write on the server at the same time
+  group: website
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Upload the website to the hosting provider through FTP
+    runs-on: ubuntu-latest
+    # a hung upload must not block the next deployments waiting on the concurrency group
+    timeout-minutes: 30
+    environment:
+      name: website
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install uv with caching
+        uses: astral-sh/setup-uv@22695119d769bdb6f7032ad67b9bca0ef8c4a174 # v5.4.0
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      # docs/api is regenerated from the checked out code: the commit of the API docs workflow may not be in it
+      - name: Generate API docs
+        env:
+          # the "View source" links point to the released tag (or the branch chosen for a manual run)
+          API_DOCS_SOURCE_REF: ${{ github.ref_name }}
+        run: ./scripts/generate_api_docs.sh
+
+      # the server root gets the landing page as index.html, the API docs in the api folder and the images it
+      # links to in the statics folder. The landing page links to ../api and ../statics from docs/landing: these
+      # paths are made relative to its deployed location, so that they stay in FTP_SERVER_DIR when it is nested.
+      - name: Stage the website
+        run: |
+          mkdir -p _site
+          sed -e 's#\.\./api/#api/#g' -e 's#\.\./statics/#statics/#g' docs/landing/index.html > _site/index.html
+          if grep -q '\.\./' _site/index.html; then
+            echo "docs/landing/index.html links to a parent folder not deployed on the website." >&2
+            exit 1
+          fi
+          cp -r docs/api _site/api
+          cp -r docs/statics _site/statics
+
+      - name: Upload the website
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          protocol: ftps
+          local-dir: ./_site/
+          server-dir: ${{ vars.FTP_SERVER_DIR || './' }}

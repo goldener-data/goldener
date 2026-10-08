@@ -296,6 +296,23 @@ The pre-commit hooks will automatically run:
 
 whenever you make a commit.
 
+8. Generate the developer API documentation:
+```bash
+./scripts/generate_api_docs.sh
+```
+
+The API documentation is generated with [pdoc](https://pdoc.dev) from the docstrings (Google style) and stored
+in [`docs/api`](docs/api) (open `docs/api/index.html` in a browser). You don't need to commit it in your pull
+request: after each merge on `main`, the `API docs` GitHub action regenerates it and commits the changes directly
+on `main` (it can also be run manually from the Actions tab).
+
+### API documentation
+
+Because `main` requires a reviewed pull request, the `API docs` action pushes with a GitHub App token. It requires:
+- a GitHub App installed on the repository, with the `Contents: Read and write` permission, and allowed to bypass
+  the pull request rule of `main` (in the branch protection or ruleset settings);
+- the repository secrets `API_DOCS_APP_ID` (the App ID) and `API_DOCS_APP_PRIVATE_KEY` (a private key of the App).
+
 ## Release Process
 
 To release a new version of the `goldener` package:
@@ -305,6 +322,13 @@ To release a new version of the `goldener` package:
 4. Commit the changes with a message like `release vX.Y.Z`
 5. Merge the branch into `main`
 6. Trigger a new release on GitHub with the tag `vX.Y.Z`
+
+Once the package is published on PyPI, the release workflow regenerates the API docs and uploads the website
+to the hosting provider through FTPS: `docs/landing/index.html` as `index.html` at the root, `docs/api` as the
+`api` folder and `docs/statics` as the `statics` folder. It requires, in the `website` environment of the repository, the secrets `FTP_SERVER`, `FTP_USERNAME` and `FTP_PASSWORD`, and optionally the
+variable `FTP_SERVER_DIR` (the remote folder, ending with `/`, defaults to the FTP root).
+To update the website without a release (e.g. after a change of the landing page), run the `Update the website`
+workflow manually from the Actions tab of the repository, on the branch or tag to publish.
 
 # Contributors
 
