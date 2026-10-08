@@ -1,6 +1,6 @@
 name: Update the website
 
-# Upload the website to the hosting provider through FTP. It runs at the end of the release workflow, and it can be
+# Upload the website to the hosting provider through SFTP. It runs at the end of the release workflow, and it can be
 # triggered manually (on the branch or tag chosen in the GitHub UI) to update the website without a release.
 
 on:
@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   deploy:
-    name: Upload the website to the hosting provider through FTP
+    name: Upload the website to the hosting provider through SFTP
     runs-on: ubuntu-latest
     # a hung upload must not block the next deployments waiting on the concurrency group
     timeout-minutes: 30
@@ -62,12 +62,44 @@ jobs:
           cp -r docs/api _site/api
           cp -r docs/statics _site/statics
 
+      - name: Install lftp
+        run: sudo apt-get update && sudo apt-get install -y lftp
+
+      # The OVH FTP server does not implement FTPS (it answers "500 This security scheme is not implemented" to
+      # AUTH TLS), so the files go through SFTP with the same account. The api and statics folders are only written
+      # by this workflow: the files removed from them locally are also removed on the server, but only once the new
+      # index.html is uploaded, so that neither the old nor the new landing page links to missing files. The server
+      # must match the host key pinned in SFTP_KNOWN_HOSTS: an unknown key is refused instead of trusted, so the
+      # password is never sent to another server.
       - name: Upload the website
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
-        with:
-          server: ${{ secrets.FTP_SERVER }}
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
-          protocol: ftps
-          local-dir: ./_site/
-          server-dir: ${{ vars.FTP_SERVER_DIR || './' }}
+        env:
+          FTP_SERVER: ${{ secrets.FTP_SERVER }}
+          FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+          LFTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+          FTP_SERVER_DIR: ${{ vars.FTP_SERVER_DIR || './' }}
+          SFTP_PORT: ${{ vars.SFTP_PORT }}
+          SFTP_KNOWN_HOSTS: ${{ vars.SFTP_KNOWN_HOSTS }}
+        run: |
+          if [ -z "$SFTP_PORT" ]; then
+            echo "The SFTP_PORT variable must hold the SFTP port of the server." >&2
+            exit 1
+          fi
+          if [ -z "$SFTP_KNOWN_HOSTS" ]; then
+            echo "The SFTP_KNOWN_HOSTS variable must hold the known_hosts line of the server." >&2
+            exit 1
+          fi
+          known_hosts="$RUNNER_TEMP/known_hosts"
+          printf '%s\n' "$SFTP_KNOWN_HOSTS" > "$known_hosts"
+          lftp --env-password -u "$FTP_USERNAME" -p "$SFTP_PORT" "sftp://$FTP_SERVER" <<EOF
+          set cmd:fail-exit yes
+          set net:max-retries 3
+          set sftp:connect-program "ssh -a -x -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$known_hosts"
+          lcd _site
+          cd "$FTP_SERVER_DIR"
+          mirror --reverse --parallel=4 --verbose api api
+          mirror --reverse --parallel=4 --verbose statics statics
+          put index.html
+          mirror --reverse --delete --verbose api api
+          mirror --reverse --delete --verbose statics statics
+          bye
+          EOF
