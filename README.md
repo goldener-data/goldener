@@ -317,7 +317,9 @@ To release a new version of the `goldener` package:
 
 Once the package is published on PyPI, the release workflow regenerates the API docs and uploads the website
 to the hosting provider through SFTP: `docs/landing/index.html` as `index.html` at the root, `docs/api` as the
-`api` folder and `docs/statics` as the `statics` folder. It requires, in the `website` environment of the repository, the secrets `FTP_SERVER`, `FTP_USERNAME` and `FTP_PASSWORD`, and optionally the
+`api` folder and `docs/statics` as the `statics` folder. It requires, in the `website` environment of the repository,
+the secrets `FTP_SERVER`, `FTP_USERNAME` and `FTP_PASSWORD`, the variable `SFTP_KNOWN_HOSTS` (the host key of the
+server, as `ssh-keyscan` prints it, checked against the fingerprint given by the hosting provider), and optionally the
 variable `FTP_SERVER_DIR` (the remote folder, ending with `/`, defaults to the home folder of the FTP account).
 To update the website without a release (e.g. after a change of the landing page), run the `Update the website`
 workflow manually from the Actions tab of the repository, on the branch or tag to publish.
