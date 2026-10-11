@@ -22,6 +22,7 @@ jobs:
       - name: Send the weekly digest to Slack
         env:
           SEND_TO_SLACK: "1"
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           SLACK_CHANNEL: "#issues"
         run: uv run python scripts/weekly_issues_digest.py
