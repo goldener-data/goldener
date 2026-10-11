@@ -2,8 +2,8 @@ name: Weekly issues digest
 
 on:
   workflow_dispatch:   # manual trigger from the Actions tab, for testing
-  # schedule:           # enabled once the external scheduler calls this reliably
-  #   - cron: "17 9 * * 1"  # every Monday at 09:17 UTC (GitHub's own cron is best-effort only)
+   schedule:           # enabled once the external scheduler calls this reliably
+     - cron: "17 9 * * 1"  # every Monday at 09:17 UTC (GitHub's own cron is best-effort only)
 jobs:
   send-digest:
     runs-on: ubuntu-latest
