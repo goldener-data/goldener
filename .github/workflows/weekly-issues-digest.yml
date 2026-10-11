@@ -2,8 +2,8 @@ name: Weekly issues digest
 
 on:
   workflow_dispatch:   # manual trigger from the Actions tab, for testing
-   schedule:           # enabled once the external scheduler calls this reliably
-     - cron: "17 9 * * 1"  # every Monday at 09:17 UTC (GitHub's own cron is best-effort only)
+  schedule:           # enabled once the external scheduler calls this reliably
+    - cron: "17 9 * * 1"  # every Monday at 09:17 UTC (GitHub's own cron is best-effort only)
 jobs:
   send-digest:
     runs-on: ubuntu-latest
@@ -24,5 +24,5 @@ jobs:
           SEND_TO_SLACK: "1"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
-          SLACK_CHANNEL: "C0C8357EB97"
+          SLACK_CHANNEL: ${{ vars.SLACK_CHANNEL || '#issues' }}
         run: uv run python scripts/weekly_issues_digest.py
