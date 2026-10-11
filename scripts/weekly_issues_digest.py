@@ -14,6 +14,7 @@ Environment variables (all optional except the Slack token in live mode):
   SEND_TO_SLACK    "1" to actually send
   SLACK_BOT_TOKEN  bot token (xoxb-...)
   SLACK_CHANNEL    default #issues
+  MAX_PER_GROUP    default 5  (issues shown per skill group before "+N more")
 
 Note: "priority" is NOT handled here. On goldener-data/goldener, priority is a
 GitHub Projects (v2) field, not a label -- so it isn't readable through the
@@ -22,9 +23,14 @@ skill-type labels (good first issue / help wanted) are used.
 
 This script lists ALL open issues carrying the "ready" label on every run.
 Since most issues in the repo carry this label (it isn't a "just added"
-marker), each issue's opening date is shown and the list is sorted newest
-first: readers see new issues at a glance, while older ones never disappear
-from the list.
+marker), each issue's opening date is shown and issues are sorted newest
+first within their group: readers see new issues at a glance, while older
+ones never disappear from the list.
+
+Message layout: issues are grouped by skill level (good first issue / help
+wanted / unspecified) using Slack's Block Kit, each group capped at
+MAX_PER_GROUP entries with a link to the full list on GitHub for the rest --
+instead of one long undifferentiated wall of text.
 
 No external dependencies: standard library only.
 """
@@ -49,9 +55,15 @@ SKILL_RE = re.compile(
     os.environ.get("SKILL_REGEX", r"skill|level|good first issue|help wanted"), re.I
 )
 SLACK_CHANNEL = os.environ.get("SLACK_CHANNEL", "#issues")
-CHUNK_LIMIT = 3000  # characters per Slack message, to stay readable
+MAX_PER_GROUP = int(os.environ.get("MAX_PER_GROUP", "5"))
 
 UNKNOWN = "unspecified"
+
+# Display order and emoji for each skill group. Any skill value not listed
+# here (there currently isn't one, given SKILL_REGEX) would be shown last,
+# right before "unspecified".
+GROUP_ORDER = ["good first issue", "help wanted"]
+GROUP_EMOJI = {"good first issue": "🟢", "help wanted": "🟡", UNKNOWN: "⚪"}
 
 
 # ---------- network ----------
@@ -147,37 +159,100 @@ def slack_escape(text: str) -> str:
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
-def build_entries(issues: list[dict[str, Any]]) -> list[str]:
-    """One line per issue, sorted by opening date descending (newest first)."""
-    entries = []
+def group_by_skill(issues: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    """Buckets issues by skill label, each bucket sorted newest-opened first."""
+    groups: dict[str, list[dict[str, Any]]] = {}
     for issue in issues:
         skill = label_value(issue["labels"], SKILL_RE)
-        created = datetime.fromisoformat(issue["created_at"].replace("Z", "+00:00"))
-        line = (
-            f"• <{issue['html_url']}|#{issue['number']}> {slack_escape(issue['title'])}"
-            f" — Opened {created:%Y-%m-%d} · Skill: {skill}"
+        groups.setdefault(skill, []).append(issue)
+    for bucket in groups.values():
+        bucket.sort(key=lambda i: i["created_at"], reverse=True)
+    ordered = {key: groups[key] for key in GROUP_ORDER if key in groups}
+    for key in groups:
+        if key not in ordered:
+            ordered[key] = groups[key]  # anything unexpected, then UNKNOWN last
+    return ordered
+
+
+def issue_line(issue: dict[str, Any]) -> str:
+    created = datetime.fromisoformat(issue["created_at"].replace("Z", "+00:00"))
+    title = slack_escape(issue["title"])
+    return f"• <{issue['html_url']}|#{issue['number']}> {title} — opened {created:%Y-%m-%d}"
+
+
+def full_list_url() -> str:
+    query = urllib.parse.quote(f"is:issue is:open label:{READY_LABEL}")
+    return f"https://github.com/{REPO}/issues?q={query}"
+
+
+def build_blocks(issues: list[dict[str, Any]], now: datetime) -> list[dict[str, Any]]:
+    """Slack Block Kit layout: header, context, then one section per skill group."""
+    blocks: list[dict[str, Any]] = [
+        {
+            "type": "header",
+            "text": {"type": "plain_text", "text": "📋 Issues ready to pick up"},
+        },
+        {
+            "type": "context",
+            "elements": [
+                {
+                    "type": "mrkdwn",
+                    "text": f"{len(issues)} open issue(s) · generated {now:%Y-%m-%d %H:%M} UTC",
+                }
+            ],
+        },
+        {"type": "divider"},
+    ]
+
+    for skill, bucket in group_by_skill(issues).items():
+        emoji = GROUP_EMOJI.get(skill, "🔹")
+        heading = f"*{emoji} {skill.capitalize()}* ({len(bucket)})"
+        lines = [issue_line(issue) for issue in bucket[:MAX_PER_GROUP]]
+        remaining = len(bucket) - MAX_PER_GROUP
+        if remaining > 0:
+            lines.append(
+                f"… and {remaining} more → <{full_list_url()}|see all on GitHub>"
+            )
+        blocks.append(
+            {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": heading + "\n" + "\n".join(lines)},
+            }
         )
-        entries.append((created, line))
-    entries.sort(key=lambda e: e[0], reverse=True)  # newest first
-    return [e[1] for e in entries]
+        blocks.append({"type": "divider"})
+
+    blocks.pop()  # drop the trailing divider after the last group
+    return blocks
 
 
-def build_messages(lines: list[str], now: datetime) -> list[str]:
-    """A single digest, split into several messages only if it's very long."""
-    header = f"*Issues ready to pick up* — {len(lines)} open as of {now:%Y-%m-%d}"
-    messages, current = [], header
-    for line in lines:
-        if len(current) + len(line) + 1 > CHUNK_LIMIT:
-            messages.append(current)
-            current = line
-        else:
-            current += "\n" + line
-    messages.append(current)
-    return messages
+def build_fallback_text(issues: list[dict[str, Any]], now: datetime) -> str:
+    """Plain-text summary: Slack's required 'text' fallback, and the TEST-mode preview."""
+    lines = [
+        f"Issues ready to pick up — {len(issues)} open · generated {now:%Y-%m-%d %H:%M} UTC"
+    ]
+    for skill, bucket in group_by_skill(issues).items():
+        emoji = GROUP_EMOJI.get(skill, "🔹")
+        lines.append(f"\n{emoji} {skill.capitalize()} ({len(bucket)})")
+        for issue in bucket[:MAX_PER_GROUP]:
+            created = datetime.fromisoformat(issue["created_at"].replace("Z", "+00:00"))
+            lines.append(
+                f"  #{issue['number']} {issue['title']} — opened {created:%Y-%m-%d}"
+            )
+            lines.append(f"    {issue['html_url']}")
+        remaining = len(bucket) - MAX_PER_GROUP
+        if remaining > 0:
+            lines.append(f"  … and {remaining} more → {full_list_url()}")
+    return "\n".join(lines)
 
 
-def send_to_slack(text: str) -> None:
-    payload = json.dumps({"channel": SLACK_CHANNEL, "text": text}).encode()
+def send_to_slack(blocks: list[dict[str, Any]], fallback_text: str) -> None:
+    payload = json.dumps(
+        {
+            "channel": SLACK_CHANNEL,
+            "text": fallback_text,  # shown in notifications / if blocks fail to render
+            "blocks": blocks,
+        }
+    ).encode()
     headers = {
         "Content-Type": "application/json; charset=utf-8",
         "Authorization": f"Bearer {os.environ['SLACK_BOT_TOKEN']}",
@@ -215,15 +290,13 @@ def main() -> None:
         )
         return  # nothing to send: don't spam the channel
 
-    messages = build_messages(build_entries(issues), now)
-    for message in messages:
-        if live:
-            send_to_slack(message)
-        else:
-            print(message, end="\n\n")
-    print(
-        f"{len(issues)} issue(s) — {'sent to Slack' if live else 'TEST: nothing sent'}."
-    )
+    fallback_text = build_fallback_text(issues, now)
+    if live:
+        send_to_slack(build_blocks(issues, now), fallback_text)
+        print(f"{len(issues)} issue(s) — sent to Slack.")
+    else:
+        print(fallback_text)
+        print(f"\n{len(issues)} issue(s) — TEST: nothing sent.")
 
 
 if __name__ == "__main__":
