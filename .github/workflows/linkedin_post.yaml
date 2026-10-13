@@ -8,8 +8,10 @@ name: Draft and publish a LinkedIn post
 # before merging it to skip the post. Pull requests from a release branch (whose name contains `release-v`) never get a
 # post. A run triggered on demand only drafts the post, unless its `publish` input is checked.
 #
-# Publishing runs in the `linkedin-post` environment, which holds the secrets below. Add required reviewers on this
-# environment to read the drafted post in the run summary and approve it before it goes out.
+# Both jobs run in the `linkedin-post` environment, which holds the secrets below. Required reviewers on this
+# environment approve each job: the draft (which spends Anthropic credits), then the publication, after reading the
+# drafted post in the run summary.
+# - ANTHROPIC_API_KEY: the Anthropic API key used by Claude to draft the post.
 # - LINKEDIN_ACCESS_TOKEN: an OAuth token of a LinkedIn app with the `w_member_social` scope (personal profile) or
 #   the `w_organization_social` scope (company page). It expires after 60 days and must then be renewed.
 # - LINKEDIN_AUTHOR_URN: the author of the post, `urn:li:person:<id>` or `urn:li:organization:<id>`.
@@ -44,6 +46,7 @@ jobs:
       && !contains(github.event.pull_request.labels.*.name, 'no-post')
       && !contains(github.event.pull_request.head.ref, 'release-v'))
     runs-on: ubuntu-latest
+    environment: linkedin-post
     # reading a paper in full can take a while, but a stuck session must not run for hours
     timeout-minutes: 45
     env:
@@ -120,12 +123,16 @@ jobs:
           }' > "$RUNNER_TEMP/claude-settings.json"
           cat "$RUNNER_TEMP/claude-settings.json"
 
-      - name: Draft the post with Claudelinkedin-post
+      - name: Draft the post with Claude
         working-directory: ${{ env.RESEARCH_DIR }}
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1"
         run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "The ANTHROPIC_API_KEY secret is missing from the linkedin-post environment." >&2
+            exit 1
+          fi
           mkdir -p "$OUTPUT_DIR"
           trigger=""
           if [ -n "$TRIGGER_LINE" ]; then
