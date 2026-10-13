@@ -64,10 +64,12 @@ jobs:
           node-version: "22"
 
       # poppler-utils provides pdftotext and pdftoppm, needed by the paper-review skill (called by
-      # short-paper-review) to read the paper
-      - name: Install Claude Code and the paper tools
+      # short-paper-review) to read the paper. bubblewrap and socat run the sandbox of Claude's commands, which needs
+      # the unprivileged user namespaces that Ubuntu restricts by default.
+      - name: Install Claude Code, its sandbox and the paper tools
         run: |
-          sudo apt-get update && sudo apt-get install -y poppler-utils
+          sudo apt-get update && sudo apt-get install -y poppler-utils bubblewrap socat
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           npm install -g "@anthropic-ai/claude-code@$CLAUDE_CODE_VERSION"
 
       # The skills of goldener-research are exposed as project skills of the cloned repository. They are linked
@@ -92,9 +94,32 @@ jobs:
           done
 
       # Claude does not get any GitHub token: it can neither push to the repositories nor act on GitHub. The paper
-      # and the pages it reads may hold instructions: CLAUDE_CODE_SUBPROCESS_ENV_SCRUB removes the Anthropic API key
-      # from the environment of the commands Claude runs, so that such instructions cannot read and leak it. The
-      # pull request url is set by GitHub, unlike its title, so it is safe to put in the prompt.
+      # and the pages it reads may hold instructions, so the commands Claude runs are contained:
+      # - CLAUDE_CODE_SUBPROCESS_ENV_SCRUB removes the Anthropic API key from their environment;
+      # - they run in Claude Code's sandbox (no way to run a command outside of it, and no run at all if the sandbox
+      #   cannot start), which can only write in the research clone, the output directory and its own temporary
+      #   directory, and only reach the paper sources trusted by the paper-review skill.
+      # The pull request url is set by GitHub, unlike its title, so it is safe to put in the prompt.
+      - name: Configure the sandbox of Claude's commands
+        run: |
+          jq -n --arg output "$OUTPUT_DIR" '{
+            sandbox: {
+              enabled: true,
+              failIfUnavailable: true,
+              allowUnsandboxedCommands: false,
+              autoAllowBashIfSandboxed: true,
+              filesystem: {allowWrite: [$output]},
+              network: {allowedDomains: [
+                "arxiv.org", "*.arxiv.org", "openreview.net", "aclanthology.org", "doi.org", "dl.acm.org",
+                "ieeexplore.ieee.org", "link.springer.com", "*.sciencedirect.com", "www.nature.com", "jmlr.org",
+                "www.jmlr.org", "proceedings.mlr.press", "papers.nips.cc", "proceedings.neurips.cc",
+                "neurips.cc", "iclr.cc", "icml.cc", "openaccess.thecvf.com", "www.ecva.net", "ojs.aaai.org",
+                "huggingface.co", "*.semanticscholar.org"
+              ]}
+            }
+          }' > "$RUNNER_TEMP/claude-settings.json"
+          cat "$RUNNER_TEMP/claude-settings.json"
+
       - name: Draft the post with Claude
         working-directory: ${{ env.RESEARCH_DIR }}
         env:
@@ -117,6 +142,7 @@ jobs:
           EOF
           cat "$RUNNER_TEMP/prompt.md"
           claude -p "$(cat "$RUNNER_TEMP/prompt.md")" \
+            --settings "$RUNNER_TEMP/claude-settings.json" \
             --allowedTools "Skill,Bash,Read,Write,Edit,Glob,Grep,WebFetch,WebSearch" \
             --disallowedTools "Bash(git push:*),Bash(git commit:*),Bash(gh:*)" \
             --add-dir "$OUTPUT_DIR"
