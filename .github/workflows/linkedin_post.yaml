@@ -1,0 +1,267 @@
+name: Draft and publish a LinkedIn post
+
+# Claude runs the short-paper-review skill of goldener-research without naming a paper, so that the skill picks a random
+# paper of the bibliography, reviews it and formats the LinkedIn post itself. When the workflow is triggered by a pull
+# request merged in main, the post also mentions that pull request; when it is triggered on demand, it does not. The
+# post is shown in the run summary and uploaded, with the paper review, as an artifact of the run, then it is published
+# on LinkedIn by the workflow itself (Claude never gets the LinkedIn token). Add the `no-post` label on a pull request
+# before merging it to skip the post. Pull requests from a release branch (whose name contains `release-v`) never get a
+# post. A run triggered on demand only drafts the post, unless its `publish` input is checked.
+#
+# Publishing runs in the `linkedin` environment, which holds the secrets below. Add required reviewers on this
+# environment to read the drafted post in the run summary and approve it before it goes out.
+# - LINKEDIN_ACCESS_TOKEN: an OAuth token of a LinkedIn app with the `w_member_social` scope (personal profile) or
+#   the `w_organization_social` scope (company page). It expires after 60 days and must then be renewed.
+# - LINKEDIN_AUTHOR_URN: the author of the post, `urn:li:person:<id>` or `urn:li:organization:<id>`.
+# The LINKEDIN_API_VERSION variable (YYYYMM) overrides the version of the LinkedIn API, which supports each version
+# for one year only.
+#
+# The workflow runs on `pull_request_target` so that pull requests merged from a fork also get the secrets. It never
+# checks out nor runs the code of the pull request, and only uses its url, set by GitHub: keep it that way.
+
+on:
+  pull_request_target:
+    types: [closed]
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the post on LinkedIn (leave unchecked to test the workflow with a draft only)
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  draft-post:
+    name: Draft a LinkedIn post about a research paper
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || (github.event.pull_request.merged == true
+      && !contains(github.event.pull_request.labels.*.name, 'no-post')
+      && !contains(github.event.pull_request.head.ref, 'release-v'))
+    runs-on: ubuntu-latest
+    # reading a paper in full can take a while, but a stuck session must not run for hours
+    timeout-minutes: 45
+    env:
+      RESEARCH_DIR: ${{ github.workspace }}/goldener-research
+      OUTPUT_DIR: ${{ github.workspace }}/linkedin-post
+      # Claude Code is pinned so that a new release cannot change the runs unnoticed. goldener-research is not: the
+      # bibliography and the skills are meant to evolve, and every run uses their latest version on main.
+      CLAUDE_CODE_VERSION: 2.1.296
+      # the line added to the post when the workflow is triggered by a merged pull request
+      TRIGGER_LINE: "${{ github.event.pull_request.html_url && format('Triggered by PR merged in Goldener: {0}', github.event.pull_request.html_url) || '' }}"
+    steps:
+      - name: Clone the research repository
+        run: git clone --depth 1 https://github.com/goldener-data/goldener-research.git "$RESEARCH_DIR"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # poppler-utils provides pdftotext and pdftoppm, needed by the paper-review skill (called by
+      # short-paper-review) to read the paper. bubblewrap and socat run the sandbox of Claude's commands, which needs
+      # the unprivileged user namespaces that Ubuntu restricts by default.
+      - name: Install Claude Code, its sandbox and the paper tools
+        run: |
+          sudo apt-get update && sudo apt-get install -y poppler-utils bubblewrap socat
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          npm install -g "@anthropic-ai/claude-code@$CLAUDE_CODE_VERSION"
+
+      # The skills of goldener-research are exposed as project skills of the cloned repository. They are linked
+      # rather than copied: the bundled scripts resolve their path to find the repository root holding the
+      # BIBLIOGRAPHY.md files, so they must keep running from skills/<name>/ inside the repository.
+      - name: Expose the goldener-research skills to Claude
+        working-directory: ${{ env.RESEARCH_DIR }}
+        run: |
+          mkdir -p .claude/skills
+          for skill in skills/*/; do
+            name="$(basename "$skill")"
+            if [ -f "$skill/SKILL.md" ]; then
+              ln -s "../../skills/$name" ".claude/skills/$name"
+            fi
+          done
+          ls -l .claude/skills
+          for name in short-paper-review paper-review; do
+            if [ ! -e ".claude/skills/$name/SKILL.md" ]; then
+              echo "The $name skill is missing from goldener-research." >&2
+              exit 1
+            fi
+          done
+
+      # Claude does not get any GitHub token: it can neither push to the repositories nor act on GitHub. The paper
+      # and the pages it reads may hold instructions, so the commands Claude runs are contained:
+      # - CLAUDE_CODE_SUBPROCESS_ENV_SCRUB removes the Anthropic API key from their environment;
+      # - they run in Claude Code's sandbox (no way to run a command outside of it, and no run at all if the sandbox
+      #   cannot start), which can only write in the research clone, the output directory and its own temporary
+      #   directory, and only reach the paper sources trusted by the paper-review skill.
+      # The pull request url is set by GitHub, unlike its title, so it is safe to put in the prompt.
+      - name: Configure the sandbox of Claude's commands
+        run: |
+          jq -n --arg output "$OUTPUT_DIR" '{
+            sandbox: {
+              enabled: true,
+              failIfUnavailable: true,
+              allowUnsandboxedCommands: false,
+              autoAllowBashIfSandboxed: true,
+              filesystem: {allowWrite: [$output]},
+              network: {allowedDomains: [
+                "arxiv.org", "*.arxiv.org", "openreview.net", "aclanthology.org", "doi.org", "dl.acm.org",
+                "ieeexplore.ieee.org", "link.springer.com", "*.sciencedirect.com", "www.nature.com", "jmlr.org",
+                "www.jmlr.org", "proceedings.mlr.press", "papers.nips.cc", "proceedings.neurips.cc",
+                "neurips.cc", "iclr.cc", "icml.cc", "openaccess.thecvf.com", "www.ecva.net", "ojs.aaai.org",
+                "huggingface.co", "*.semanticscholar.org"
+              ]}
+            }
+          }' > "$RUNNER_TEMP/claude-settings.json"
+          cat "$RUNNER_TEMP/claude-settings.json"
+
+      - name: Draft the post with Claude
+        working-directory: ${{ env.RESEARCH_DIR }}
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1"
+        run: |
+          mkdir -p "$OUTPUT_DIR"
+          trigger=""
+          if [ -n "$TRIGGER_LINE" ]; then
+            trigger="Add the following content to the post, exactly as written: \`$TRIGGER_LINE\`"
+          fi
+          cat > "$RUNNER_TEMP/prompt.md" <<EOF
+          Use the short-paper-review skill to generate a LinkedIn post about a paper, without naming a paper or a
+          theme, so that the paper is picked at random from the goldener-research bibliography. Never pick the paper
+          yourself. Use $OUTPUT_DIR as the output directory and keep the review there. $trigger
+
+          If the skill would stop to ask a question, there is nobody to answer: stop and explain why in
+          $OUTPUT_DIR/error.md instead. Do not modify, commit or push anything in this repository, and do not publish
+          anything anywhere: the files in $OUTPUT_DIR are the only deliverables.
+          EOF
+          cat "$RUNNER_TEMP/prompt.md"
+          claude -p "$(cat "$RUNNER_TEMP/prompt.md")" \
+            --settings "$RUNNER_TEMP/claude-settings.json" \
+            --allowedTools "Skill,Bash,Read,Write,Edit,Glob,Grep,WebFetch,WebSearch" \
+            --disallowedTools "Bash(git push:*),Bash(git commit:*),Bash(gh:*)" \
+            --add-dir "$OUTPUT_DIR"
+
+      - name: Check the post
+        run: |
+          post="$(find "$OUTPUT_DIR" -maxdepth 1 -name '*.short-linkedin*.txt' | head -n 1)"
+          if [ -z "$post" ] || [ ! -s "$post" ]; then
+            echo "Claude did not write the LinkedIn post." >&2
+            cat "$OUTPUT_DIR/error.md" 2>/dev/null >&2 || true
+            exit 1
+          fi
+          if [ -n "$TRIGGER_LINE" ] && ! grep -qF "$TRIGGER_LINE" "$post"; then
+            echo "The LinkedIn post does not hold the line: $TRIGGER_LINE" >&2
+            exit 1
+          fi
+          # LinkedIn rejects a post longer than 3000 characters; fail here rather than after the approval
+          length="$(python3 -c 'import sys; print(len(open(sys.argv[1], encoding="utf-8").read().strip()))' "$post")"
+          if [ "$length" -gt 3000 ]; then
+            echo "The LinkedIn post has $length characters, more than the 3000 allowed by LinkedIn." >&2
+            exit 1
+          fi
+          {
+            echo "## LinkedIn post"
+            echo
+            echo '```text'
+            cat "$post"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the post and the paper review
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linkedin-post
+          path: ${{ env.OUTPUT_DIR }}
+          if-no-files-found: ignore
+
+  publish-post:
+    name: Publish the post on LinkedIn
+    needs: draft-post
+    if: github.event_name == 'pull_request_target' || inputs.publish
+    runs-on: ubuntu-latest
+    environment: linkedin
+    timeout-minutes: 10
+    steps:
+      - name: Download the drafted post
+        uses: actions/download-artifact@v4
+        with:
+          name: linkedin-post
+          path: linkedin-post
+
+      # The post is plain text: LinkedIn reads the commentary as "little text", where the reserved characters must be
+      # escaped and hashtags are written as {hashtag|\#|Name} to stay clickable.
+      - name: Build the LinkedIn request
+        env:
+          LINKEDIN_AUTHOR_URN: ${{ secrets.LINKEDIN_AUTHOR_URN }}
+        run: |
+          post="$(find linkedin-post -maxdepth 1 -name '*.short-linkedin*.txt' | head -n 1)"
+          if [ -z "$post" ]; then
+            echo "The drafted post is missing from the artifact." >&2
+            exit 1
+          fi
+          python3 - "$post" "$RUNNER_TEMP/request.json" <<'PYTHON'
+          import json
+          import os
+          import re
+          import sys
+
+          text = open(sys.argv[1], encoding="utf-8").read().strip()
+          if len(text) > 3000:
+              sys.exit(f"The post has {len(text)} characters, more than the 3000 allowed by LinkedIn.")
+          author = os.environ["LINKEDIN_AUTHOR_URN"]
+          if not re.fullmatch(r"urn:li:(person|organization):[A-Za-z0-9_-]+", author):
+              sys.exit("LINKEDIN_AUTHOR_URN must be urn:li:person:<id> or urn:li:organization:<id>.")
+
+          def escape(chunk):
+              return re.sub(r"([\\|{}@\[\]()<>#*_~])", r"\\\1", chunk)
+
+          # URLs are kept as they are so that LinkedIn links them; hashtags become hashtag templates
+          parts = re.split(r"(https?://\S+|#\w+)", text)
+          commentary = "".join(
+              part if part.startswith("http")
+              else "{hashtag|\\#|" + part[1:] + "}" if part.startswith("#")
+              else escape(part)
+              for part in parts
+          )
+          request = {
+              "author": author,
+              "commentary": commentary,
+              "visibility": "PUBLIC",
+              "distribution": {"feedDistribution": "MAIN_FEED", "targetEntities": [], "thirdPartyDistributionChannels": []},
+              "lifecycleState": "PUBLISHED",
+              "isReshareDisabledByAuthor": False,
+          }
+          json.dump(request, open(sys.argv[2], "w", encoding="utf-8"), ensure_ascii=False)
+          PYTHON
+
+      - name: Publish the post
+        env:
+          LINKEDIN_ACCESS_TOKEN: ${{ secrets.LINKEDIN_ACCESS_TOKEN }}
+          LINKEDIN_API_VERSION: ${{ vars.LINKEDIN_API_VERSION || '202609' }}
+        run: |
+          status="$(curl -sS -o "$RUNNER_TEMP/response.json" -D "$RUNNER_TEMP/headers.txt" -w '%{http_code}' \
+            -X POST https://api.linkedin.com/rest/posts \
+            -H "Authorization: Bearer $LINKEDIN_ACCESS_TOKEN" \
+            -H "LinkedIn-Version: $LINKEDIN_API_VERSION" \
+            -H "X-Restli-Protocol-Version: 2.0.0" \
+            -H "Content-Type: application/json" \
+            --data-binary "@$RUNNER_TEMP/request.json")"
+          if [ "$status" != "201" ]; then
+            echo "LinkedIn refused the post (HTTP $status):" >&2
+            cat "$RUNNER_TEMP/response.json" >&2
+            exit 1
+          fi
+          urn="$(grep -i '^x-restli-id:' "$RUNNER_TEMP/headers.txt" | cut -d' ' -f2 | tr -d '\r')"
+          echo "Published: https://www.linkedin.com/feed/update/$urn"
+          {
+            echo "## Published on LinkedIn"
+            echo
+            echo "https://www.linkedin.com/feed/update/$urn"
+          } >> "$GITHUB_STEP_SUMMARY"
