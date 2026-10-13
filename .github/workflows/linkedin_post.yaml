@@ -8,7 +8,7 @@ name: Draft and publish a LinkedIn post
 # before merging it to skip the post. Pull requests from a release branch (whose name contains `release-v`) never get a
 # post. A run triggered on demand only drafts the post, unless its `publish` input is checked.
 #
-# Publishing runs in the `linkedin` environment, which holds the secrets below. Add required reviewers on this
+# Publishing runs in the `linkedin-post` environment, which holds the secrets below. Add required reviewers on this
 # environment to read the drafted post in the run summary and approve it before it goes out.
 # - LINKEDIN_ACCESS_TOKEN: an OAuth token of a LinkedIn app with the `w_member_social` scope (personal profile) or
 #   the `w_organization_social` scope (company page). It expires after 60 days and must then be renewed.
@@ -120,7 +120,7 @@ jobs:
           }' > "$RUNNER_TEMP/claude-settings.json"
           cat "$RUNNER_TEMP/claude-settings.json"
 
-      - name: Draft the post with Claude
+      - name: Draft the post with Claudelinkedin-post
         working-directory: ${{ env.RESEARCH_DIR }}
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -186,7 +186,7 @@ jobs:
     needs: draft-post
     if: github.event_name == 'pull_request_target' || inputs.publish
     runs-on: ubuntu-latest
-    environment: linkedin
+    environment: linkedin-post
     timeout-minutes: 10
     steps:
       - name: Download the drafted post
