@@ -86,9 +86,6 @@ class GoldSplitter:
     a GoldVectorizer to vectorize these embeddings, a GoldClusterizer to cluster them and a GoldSelector to select samples
     for each set based on specified ratios.
 
-    The splitting can operate in a sequential (single-process) mode or a
-    distributed mode (not implemented).
-
     At least 2 sets are required to split the data. Every sample
     will be associated with exactly one set using a GoldSelector. The last set is filled with any remaining elements.
     Every set is at least associated with at least 1 points (the ratio might not be fully matched for small data regimes).
