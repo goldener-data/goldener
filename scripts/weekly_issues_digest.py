@@ -1,17 +1,23 @@
 #!/usr/bin/env python3
 """Weekly digest of GitHub issues ready for development, posted to Slack.
 
+This script lists ALL open issues carrying the "ready" label on every run.
+Since most issues in the repo carry this label (it isn't a "just added"
+marker), each issue's opening date is shown and issues are sorted newest
+first within their group: readers see new issues at a glance, while older
+ones never disappear from the list.
+
 Usage:
   python weekly_issues_digest.py                 # TEST: prints, sends nothing
   python weekly_issues_digest.py --list-labels   # lists the repo's real labels
-  SEND_TO_SLACK=1 SLACK_BOT_TOKEN=xoxb-... python weekly_issues_digest.py   # real send
+  SEND_TO_SLACK=True SLACK_BOT_TOKEN=xoxb-... python weekly_issues_digest.py   # real send
 
 Environment variables (all optional except the Slack token in live mode):
   REPO             default goldener-data/goldener
   READY_LABEL      default ready          (EXACT label name, see --list-labels)
   SKILL_REGEX      default skill|level|good first issue|help wanted
   GITHUB_TOKEN     avoids the anonymous rate limit (60/h)
-  SEND_TO_SLACK    "1" to actually send
+  SEND_TO_SLACK    "True" to actually send
   SLACK_BOT_TOKEN  bot token (xoxb-...)
   SLACK_CHANNEL    default #issues
   MAX_PER_GROUP    default 5  (issues shown per skill group before "+N more")
@@ -21,18 +27,11 @@ GitHub Projects (v2) field, not a label -- so it isn't readable through the
 issues REST API this script uses. Only the "ready" label (filter) and
 skill-type labels (good first issue / help wanted) are used.
 
-This script lists ALL open issues carrying the "ready" label on every run.
-Since most issues in the repo carry this label (it isn't a "just added"
-marker), each issue's opening date is shown and issues are sorted newest
-first within their group: readers see new issues at a glance, while older
-ones never disappear from the list.
-
 Message layout: issues are grouped by skill level (good first issue / help
 wanted / unspecified) using Slack's Block Kit, each group capped at
 MAX_PER_GROUP entries with a link to the full list on GitHub for the rest --
 instead of one long undifferentiated wall of text.
 
-No external dependencies: standard library only.
 """
 
 import json
@@ -276,9 +275,9 @@ def main() -> None:
         list_labels()
         return
 
-    live = os.environ.get("SEND_TO_SLACK") == "1"
+    live = os.environ.get("SEND_TO_SLACK", "False").lower() == "true"
     if live and not os.environ.get("SLACK_BOT_TOKEN"):
-        sys.exit("Error: SEND_TO_SLACK=1 but SLACK_BOT_TOKEN is missing.")
+        sys.exit("Error: SEND_TO_SLACK=true but SLACK_BOT_TOKEN is missing.")
 
     now = datetime.now(timezone.utc)
     issues = fetch_ready_issues()
