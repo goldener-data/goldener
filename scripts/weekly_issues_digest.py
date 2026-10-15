@@ -263,7 +263,11 @@ def send_to_slack(blocks: list[dict[str, Any]], fallback_text: str) -> None:
         "Content-Type": "application/json; charset=utf-8",
         "Authorization": f"Bearer {os.environ['SLACK_BOT_TOKEN']}",
     }
-    result, _ = request("https://slack.com/api/chat.postMessage", headers, payload)
+    # No retries: if Slack accepted the message but the response was lost,
+    # a retry would post the digest twice.
+    result, _ = request(
+        "https://slack.com/api/chat.postMessage", headers, payload, retries=0
+    )
     if not result.get("ok"):  # Slack responds 200 even on error
         raise RuntimeError(f"Slack rejected the message: {result.get('error')}")
 
