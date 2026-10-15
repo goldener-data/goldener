@@ -21,7 +21,7 @@ jobs:
 
       - name: Send the weekly digest to Slack
         env:
-          SEND_TO_SLACK: "1"
+          SEND_TO_SLACK: "True"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           SLACK_CHANNEL: ${{ vars.SLACK_CHANNEL || '#issues' }}
