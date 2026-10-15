@@ -179,8 +179,15 @@ def issue_line(issue: dict[str, Any]) -> str:
     return f"• <{issue['html_url']}|#{issue['number']}> {title} — opened {created:%Y-%m-%d}"
 
 
-def full_list_url() -> str:
-    query = urllib.parse.quote(f"is:issue is:open label:{READY_LABEL}")
+def full_list_url(skill: str) -> str:
+    """GitHub issues link filtered on the ready label and the group's skill label."""
+    terms = ["is:issue", "is:open", f'label:"{READY_LABEL}"']
+    if skill == UNKNOWN:
+        # No skill label to filter on: exclude the labels of the other groups
+        terms += [f'-label:"{known}"' for known in GROUP_ORDER]
+    else:
+        terms.append(f'label:"{skill}"')
+    query = urllib.parse.quote(" ".join(terms))
     return f"https://github.com/{REPO}/issues?q={query}"
 
 
@@ -210,7 +217,7 @@ def build_blocks(issues: list[dict[str, Any]], now: datetime) -> list[dict[str, 
         remaining = len(bucket) - MAX_PER_GROUP
         if remaining > 0:
             lines.append(
-                f"… and {remaining} more → <{full_list_url()}|see all on GitHub>"
+                f"… and {remaining} more → <{full_list_url(skill)}|see all on GitHub>"
             )
         blocks.append(
             {
@@ -240,7 +247,7 @@ def build_fallback_text(issues: list[dict[str, Any]], now: datetime) -> str:
             lines.append(f"    {issue['html_url']}")
         remaining = len(bucket) - MAX_PER_GROUP
         if remaining > 0:
-            lines.append(f"  … and {remaining} more → {full_list_url()}")
+            lines.append(f"  … and {remaining} more → {full_list_url(skill)}")
     return "\n".join(lines)
 
 
