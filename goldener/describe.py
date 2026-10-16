@@ -506,6 +506,99 @@ class GoldDescriptor(GoldDoerWithTable):
         """
         raise NotImplementedError("Distributed description is not implemented yet.")
 
+    def _compute_batch(
+        self,
+        batch: dict[str, Any],
+        batch_idx: int,
+        start_idx: int,
+        not_empty: bool,
+        already_described: set[int],
+        restrict_to: set[int] | None = None,
+    ) -> tuple[list[dict[str, Any]], int]:
+        """Process a single batch: assign indices, filter, embed, and prepare for insertion."""
+        # add idx if it is not provided by the dataset
+        if "idx" not in batch:
+            starts = batch_idx * self.batch_size
+            batch["idx"] = [starts + idx for idx in range(len(batch[self.data_key]))]
+
+        if restrict_to is not None:
+            to_remove = {
+                int(idx.item()) if isinstance(idx, torch.Tensor) else int(idx)
+                for idx in batch["idx"]
+            } - restrict_to
+            if to_remove:
+                batch = filter_batch_from_indices(batch, to_remove)
+                if len(batch) == 0:
+                    return [], start_idx
+
+        # Keep only not yet described samples in the batch
+        if not_empty:
+            batch = filter_batch_from_indices(
+                batch,
+                already_described,
+            )
+
+        if len(batch) == 0:
+            return [], start_idx  # all samples already described
+
+        already_described.update(
+            [
+                int(idx.item()) if isinstance(idx, torch.Tensor) else int(idx)
+                for idx in batch["idx"]
+            ]
+        )
+
+        batch_data = batch[self.data_key]
+        if self.transform is not None:
+            batch_data = self.transform(batch_data)
+
+        # describe data
+        batch[self.description_key] = self.embedder.embed_and_fuse(
+            batch_data.to(device=self.device)
+        )
+
+        # insert description in the table
+        to_keep_keys = (
+            list(self.to_keep_schema.keys()) if self.to_keep_schema is not None else []
+        )
+        if self.vectorizer is None:
+            to_insert_keys = [self.description_key] + to_keep_keys
+
+            batch_as_list = make_batch_ready_for_table(
+                batch,
+                to_insert_keys,
+                "idx",
+            )
+        else:
+            batch = vectorize_and_unwrap_in_batch(
+                batch=batch,
+                vectorizer=self.vectorizer,
+                data_key=self.description_key,
+                vectorized_key=self.description_key,
+                target_key=self.target_key,
+                to_keep=to_keep_keys,
+                starts=start_idx,
+                label_key=self.label_key,
+                target_to_label=self.target_to_label,
+                merge_multilabels=self.merge_multilabels,
+                exclude_full_zero_target=self.exclude_full_zero_target,
+                exclude_labels=self.exclude_labels,
+            )
+
+            if not batch:
+                return [], start_idx
+
+            start_idx = max(batch["idx_vector"]) + 1
+
+            to_insert_keys = [self.description_key, "idx"] + to_keep_keys
+            batch_as_list = make_batch_ready_for_table(
+                batch,
+                to_insert_keys,
+                "idx_vector",
+            )
+
+        return batch_as_list, start_idx
+
     def _sequential_describe(
         self,
         description_table: Table,
@@ -557,6 +650,7 @@ class GoldDescriptor(GoldDoerWithTable):
 
         ready_to_insert: list[dict[str, Any]] = []
 
+        start_idx = 0
         if self.vectorizer is not None:
             start_idx = (
                 0
@@ -584,90 +678,17 @@ class GoldDescriptor(GoldDoerWithTable):
             if self.max_batches is not None and batch_idx >= self.max_batches:
                 break
 
-            # add idx if it is not provided by the dataset
-            if "idx" not in batch:
-                starts = batch_idx * self.batch_size
-                batch["idx"] = [
-                    starts + idx for idx in range(len(batch[self.data_key]))
-                ]
-
-            if restrict_to is not None:
-                to_remove = {
-                    int(idx.item()) if isinstance(idx, torch.Tensor) else int(idx)
-                    for idx in batch["idx"]
-                } - restrict_to
-                if to_remove:
-                    batch = filter_batch_from_indices(batch, to_remove)
-                    if len(batch) == 0:
-                        continue
-
-            # Keep only not yet described samples in the batch
-            if not_empty:
-                batch = filter_batch_from_indices(
-                    batch,
-                    already_described,
-                )
-
-            if len(batch) == 0:
-                continue  # all samples already described
-
-            already_described.update(
-                [
-                    idx.item() if isinstance(idx, torch.Tensor) else idx
-                    for idx in batch["idx"]
-                ]
+            batch_as_list, start_idx = self._compute_batch(
+                batch,
+                batch_idx,
+                start_idx,
+                not_empty,
+                already_described,
+                restrict_to,
             )
 
-            batch_data = batch[self.data_key]
-            if self.transform is not None:
-                batch_data = self.transform(batch_data)
-
-            # describe data
-            batch[self.description_key] = self.embedder.embed_and_fuse(
-                batch_data.to(device=self.device)
-            )
-
-            # insert description in the table
-            to_keep_keys = (
-                list(self.to_keep_schema.keys())
-                if self.to_keep_schema is not None
-                else []
-            )
-            if self.vectorizer is None:
-                to_insert_keys = [self.description_key] + to_keep_keys
-
-                batch_as_list = make_batch_ready_for_table(
-                    batch,
-                    to_insert_keys,
-                    "idx",
-                )
-            else:
-                batch = vectorize_and_unwrap_in_batch(
-                    batch=batch,
-                    vectorizer=self.vectorizer,
-                    data_key=self.description_key,
-                    vectorized_key=self.description_key,
-                    target_key=self.target_key,
-                    to_keep=to_keep_keys,
-                    starts=start_idx,
-                    label_key=self.label_key,
-                    target_to_label=self.target_to_label,
-                    merge_multilabels=self.merge_multilabels,
-                    exclude_full_zero_target=self.exclude_full_zero_target,
-                    exclude_labels=self.exclude_labels,
-                )
-
-                if not batch:
-                    continue
-
-                start_idx = max(batch["idx_vector"]) + 1
-
-                to_insert_keys = [self.description_key, "idx"] + to_keep_keys
-                batch_as_list = make_batch_ready_for_table(
-                    batch,
-                    to_insert_keys,
-                    "idx_vector",
-                )
+            if not batch_as_list:
+                continue
 
             ready_to_insert.extend(batch_as_list)
             if len(ready_to_insert) >= self.min_pxt_insert_size:
