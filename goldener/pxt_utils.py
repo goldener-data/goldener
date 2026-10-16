@@ -155,10 +155,22 @@ class GoldPxtTorchDataset(PixeltablePytorchDataset):
             else get_array_column_shapes_from_query(source)
         )
         self.keep_cache = keep_cache
+        self._length = source.count()
 
         torch_dataset = source.to_pytorch_dataset()
         assert isinstance(torch_dataset, PixeltablePytorchDataset)
         super().__init__(torch_dataset.path, torch_dataset.image_format)
+
+    def __len__(self) -> int:
+        """Get the number of samples in the dataset.
+
+        The count is captured from the source at conversion time, as the dataset
+        iterates over a snapshot of the source stored as parquet files.
+
+        Returns:
+            The number of samples in the dataset.
+        """
+        return self._length
 
     def __iter__(self) -> Iterator[dict[str, Any]]:
         """Iterate over the dataset, reshaping array columns to their original shapes.

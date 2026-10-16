@@ -7,6 +7,9 @@ locally. The description is idempotent: samples already described are not recomp
 The resulting embeddings are the input of the vectorization step (`goldener.vectorize`).
 """
 
+import math
+import time
+from itertools import islice
 from logging import getLogger
 from typing import Callable, Any
 
@@ -94,6 +97,8 @@ class GoldDescriptor(GoldDoerWithTable):
             when using `describe_in_dataset`. Default is False.
         device: Torch device to use for embedding computation. If None, it will use 'cuda' if available, otherwise 'cpu'.
         max_batches: Optional maximum number of batches to process. Useful for testing on a small subset of the dataset.
+        estimation_time_batch_count: Number of initial batches used to estimate the total
+            computation time. Default is 2.
     """
 
     _MINIMAL_SCHEMA: dict[str, type] = {
@@ -125,6 +130,7 @@ class GoldDescriptor(GoldDoerWithTable):
         drop_table: bool = False,
         device: torch.device | None = None,
         max_batches: int | None = None,
+        estimation_time_batch_count: int = 2,
     ):
         """Initialize the GoldDescriptor.
 
@@ -155,9 +161,12 @@ class GoldDescriptor(GoldDoerWithTable):
             drop_table: Whether to drop the table after dataset creation. Defaults to False.
             device: Torch device for embedding computation. Auto-detected if None.
             max_batches: Optional maximum number of batches to process.
+            estimation_time_batch_count: Number of initial batches used to estimate the total
+                computation time. Defaults to 2.
 
         Raises:
             NotImplementedError: If `distribute` is True.
+            ValueError: If `estimation_time_batch_count` is not a positive integer.
         """
         super().__init__(
             allow_existing=allow_existing,
@@ -187,6 +196,12 @@ class GoldDescriptor(GoldDoerWithTable):
                 "Distributed processing is not implemented for GoldDescriptor."
             )
         self._distribute = distribute
+        if (
+            not isinstance(estimation_time_batch_count, int)
+            or estimation_time_batch_count <= 0
+        ):
+            raise ValueError("estimation_time_batch_count must be a positive integer.")
+        self.estimation_time_batch_count = estimation_time_batch_count
 
         if device is None:
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -506,6 +521,99 @@ class GoldDescriptor(GoldDoerWithTable):
         """
         raise NotImplementedError("Distributed description is not implemented yet.")
 
+    def _compute_batch(
+        self,
+        batch: dict[str, Any],
+        batch_idx: int,
+        start_idx: int,
+        not_empty: bool,
+        already_described: set[int],
+        restrict_to: set[int] | None = None,
+    ) -> tuple[list[dict[str, Any]], int]:
+        """Process a single batch: assign indices, filter, embed, and prepare for insertion."""
+        # add idx if it is not provided by the dataset
+        if "idx" not in batch:
+            starts = batch_idx * self.batch_size
+            batch["idx"] = [starts + idx for idx in range(len(batch[self.data_key]))]
+
+        if restrict_to is not None:
+            to_remove = {
+                int(idx.item()) if isinstance(idx, torch.Tensor) else int(idx)
+                for idx in batch["idx"]
+            } - restrict_to
+            if to_remove:
+                batch = filter_batch_from_indices(batch, to_remove)
+                if len(batch) == 0:
+                    return [], start_idx
+
+        # Keep only not yet described samples in the batch
+        if not_empty:
+            batch = filter_batch_from_indices(
+                batch,
+                already_described,
+            )
+
+        if len(batch) == 0:
+            return [], start_idx  # all samples already described
+
+        already_described.update(
+            [
+                int(idx.item()) if isinstance(idx, torch.Tensor) else int(idx)
+                for idx in batch["idx"]
+            ]
+        )
+
+        batch_data = batch[self.data_key]
+        if self.transform is not None:
+            batch_data = self.transform(batch_data)
+
+        # describe data
+        batch[self.description_key] = self.embedder.embed_and_fuse(
+            batch_data.to(device=self.device)
+        )
+
+        # insert description in the table
+        to_keep_keys = (
+            list(self.to_keep_schema.keys()) if self.to_keep_schema is not None else []
+        )
+        if self.vectorizer is None:
+            to_insert_keys = [self.description_key] + to_keep_keys
+
+            batch_as_list = make_batch_ready_for_table(
+                batch,
+                to_insert_keys,
+                "idx",
+            )
+        else:
+            batch = vectorize_and_unwrap_in_batch(
+                batch=batch,
+                vectorizer=self.vectorizer,
+                data_key=self.description_key,
+                vectorized_key=self.description_key,
+                target_key=self.target_key,
+                to_keep=to_keep_keys,
+                starts=start_idx,
+                label_key=self.label_key,
+                target_to_label=self.target_to_label,
+                merge_multilabels=self.merge_multilabels,
+                exclude_full_zero_target=self.exclude_full_zero_target,
+                exclude_labels=self.exclude_labels,
+            )
+
+            if not batch:
+                return [], start_idx
+
+            start_idx = max(batch["idx_vector"]) + 1
+
+            to_insert_keys = [self.description_key, "idx"] + to_keep_keys
+            batch_as_list = make_batch_ready_for_table(
+                batch,
+                to_insert_keys,
+                "idx_vector",
+            )
+
+        return batch_as_list, start_idx
+
     def _sequential_describe(
         self,
         description_table: Table,
@@ -557,6 +665,7 @@ class GoldDescriptor(GoldDoerWithTable):
 
         ready_to_insert: list[dict[str, Any]] = []
 
+        start_idx = 0
         if self.vectorizer is not None:
             start_idx = (
                 0
@@ -584,90 +693,17 @@ class GoldDescriptor(GoldDoerWithTable):
             if self.max_batches is not None and batch_idx >= self.max_batches:
                 break
 
-            # add idx if it is not provided by the dataset
-            if "idx" not in batch:
-                starts = batch_idx * self.batch_size
-                batch["idx"] = [
-                    starts + idx for idx in range(len(batch[self.data_key]))
-                ]
-
-            if restrict_to is not None:
-                to_remove = {
-                    int(idx.item()) if isinstance(idx, torch.Tensor) else int(idx)
-                    for idx in batch["idx"]
-                } - restrict_to
-                if to_remove:
-                    batch = filter_batch_from_indices(batch, to_remove)
-                    if len(batch) == 0:
-                        continue
-
-            # Keep only not yet described samples in the batch
-            if not_empty:
-                batch = filter_batch_from_indices(
-                    batch,
-                    already_described,
-                )
-
-            if len(batch) == 0:
-                continue  # all samples already described
-
-            already_described.update(
-                [
-                    idx.item() if isinstance(idx, torch.Tensor) else idx
-                    for idx in batch["idx"]
-                ]
+            batch_as_list, start_idx = self._compute_batch(
+                batch,
+                batch_idx,
+                start_idx,
+                not_empty,
+                already_described,
+                restrict_to,
             )
 
-            batch_data = batch[self.data_key]
-            if self.transform is not None:
-                batch_data = self.transform(batch_data)
-
-            # describe data
-            batch[self.description_key] = self.embedder.embed_and_fuse(
-                batch_data.to(device=self.device)
-            )
-
-            # insert description in the table
-            to_keep_keys = (
-                list(self.to_keep_schema.keys())
-                if self.to_keep_schema is not None
-                else []
-            )
-            if self.vectorizer is None:
-                to_insert_keys = [self.description_key] + to_keep_keys
-
-                batch_as_list = make_batch_ready_for_table(
-                    batch,
-                    to_insert_keys,
-                    "idx",
-                )
-            else:
-                batch = vectorize_and_unwrap_in_batch(
-                    batch=batch,
-                    vectorizer=self.vectorizer,
-                    data_key=self.description_key,
-                    vectorized_key=self.description_key,
-                    target_key=self.target_key,
-                    to_keep=to_keep_keys,
-                    starts=start_idx,
-                    label_key=self.label_key,
-                    target_to_label=self.target_to_label,
-                    merge_multilabels=self.merge_multilabels,
-                    exclude_full_zero_target=self.exclude_full_zero_target,
-                    exclude_labels=self.exclude_labels,
-                )
-
-                if not batch:
-                    continue
-
-                start_idx = max(batch["idx_vector"]) + 1
-
-                to_insert_keys = [self.description_key, "idx"] + to_keep_keys
-                batch_as_list = make_batch_ready_for_table(
-                    batch,
-                    to_insert_keys,
-                    "idx_vector",
-                )
+            if not batch_as_list:
+                continue
 
             ready_to_insert.extend(batch_as_list)
             if len(ready_to_insert) >= self.min_pxt_insert_size:
@@ -678,3 +714,58 @@ class GoldDescriptor(GoldDoerWithTable):
             description_table.batch_update(ready_to_insert, if_not_exists="insert")
 
         return description_table
+
+    def estimate_computation_time(self, dataset: Dataset | Table) -> float | None:
+        """Estimate the total computation time for describing a dataset.
+
+        Times `self.estimation_time_batch_count` initial batches — including data loading,
+        preprocessing, and embedding — running the exact same steps as
+        `_sequential_describe` (via `_compute_batch`), then extrapolates if the dataset's
+        size is known. The estimate is extrapolated from the first batches only, so later
+        batches can make the real description slower than estimated; and with `restrict_to`
+        or an already partly filled description table, the real description can be faster.
+
+        Args:
+            dataset: The Dataset or PixelTable Table to estimate the description time
+                for. A Table is converted with the same GoldPxtTorchDataset wrapper
+                as in `describe_in_table`.
+
+        Returns:
+            The estimated total computation time in seconds, or None when no estimate
+                is possible: an empty dataset returns None, and a dataset of unknown
+                size returns None after logging its average time per batch.
+        """
+        if isinstance(dataset, Table):
+            dataset = GoldPxtTorchDataset(dataset)
+
+        dataloader = DataLoader(
+            dataset,
+            batch_size=self.batch_size,
+            num_workers=self.num_workers,
+            collate_fn=self.collate_fn,
+        )
+
+        start_idx = 0
+        batch_idx = 0
+        already_described: set[int] = set()
+        batches_measured = 0
+
+        start = time.perf_counter()
+        for batch in islice(dataloader, self.estimation_time_batch_count):
+            self._compute_batch(batch, batch_idx, start_idx, False, already_described)
+            batches_measured += 1
+        elapsed = time.perf_counter() - start
+
+        if batches_measured == 0:
+            return None
+
+        avg_time_per_batch = elapsed / batches_measured
+
+        if hasattr(dataset, "__len__"):
+            total_batches = math.ceil(len(dataset) / self.batch_size)
+            return avg_time_per_batch * total_batches
+
+        logger.info(
+            f"GoldDescriptor: average computation time per batch: {avg_time_per_batch:.4f}s"
+        )
+        return None
