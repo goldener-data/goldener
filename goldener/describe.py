@@ -7,6 +7,9 @@ locally. The description is idempotent: samples already described are not recomp
 The resulting embeddings are the input of the vectorization step (`goldener.vectorize`).
 """
 
+import math
+import time
+from itertools import islice
 from logging import getLogger
 from typing import Callable, Any
 
@@ -711,3 +714,58 @@ class GoldDescriptor(GoldDoerWithTable):
             description_table.batch_update(ready_to_insert, if_not_exists="insert")
 
         return description_table
+
+    def estimate_computation_time(self, dataset: Dataset | Table) -> float | None:
+        """Estimate the total computation time for describing a dataset.
+
+        Times `self.estimation_time_batch_count` initial batches — including data loading,
+        preprocessing, and embedding — running the exact same steps as
+        `_sequential_describe` (via `_compute_batch`), then extrapolates if the dataset's
+        size is known. The estimate is extrapolated from the first batches only, so later
+        batches can make the real description slower than estimated; and with `restrict_to`
+        or an already partly filled description table, the real description can be faster.
+
+        Args:
+            dataset: The Dataset or PixelTable Table to estimate the description time
+                for. A Table is converted with the same GoldPxtTorchDataset wrapper
+                as in `describe_in_table`.
+
+        Returns:
+            The estimated total computation time in seconds, or None when no estimate
+                is possible: an empty dataset returns None, and a dataset of unknown
+                size returns None after logging its average time per batch.
+        """
+        if isinstance(dataset, Table):
+            dataset = GoldPxtTorchDataset(dataset)
+
+        dataloader = DataLoader(
+            dataset,
+            batch_size=self.batch_size,
+            num_workers=self.num_workers,
+            collate_fn=self.collate_fn,
+        )
+
+        start_idx = 0
+        batch_idx = 0
+        already_described: set[int] = set()
+        batches_measured = 0
+
+        start = time.perf_counter()
+        for batch in islice(dataloader, self.estimation_time_batch_count):
+            self._compute_batch(batch, batch_idx, start_idx, False, already_described)
+            batches_measured += 1
+        elapsed = time.perf_counter() - start
+
+        if batches_measured == 0:
+            return None
+
+        avg_time_per_batch = elapsed / batches_measured
+
+        if hasattr(dataset, "__len__"):
+            total_batches = math.ceil(len(dataset) / self.batch_size)
+            return avg_time_per_batch * total_batches
+
+        logger.info(
+            f"GoldDescriptor: average computation time per batch: {avg_time_per_batch:.4f}s"
+        )
+        return None

@@ -1,3 +1,4 @@
+import logging
 from collections import defaultdict
 
 import numpy as np
@@ -5,6 +6,7 @@ import pytest
 import torch
 
 import pixeltable as pxt
+from pixeltable import Error
 
 from goldener.describe import GoldDescriptor
 from goldener.embed import GoldTorchEmbeddingToolConfig, GoldTorchEmbeddingTool
@@ -910,3 +912,134 @@ class TestGoldDescriptor:
         assert table.count() == 2
         rows = table.collect()
         assert rows[0]["embeddings"].shape != rows[1]["embeddings"].shape
+
+
+class TestEstimateComputationTime:
+    def setup_method(self):
+        pxt.drop_dir("unit_test", force=True)
+        pxt.create_dir("unit_test", if_exists="ignore")
+
+    def teardown_method(self):
+        pxt.drop_dir("unit_test", force=True)
+
+    def test_returns_estimate_when_dataset_size_known(self, embedder):
+        desc = GoldDescriptor(
+            table_path="unit_test.describe_estimate",
+            embedder=embedder,
+            batch_size=2,
+        )
+        dataset = DummyDataset(dataset_len=10)
+
+        estimate = desc.estimate_computation_time(dataset)
+
+        assert estimate is not None
+        assert estimate > 0
+
+    def test_returns_none_when_dataset_size_unknown(self, embedder, caplog):
+        from torch.utils.data import IterableDataset
+
+        class NoLenDataset(IterableDataset):
+            def __init__(self):
+                self.data = [{"data": torch.zeros(3, 8, 8), "idx": i} for i in range(4)]
+
+            def __iter__(self):
+                return iter(self.data)
+
+        desc = GoldDescriptor(
+            table_path="unit_test.describe_estimate_nolen",
+            embedder=embedder,
+            batch_size=2,
+        )
+
+        with caplog.at_level(logging.INFO):
+            estimate = desc.estimate_computation_time(NoLenDataset())
+
+        assert estimate is None
+        assert "GoldDescriptor: average computation time per batch" in caplog.text
+
+    def test_returns_none_when_dataset_is_empty(self, embedder):
+        desc = GoldDescriptor(
+            table_path="unit_test.describe_estimate_empty",
+            embedder=embedder,
+            batch_size=2,
+        )
+        dataset = DummyDataset(dataset_len=0)
+
+        estimate = desc.estimate_computation_time(dataset)
+
+        assert estimate is None
+
+    def test_returns_estimate_from_table_input(self, embedder):
+        sample = [
+            {"data": np.zeros((3, 8, 8), dtype=np.float32), "idx": i} for i in range(4)
+        ]
+        source_table = pxt.create_table(
+            "unit_test.describe_estimate_source",
+            source=sample,
+            if_exists="replace_force",
+        )
+
+        desc = GoldDescriptor(
+            table_path="unit_test.describe_estimate_table",
+            embedder=embedder,
+            batch_size=2,
+        )
+
+        estimate = desc.estimate_computation_time(source_table)
+
+        assert estimate is not None
+        assert estimate > 0
+
+    def test_estimation_time_batch_count_is_respected(self, embedder):
+        class CountingEmbedder:
+            def __init__(self, embedder):
+                self.embedder = embedder
+                self.calls = 0
+
+            def embed_and_fuse(self, data):
+                self.calls += 1
+                return self.embedder.embed_and_fuse(data)
+
+        counting_embedder = CountingEmbedder(embedder)
+        desc = GoldDescriptor(
+            table_path="unit_test.describe_estimate_count",
+            embedder=counting_embedder,
+            batch_size=2,
+            estimation_time_batch_count=3,
+        )
+
+        estimate = desc.estimate_computation_time(DummyDataset(dataset_len=10))
+
+        assert estimate is not None
+        assert counting_embedder.calls == 3
+
+    def test_estimation_does_not_create_or_fill_the_description_table(self, embedder):
+        table_path = "unit_test.describe_estimate_no_side_effect"
+
+        desc = GoldDescriptor(
+            table_path=table_path,
+            embedder=embedder,
+            batch_size=2,
+        )
+
+        estimate = desc.estimate_computation_time(DummyDataset(dataset_len=4))
+
+        assert estimate is not None
+        try:
+            table = pxt.get_table(table_path, if_not_exists="ignore")
+        except Error:
+            table = None
+        assert table is None
+
+    def test_returns_estimate_with_vectorizer(self, embedder, vectorizer):
+        desc = GoldDescriptor(
+            table_path="unit_test.describe_estimate_with_vectorizer",
+            embedder=embedder,
+            vectorizer=vectorizer,
+            batch_size=2,
+        )
+
+        estimate = desc.estimate_computation_time(DummyDataset(dataset_len=4))
+
+        assert estimate is not None
+        assert estimate > 0
