@@ -7,6 +7,7 @@ on:
 jobs:
   send-digest:
     runs-on: ubuntu-latest
+    environment: slack-digest
     steps:
       - name: Check out the repository
         uses: actions/checkout@v4
