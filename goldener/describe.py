@@ -94,6 +94,8 @@ class GoldDescriptor(GoldDoerWithTable):
             when using `describe_in_dataset`. Default is False.
         device: Torch device to use for embedding computation. If None, it will use 'cuda' if available, otherwise 'cpu'.
         max_batches: Optional maximum number of batches to process. Useful for testing on a small subset of the dataset.
+        estimation_time_batch_count: Number of initial batches used to estimate the total
+            computation time. Default is 2.
     """
 
     _MINIMAL_SCHEMA: dict[str, type] = {
@@ -125,6 +127,7 @@ class GoldDescriptor(GoldDoerWithTable):
         drop_table: bool = False,
         device: torch.device | None = None,
         max_batches: int | None = None,
+        estimation_time_batch_count: int = 2,
     ):
         """Initialize the GoldDescriptor.
 
@@ -155,9 +158,12 @@ class GoldDescriptor(GoldDoerWithTable):
             drop_table: Whether to drop the table after dataset creation. Defaults to False.
             device: Torch device for embedding computation. Auto-detected if None.
             max_batches: Optional maximum number of batches to process.
+            estimation_time_batch_count: Number of initial batches used to estimate the total
+                computation time. Defaults to 2.
 
         Raises:
             NotImplementedError: If `distribute` is True.
+            ValueError: If `estimation_time_batch_count` is not a positive integer.
         """
         super().__init__(
             allow_existing=allow_existing,
@@ -187,6 +193,12 @@ class GoldDescriptor(GoldDoerWithTable):
                 "Distributed processing is not implemented for GoldDescriptor."
             )
         self._distribute = distribute
+        if (
+            not isinstance(estimation_time_batch_count, int)
+            or estimation_time_batch_count <= 0
+        ):
+            raise ValueError("estimation_time_batch_count must be a positive integer.")
+        self.estimation_time_batch_count = estimation_time_batch_count
 
         if device is None:
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

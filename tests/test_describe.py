@@ -92,6 +92,32 @@ class TestGoldDescriptor:
             descriptor.distribute = True
         assert descriptor.distribute is False
 
+    def test_estimation_time_batch_count_must_be_positive(self, embedder):
+        with pytest.raises(
+            ValueError, match="estimation_time_batch_count must be a positive integer"
+        ):
+            GoldDescriptor(
+                table_path="unit_test.test_estimation_time_batch_count",
+                embedder=embedder,
+                estimation_time_batch_count=0,
+            )
+
+        with pytest.raises(
+            ValueError, match="estimation_time_batch_count must be a positive integer"
+        ):
+            GoldDescriptor(
+                table_path="unit_test.test_estimation_time_batch_count",
+                embedder=embedder,
+                estimation_time_batch_count=-1,
+            )
+
+        descriptor = GoldDescriptor(
+            table_path="unit_test.test_estimation_time_batch_count",
+            embedder=embedder,
+            estimation_time_batch_count=3,
+        )
+        assert descriptor.estimation_time_batch_count == 3
+
     def test_simple_describe_in_table(self, embedder):
         desc = GoldDescriptor(
             table_path="unit_test.test_describe",
