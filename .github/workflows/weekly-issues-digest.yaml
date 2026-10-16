@@ -1,0 +1,28 @@
+name: Weekly issues digest
+
+on:
+  workflow_dispatch:   # manual trigger from the Actions tab
+  schedule:           # GitHub's cron is enabled; runs are best-effort
+    - cron: "17 9 * * 1"  # every Monday at 09:17 UTC
+jobs:
+  send-digest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Send the weekly digest to Slack
+        env:
+          SEND_TO_SLACK: "True"
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_CHANNEL: ${{ vars.SLACK_CHANNEL || '#issues' }}
+        run: uv run --no-project python scripts/weekly_issues_digest.py
