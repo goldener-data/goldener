@@ -359,17 +359,17 @@ workflow manually from the Actions tab of the repository, on the branch or tag t
                 </a>
             </td>
             <td align="center">
-                <a href="https://github.com/AnayGarodia">
-                    <img src="https://avatars.githubusercontent.com/u/76836303?v=4" width="100;" alt="AnayGarodia"/>
-                    <br />
-                    <sub><b>Anay Garodia</b></sub>
-                </a>
-            </td>
-            <td align="center">
                 <a href="https://github.com/TaniaW777">
                     <img src="https://avatars.githubusercontent.com/u/200526578?v=4" width="100;" alt="TaniaW777"/>
                     <br />
                     <sub><b>Wendtoin Filomène Tania ZABRE</b></sub>
+                </a>
+            </td>
+            <td align="center">
+                <a href="https://github.com/AnayGarodia">
+                    <img src="https://avatars.githubusercontent.com/u/76836303?v=4" width="100;" alt="AnayGarodia"/>
+                    <br />
+                    <sub><b>Anay Garodia</b></sub>
                 </a>
             </td>
 		</tr>
