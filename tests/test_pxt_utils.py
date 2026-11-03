@@ -119,11 +119,18 @@ class TestGoldPxtTorchDataset:
                 "Data should be reshaped correctly"
             )
 
+        assert len(dataset) == row_count
         assert row_count == test_table.count()
 
     def test_dataset_with_query(self, test_table):
         shapes = get_array_column_shapes_from_table(test_table)
 
+        test_table.insert(
+            [
+                {"data": np.zeros((3, 8, 8), dtype=np.float32), "idx": 1},
+                {"data": np.zeros((3, 8, 8), dtype=np.float32), "idx": 2},
+            ]
+        )
         dataset = GoldPxtTorchDataset(test_table.where(test_table.idx == 0))
 
         row_count = 0
@@ -134,46 +141,9 @@ class TestGoldPxtTorchDataset:
                 "Data should be reshaped correctly"
             )
 
-        assert row_count == test_table.count()
-
-    def test_len_matches_iteration(self, test_table):
-        test_table.insert(
-            [
-                {"data": np.zeros((3, 8, 8), dtype=np.float32), "idx": 1},
-                {"data": np.zeros((3, 8, 8), dtype=np.float32), "idx": 2},
-            ]
-        )
-
-        dataset = GoldPxtTorchDataset(test_table)
-
-        row_count = 0
-        for _ in iter(dataset):
-            row_count += 1
-
-        assert len(dataset) == row_count, (
-            "len should return the number of samples obtained by iteration"
-        )
-        assert row_count == test_table.count()
-
-    def test_len_with_query(self, test_table):
-        test_table.insert(
-            [
-                {"data": np.zeros((3, 8, 8), dtype=np.float32), "idx": 1},
-                {"data": np.zeros((3, 8, 8), dtype=np.float32), "idx": 2},
-            ]
-        )
-
-        query = test_table.where(test_table.idx != 1)
-        dataset = GoldPxtTorchDataset(query)
-
-        row_count = 0
-        for _ in iter(dataset):
-            row_count += 1
-
-        assert len(dataset) == row_count, (
-            "len should return the number of samples obtained by iteration"
-        )
-        assert row_count == query.count()
+        assert len(dataset) == row_count
+        assert row_count == 1
+        assert test_table.count() == 3
 
 
 class TestGetExprFromColumnName:

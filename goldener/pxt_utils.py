@@ -7,6 +7,7 @@ shape of the array columns.
 
 from typing import Literal, Any, Iterator, Callable
 import shutil
+import uuid
 
 import pixeltable as pxt
 from pixeltable import Query
@@ -155,9 +156,16 @@ class GoldPxtTorchDataset(PixeltablePytorchDataset):
             else get_array_column_shapes_from_query(source)
         )
         self.keep_cache = keep_cache
-        self._length = source.count()
 
-        torch_dataset = source.to_pytorch_dataset()
+        pxt.create_dir("tmp", if_exists="ignore")
+        snapshot_path = f"tmp/snapshot_{uuid.uuid4().hex}"
+        snapshot = pxt.create_snapshot(snapshot_path, source)
+        assert snapshot is not None
+        try:
+            self._length = snapshot.count()
+            torch_dataset = snapshot.to_pytorch_dataset()
+        finally:
+            pxt.drop_table(snapshot_path, force=True)
         assert isinstance(torch_dataset, PixeltablePytorchDataset)
         super().__init__(torch_dataset.path, torch_dataset.image_format)
 
