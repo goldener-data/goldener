@@ -719,7 +719,7 @@ class GoldDescriptor(GoldDoerWithTable):
         """Estimate the total computation time for describing a dataset.
 
         Times `self.estimation_time_batch_count` initial batches — including data loading,
-        preprocessing, and embedding — running the exact same steps as
+        preprocessing, embedding and optional vectorization — running the exact same steps as
         `_sequential_describe` (via `_compute_batch`), then extrapolates if the dataset's
         size is known. The estimate is extrapolated from the first batches only, so later
         batches can make the real description slower than estimated; and with `restrict_to`
