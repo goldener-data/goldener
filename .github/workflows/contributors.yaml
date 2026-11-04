@@ -1,10 +1,11 @@
 name: Contribute List
 
 on:
-  push:
-    branches:
-      - main
-  workflow_dispatch:
+  pull_request_target:
+    branches: [main]
+    types: [closed]
+  schedule:
+    - cron: "17 4 * * *"
 
 permissions:
   contents: write
@@ -12,11 +13,63 @@ permissions:
 
 jobs:
   contrib-readme-job:
+    if: >-
+      github.event_name == 'schedule' ||
+      (github.event.pull_request.merged == true && github.event.pull_request.user.type != 'Bot')
     runs-on: ubuntu-latest
     name: Automate contributors in README
 
     steps:
+      - name: Checkout base branch
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Check whether the contributor set changed
+        id: contributor
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python - <<'PY'
+          import os
+          import re
+          import subprocess
+          from pathlib import Path
+
+          repository = os.environ["GITHUB_REPOSITORY"]
+          api_logins = subprocess.check_output(
+              [
+                  "gh",
+                  "api",
+                  "--paginate",
+                  f"repos/{repository}/contributors?per_page=100",
+                  "--jq",
+                  '.[] | select(.type != "Bot" and (.login | contains("actions-user") | not)) | .login // empty',
+              ],
+              text=True,
+          ).splitlines()
+
+          readme = Path("README.md").read_text()
+          start = readme.index("<!-- readme: contributors -start -->")
+          end = readme.index("<!-- readme: contributors -end -->", start)
+          section = readme[start:end]
+          listed = {
+              login.casefold()
+              for login in re.findall(r'href="https://github\.com/([^"]+)"', section)
+          }
+          missing = {
+              login.casefold()
+              for login in api_logins
+              if login and login.casefold() not in listed
+          }
+
+          print(f"New contributors to add: {', '.join(sorted(missing)) or 'none'}")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write(f"has_new={str(bool(missing)).lower()}\n")
+          PY
+
       - name: Update contributors list
+        if: steps.contributor.outputs.has_new == 'true'
         uses: akhilmhdh/contributors-readme-action@v2.3.11
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
