@@ -82,14 +82,16 @@ class ExhaustedClusterStrategy(Enum):
 
 
 class GoldClusterizedBatchSampler(Sampler):
-    """Batch sampler forcing the presence of all clusters in each batch.
+    """Batch sampler balancing samples across data clusters.
 
     With a random batcher, the content distribution within the batches might vary a lot.
     During the training of a model, this variation can influence badly its convergence
     leading to an underperforming model.
 
     In this batcher, the data is first clustered in order to gather together the samples showing a similar content.
-    Then, every batch is forced to contain at least 1 element of each cluster.
+    Samples are drawn across clusters to balance their representation in each batch.
+    When there are more clusters than batch positions, a batch contains only a
+    subset of the clusters.
 
     The randomness is still available in the process of selection among the elements of all clusters.
 

@@ -50,16 +50,15 @@ def get_vit_patch_tokens_vectorizer(
     transform_y: Callable[[torch.Tensor], torch.Tensor] | None = None,
     generator: torch.Generator | None = None,
 ) -> GoldTensorVectorizationTool:
-    """Get a GoldTensorVectorizationTool that keeps the patch tokens from a ViT model
+    """Get a GoldTensorVectorizationTool that keeps the patch tokens from a ViT model.
 
     It optionally removes the first n_prefixes tokens and keeps n_random random tokens.
 
     Args:
         n_prefixes: The number of prefix tokens to remove from the start (default is 5).
            If None, no prefixes are removed.
-        n_random: The number of random tokens to keep after removing prefixes
-           (default is None, meaning no random tokens are kept).
-           If None, no random filtering is applied.
+        n_random: The number of random tokens to keep after removing prefixes.
+            If None (default), no random filtering is applied.
         transform_y: An optional callable to transform the target variable y.
         generator: An optional torch.Generator for reproducibility when n_random is set.
     """

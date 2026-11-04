@@ -103,7 +103,7 @@ class GoldTorchModuleReductionTool(GoldReductionTool):
         """Transform the 2D vectors using the fitted dimensionality reduction model.
 
         Args:
-            x: x: Already vectorized 2D input tensor of shape (num_vectors, feature_dim) to transform.
+            x: Already vectorized 2D input tensor of shape (num_vectors, feature_dim) to transform.
 
         Returns:
             Transformed tensor with reduced dimensionality.
@@ -160,6 +160,9 @@ class GoldSKLearnReductionTool(GoldReductionToolWithFit):
 
     def transform(self, x: torch.Tensor) -> torch.Tensor:
         """Transform the 2D vectors using the fitted dimensionality reduction model.
+
+        If the estimator has no transform method, warn and fit it again on x
+        using fit_transform.
 
         Args:
             x: Already vectorized 2D input tensor of shape (num_vectors, feature_dim) to transform.
