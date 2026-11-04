@@ -44,7 +44,7 @@ jobs:
                   "--paginate",
                   f"repos/{repository}/contributors?per_page=100",
                   "--jq",
-                  ".[].login // empty",
+                  '.[] | select(.type != "Bot" and (.login | contains("actions-user") | not)) | .login // empty',
               ],
               text=True,
           ).splitlines()
