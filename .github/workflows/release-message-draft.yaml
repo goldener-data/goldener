@@ -1,0 +1,96 @@
+name: Draft the release message
+
+# Collects the pull requests merged since the previous release, then asks the model to draft the Slack message of the
+# release. The draft is shown in the run summary and uploaded as an artifact of the run. This workflow never posts
+# anything: it only prepares the draft for a human to read.
+#
+# The job runs in the `release-message` environment, which holds:
+# - ANTHROPIC_API_KEY (secret): the Anthropic API key, visible to the "Draft the message" step only.
+# - ANTHROPIC_MODEL (variable): the name of the model that drafts the message.
+#
+# A manual run takes a tag. Its `dry_run` input, checked by default, prints the prompt instead of calling the model.
+#
+# The tag is only read through the TAG variable: never write it as an expression inside a `run` script.
+
+on:
+  release:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The tag of the release to draft the message for
+        required: true
+        type: string
+      dry_run:
+        description: Print the prompt instead of calling the model
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  # two drafts of the same release must not run at the same time
+  group: release-message-${{ github.event.release.tag_name || inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  draft:
+    name: Draft the release message
+    runs-on: ubuntu-latest
+    environment: release-message
+    timeout-minutes: 15
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Collect the merged pull requests
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: uv run --no-project python -m scripts.release_merged_prs "$TAG" > changes.json
+
+      - name: Draft the message
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL }}
+          REPO: ${{ github.repository }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'True' || 'False' }}
+        run: uv run --no-project python -m scripts.release_message_draft changes.json draft.txt
+
+      # a dry run writes no draft, so there is nothing to show
+      - name: Show the draft
+        run: |
+          if [ -f draft.txt ]; then
+            {
+              echo "## Release message draft"
+              echo
+              echo '```text'
+              cat draft.txt
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload the changes and the draft
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-message-draft
+          path: |
+            changes.json
+            draft.txt
+          if-no-files-found: ignore
