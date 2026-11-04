@@ -75,9 +75,9 @@ jobs:
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           npm install -g "@anthropic-ai/claude-code@$CLAUDE_CODE_VERSION"
 
-      # The skills of goldener-research are exposed as project skills of the cloned repository. They are linked
-      # rather than copied: the bundled scripts resolve their path to find the repository root holding the
-      # BIBLIOGRAPHY.md files, so they must keep running from skills/<name>/ inside the repository.
+      # Expose checkout skills as project skills. Helpers are shared in skills/tools, while short-paper-review
+      # bundles the paper-review instructions and template under references/paper-review. Run Claude from the
+      # checkout so that both the helpers and the bibliography can be discovered.
       - name: Expose the goldener-research skills to Claude
         working-directory: ${{ env.RESEARCH_DIR }}
         run: |
@@ -92,6 +92,15 @@ jobs:
           for name in short-paper-review paper-review; do
             if [ ! -e ".claude/skills/$name/SKILL.md" ]; then
               echo "The $name skill is missing from goldener-research." >&2
+              exit 1
+            fi
+          done
+          for resource in skills/tools/papers.py skills/tools/unicode_bold.py \
+            skills/short-paper-review/references/targets.md \
+            skills/short-paper-review/references/paper-review/SKILL.md \
+            skills/short-paper-review/references/paper-review/template.html; do
+            if [ ! -f "$resource" ]; then
+              echo "The $resource resource is missing from goldener-research." >&2
               exit 1
             fi
           done
@@ -141,7 +150,10 @@ jobs:
           cat > "$RUNNER_TEMP/prompt.md" <<EOF
           Use the short-paper-review skill to generate a LinkedIn post about a paper, without naming a paper or a
           theme, so that the paper is picked at random from the goldener-research bibliography. Never pick the paper
-          yourself. Use $OUTPUT_DIR as the output directory and keep the review there. $trigger
+          yourself. The research checkout is $RESEARCH_DIR and its shared helpers are in $RESEARCH_DIR/skills/tools;
+          run bibliography helpers from the checkout or pass --root "$RESEARCH_DIR". Use LinkedIn as the target,
+          save one UTF-8 <paper-slug>.short-linkedin.txt draft in $OUTPUT_DIR and keep the HTML review there.
+          Use ordinary text without Unicode bold. $trigger
 
           If the skill would stop to ask a question, there is nobody to answer: stop and explain why in
           $OUTPUT_DIR/error.md instead. Do not modify, commit or push anything in this repository, and do not publish
