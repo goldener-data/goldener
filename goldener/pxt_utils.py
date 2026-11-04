@@ -7,6 +7,7 @@ shape of the array columns.
 
 from typing import Literal, Any, Iterator, Callable
 import shutil
+import uuid
 
 import pixeltable as pxt
 from pixeltable import Query
@@ -156,9 +157,28 @@ class GoldPxtTorchDataset(PixeltablePytorchDataset):
         )
         self.keep_cache = keep_cache
 
-        torch_dataset = source.to_pytorch_dataset()
+        pxt.create_dir("tmp", if_exists="ignore")
+        snapshot_path = f"tmp/snapshot_{uuid.uuid4().hex}"
+        snapshot = pxt.create_snapshot(snapshot_path, source)
+        assert snapshot is not None
+        try:
+            self._length = snapshot.count()
+            torch_dataset = snapshot.to_pytorch_dataset()
+        finally:
+            pxt.drop_table(snapshot_path, force=True)
         assert isinstance(torch_dataset, PixeltablePytorchDataset)
         super().__init__(torch_dataset.path, torch_dataset.image_format)
+
+    def __len__(self) -> int:
+        """Get the number of samples in the dataset.
+
+        The count is captured from the source at conversion time, as the dataset
+        iterates over a snapshot of the source stored as parquet files.
+
+        Returns:
+            The number of samples in the dataset.
+        """
+        return self._length
 
     def __iter__(self) -> Iterator[dict[str, Any]]:
         """Iterate over the dataset, reshaping array columns to their original shapes.
