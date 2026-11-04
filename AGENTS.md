@@ -140,9 +140,24 @@ intermediate results so operations can resume without recomputing completed work
   `select_in_*`, and `split_in_*`, with `*_in_table` returning PixelTable tables and
   `*_in_dataset` returning the existing dataset wrapper. Follow each method's actual
   supported Dataset/Table input types and keyword defaults.
+- Always implement `*_in_dataset` by calling `*_in_table` and converting its result
+  to a dataset. Keep one computation path for both entry points.
+- Save intermediate results in local tables wherever possible. Computation must be
+  restartable: stopping and resuming an operation must reuse completed elements
+  instead of recomputing them. Repeated calls must not duplicate completed work.
+- Provide `estimate_computation_time` when feasible. Factor shared computation out
+  of the main operation and reuse it for estimation. Estimation must leave random
+  state unchanged, including any supplied generators, so it does not affect the
+  subsequent computation.
+- Expose a distribution capability even when its implementation is pending.
+  When unsupported, default `distribute` to False and reject `distribute=True`
+  explicitly, both at construction and through mutable configuration.
 - Respect configurable column keys, `to_keep_schema`, shape metadata, and primary
-  keys. Keep `idx` (source sample) distinct from `idx_vector` (individual vector).
+  keys. Every sample must be linked to an `idx`. Every vector must retain its source
+  sample's `idx` and have an `idx_vector` identifying the individual vector uniquely.
   Multiple vectors/labels may belong to one sample; preserve that correspondence.
+- Provide a result retrieval function keyed by `idx` or `idx_vector`, as appropriate
+  to the operation, so callers can associate results with samples or individual vectors.
 - Preserve restart/idempotence, `allow_existing`, `max_batches`, and documented
   `drop_table` behavior. Reuse `pxt_utils` table/schema/query/conversion helpers.
   Do not eagerly drop tables still needed by a returned dataset.
