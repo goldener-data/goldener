@@ -12,6 +12,7 @@ The workflow runs on Mondays at 09:17 UTC and supports manual runs from Actions.
 ## Generate and review locally
 
 Requires Bash and an authenticated GitHub CLI (`gh auth login` or `GH_TOKEN`).
+The review command below also requires `jq`.
 The GitHub token needs read access to issues in the repository.
 
 ```bash
@@ -25,15 +26,17 @@ may leave partial output, so only send it after generation succeeds.
 
 The script fetches all open issues with the exact label `ready`, using GitHub
 CLI's internal pagination. It groups issues by the first label matching
-`skill|level|good first issue|help wanted` (case insensitive). Issues without
-such labels appear under `unspecified`. Within each group, the newest issues
-appear first with their creation date and GitHub link.
+`skill|level|good first issue|help wanted` (case insensitive); skill names are
+normalized to lowercase. Issues without such labels appear under `unspecified`.
+Within each group, the newest issues appear first with their creation date and
+GitHub link.
 
 Each group shows up to five issues, with a link to all ready issues for overflow.
 At most 22 groups are shown, followed by a link if more groups exist. Titles and
 group names are escaped and shortened to fit Slack's message limits. The JSON
-contains `count`, Slack fallback `text`, and `blocks`; with no ready issues it
-contains only `{"count":0}`.
+contains `count`, Slack fallback `text`, and `blocks`. The fallback mirrors the
+displayed header, context, skill groups, issue summaries, and overflow links for
+notifications and screen readers. With no ready issues it contains only `{"count":0}`.
 
 ## Publish the reviewed digest
 
@@ -48,6 +51,9 @@ SLACK_CHANNEL='#issues' bash scripts/weekly_issues_digest_send.sh /tmp/digest.js
 `SLACK_CHANNEL` defaults to `#issues`; a channel ID is also supported. Empty
 digests are skipped without requiring a Slack token. Nonempty digests require
 `SLACK_BOT_TOKEN`. The sender checks HTTP errors and Slack's JSON `ok` field.
+Invalid counts report the input file and expected format; HTTP failures also
+report Slack's `error` when present. The Authorization header is passed through a
+private temporary file, removed on exit, so curl arguments do not contain the token.
 It makes one posting attempt and does not retry automatically. Before rerunning
 a failed send, check whether Slack already received it to avoid duplicate posts.
 

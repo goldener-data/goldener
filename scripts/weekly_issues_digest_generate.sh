@@ -24,12 +24,13 @@ gh issue list --repo "$REPO" --state open --label ready --limit 2147483647 \
   def strip_decor: gsub("^[^\\p{L}\\p{N}]+|[^\\p{L}\\p{N}]+$"; "");
   # Use the first matching skill label: "skill: beginner" becomes "beginner".
   # Keep named labels such as "good first issue" when removing the match leaves no value.
+  # Lowercase the result so matching, grouping, ordering, and emoji agree.
   def skill:
     [.labels[].name | select(test("skill|level|good first issue|help wanted"; "i"))][0] as $label |
     if $label == null then "unspecified"
     else ($label | sub("skill|level|good first issue|help wanted"; ""; "i") | strip_decor) as $value |
       if $value == "" then $label | strip_decor else $value end
-    end;
+    end | ascii_downcase;
   def emoji:
     if . == "good first issue" then "🟢"
     elif . == "help wanted" then "🟡"
@@ -48,8 +49,6 @@ gh issue list --repo "$REPO" --state open --label ready --limit 2147483647 \
     )) as $groups |
     {
       count: ($issues | length),
-      # Slack uses text as a fallback for notifications and accessibility.
-      text: "Issues ready to pick up — \($issues | length) open · <\($all_url)|see all on GitHub>",
       blocks: ([
         {type: "header", text: {type: "plain_text", text: "📋 Issues ready to pick up"}},
         {type: "context", elements: [{type: "mrkdwn",
@@ -74,6 +73,13 @@ gh issue list --repo "$REPO" --state open --label ready --limit 2147483647 \
         {type: "section", text: {type: "mrkdwn",
           text: "Additional skill groups → <\($all_url)|see all on GitHub>"}}
       ] else [] end))
-    }
+    } |
+    # Screen readers use top-level text, so mirror every displayed content block.
+    # Deriving it here keeps titles, dates, groups, and overflow links in sync.
+    .text = ([.blocks[] |
+      if .type == "context" then .elements[].text
+      elif .text != null then .text.text
+      else empty end
+    ] | join("\n\n"))
   end
 ' > "$1"
