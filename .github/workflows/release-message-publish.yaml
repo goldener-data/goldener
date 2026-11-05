@@ -1,0 +1,157 @@
+name: Publish the release message
+
+# Posts the message of a release to Slack. The message is either the draft of a "Draft the release message" run, given
+# by its run id (visible in its URL), or an edited text given in the `message` input.
+#
+# The `preview` job writes the exact message in the summary of the run. With the `send_to_slack` checkbox, the `publish`
+# job then waits for its approval: the reviewer reads the message in that summary, then approves. Without the checkbox,
+# the run stops after the preview. The published text is the exact copy used by the preview: `preview` uploads the draft
+# it read, and `publish` posts that copy instead of downloading the draft run again.
+#
+# The `publish` job runs in the `release-message` environment, which needs:
+# - SLACK_BOT_TOKEN (secret): the Slack token, visible to the "Post the message" step only.
+# - SLACK_CHANNEL (variable): the channel of the message.
+# - required reviewers, who approve the job.
+#
+# The reviewer must read the message: only `<!` and `<@` are blocked, and an edited message skips the check of the tag.
+#
+# If the run fails after Slack accepted the message (the reply was lost), check the channel before running it again:
+# a second run would post the message twice.
+#
+# The web form takes one line only. For an edited message on several lines, use:
+#   gh workflow run release-message-publish.yaml -f tag=v7.0.0 -f send_to_slack=true -f message="$(cat edited.txt)"
+#
+# The inputs are only read through variables: never write them as expressions inside a `run` script.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The tag of the release to announce
+        required: true
+        type: string
+      draft_run_id:
+        description: The id of the "Draft the release message" run, visible in its URL
+        required: false
+        type: string
+      message:
+        description: An edited text that replaces the draft
+        required: false
+        type: string
+      send_to_slack:
+        description: Post the message on Slack after approval (leave unchecked to only preview it)
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  # two publications of the same release must not run at the same time
+  group: release-message-publish-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  preview:
+    name: Preview the release message
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      TAG: ${{ inputs.tag }}
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check the inputs
+        env:
+          MESSAGE: ${{ inputs.message }}
+          DRAFT_RUN_ID: ${{ inputs.draft_run_id }}
+        run: |
+          if [ -z "$MESSAGE" ] && [ -z "$DRAFT_RUN_ID" ]; then
+            echo "Give the id of a draft run in draft_run_id, or an edited text in message." >&2
+            exit 1
+          fi
+
+      - name: Download the draft
+        if: inputs.message == ''
+        uses: actions/download-artifact@v4
+        with:
+          name: release-message-draft
+          path: draft
+          run-id: ${{ inputs.draft_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # the long fence keeps a code block of the message from closing the one of the summary
+      - name: Show the message
+        env:
+          MESSAGE: ${{ inputs.message }}
+          SEND_TO_SLACK: "False"
+        run: |
+          uv run --no-project python -m scripts.release_message_publish "$TAG" draft > message.txt
+          {
+            echo "## Message to post"
+            echo
+            echo 'The channel is chosen when the message is posted. The first line ("Channel: ...") and the last line ("TEST: nothing sent.") come from the print mode and are not part of the message.'
+            echo
+            echo '````````text'
+            cat message.txt
+            echo '````````'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # there is no draft folder when an edited message is given
+      - name: Upload the previewed draft
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-message-preview
+          path: draft
+          if-no-files-found: ignore
+
+  publish:
+    name: Publish the release message
+    needs: preview
+    if: inputs.send_to_slack
+    runs-on: ubuntu-latest
+    environment: release-message
+    timeout-minutes: 10
+    env:
+      TAG: ${{ inputs.tag }}
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Download the previewed draft
+        if: inputs.message == ''
+        uses: actions/download-artifact@v4
+        with:
+          name: release-message-preview
+          path: draft
+
+      - name: Post the message
+        env:
+          MESSAGE: ${{ inputs.message }}
+          SEND_TO_SLACK: "True"
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_CHANNEL: ${{ vars.SLACK_CHANNEL }}
+        run: uv run --no-project python -m scripts.release_message_publish "$TAG" draft
