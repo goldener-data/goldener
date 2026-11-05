@@ -362,8 +362,9 @@ class GoldTensorVectorizationTool:
             about which element of the batch it corresponds to.
 
         Raises:
-            ValueError: If x has fewer than three dimensions or x and y shapes
-                are incompatible. See check_x_and_y_shapes for shape constraints.
+            ValueError: If x has fewer than three dimensions, or if x and y shapes
+                are incompatible when target filtering is applied. See
+                check_x_and_y_shapes for target-filtering shape constraints.
         """
         if x.ndim < 3:
             raise ValueError("Input tensor x to vectorize must be at least 3D.")

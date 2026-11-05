@@ -32,6 +32,11 @@ intermediate results so operations can resume without recomputing completed work
 - `Gold...Tool` objects perform the actual operations on PyTorch tensors. Keep
   algorithm behavior here, independently of dataset traversal and persisted tables.
   External backend adapters expose the same tensor-facing contracts.
+- `Gold...Tool` objects that use randomness must expose public methods to get and
+  set their complete random state, including generators supplied by callers and
+  randomness in composed tools or backends. Getting state must return an independent
+  snapshot without advancing randomness; restoring it must reproduce subsequent
+  random choices. A seed alone is not a snapshot of an advanced generator's state.
 - When extending a feature, place computation in the appropriate tool and let the
   doer coordinate its use. Reuse tools across orchestration paths.
 
@@ -109,7 +114,7 @@ intermediate results so operations can resume without recomputing completed work
   `GoldReductionToolWithFit` when also implementing `fit(x)` and `fit_transform(x)`.
 - Call the inherited `_validate_input` for 2D `(num_vectors, feature_dim)` inputs.
   Return transformed tensors with the same row correspondence.
-- Wheb required, detach and move inputs to CPU for NumPy conversion;
+- When required, detach and move inputs to CPU for NumPy conversion;
   restore the input device and dtype on transformed outputs. Preserve the warning
   and `fit_transform` fallback when an estimator such as TSNE lacks `transform`.
 
@@ -180,6 +185,9 @@ intermediate results so operations can resume without recomputing completed work
 
 ## Validation
 
+- Do not add tests for GitHub Actions workflows unless they address a concrete risk
+  to library usage, such as broken installation, release artifacts, or runtime
+  behavior. When this exception applies, test the affected user-facing behavior.
 - Use the existing environment; setup is `uv sync --all-extras` when needed.
 - Run affected tests first: `uv run pytest tests/test_<module>.py` (or a focused
   node). Shared API changes require exercising affected implementations and callers.

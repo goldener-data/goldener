@@ -67,10 +67,12 @@ not establish that a test adds useful coverage.
   for meaningful warnings. Avoid broad exception catches and new arbitrary sleeps.
 - Pure tensor tests should not need PixelTable. Integration tests should exercise
   real persistence when persistence is the behavior being checked.
-- Existing PixelTable tests use `unit_test.*` tables and setup/teardown that recreate
-  and remove the `unit_test` directory. Follow that cleanup pattern and use distinct
-  table names. Never point test cleanup at user tables. Do not parallelize tests
-  sharing this directory without first providing isolated per-worker namespaces.
+- Most orchestration PixelTable tests use `unit_test.*` tables with setup/teardown
+  that recreate and remove the `unit_test` directory. Follow the cleanup pattern
+  already used by the relevant module, use distinct table names, and never point
+  test cleanup at user tables.
+- Do not parallelize tests sharing a directory without first providing isolated
+  per-worker namespaces.
 - For persistence changes, extend existing restart, `allow_existing`, `max_batches`,
   schema, index-mapping, or `drop_table` scenarios as appropriate. Keep regression
   assertions that distinguish correct behavior from the original failure.
