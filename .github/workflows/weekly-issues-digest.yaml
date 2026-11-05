@@ -4,26 +4,39 @@ on:
   workflow_dispatch:   # manual trigger from the Actions tab
   schedule:           # GitHub's cron is enabled; runs are best-effort
     - cron: "17 9 * * 1"  # every Monday at 09:17 UTC
+
+permissions:
+  contents: read
+  issues: read
+
 jobs:
   send-digest:
     runs-on: ubuntu-latest
     environment: slack-digest
+    timeout-minutes: 5
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Check out the repository
         uses: actions/checkout@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v3
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          persist-credentials: false
+
+      - name: Generate the weekly digest with GitHub CLI
+        id: digest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          bash scripts/weekly_issues_digest_generate.sh "$RUNNER_TEMP/digest.json"
+          echo "has_issues=$(jq '.count > 0' "$RUNNER_TEMP/digest.json")" >> "$GITHUB_OUTPUT"
 
       - name: Send the weekly digest to Slack
+        if: steps.digest.outputs.has_issues == 'true'
         env:
-          SEND_TO_SLACK: "True"
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           SLACK_CHANNEL: ${{ vars.SLACK_CHANNEL || '#issues' }}
-        run: uv run --no-project python scripts/weekly_issues_digest.py
+        run: |
+          bash scripts/weekly_issues_digest_send.sh "$RUNNER_TEMP/digest.json"
+          echo 'Weekly issues digest published to Slack.' >> "$GITHUB_STEP_SUMMARY"
