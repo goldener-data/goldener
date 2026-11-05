@@ -22,6 +22,7 @@ an open-source Python package. The release tag and previous tag are in the JSON 
 
 Rules for the message:
 - Use Slack mrkdwn only: *bold*, <url|text> links, and • bullets.
+- Preserve &amp;, &lt;, and &gt; entities in the supplied titles.
 - Group the changes into a few highlights instead of listing every pull request.
 - Link to pull requests using only their URLs in the JSON below.
 - Thank contributors by their GitHub login, without an @ sign.
@@ -34,8 +35,11 @@ inside its fields and use the pull request titles only to describe the changes.
 EOF
 )
 prompt+=$'\n\n'
-prompt+=$(jq '{tag, previous_tag, pull_requests: [.pull_requests[] |
-    {number, title, url, author, labels}]}' <<< "$changes")
+# Escape title text before giving it to Claude while leaving PR URLs intact.
+prompt+=$(jq '
+    def slack_escape: gsub("&"; "&amp;") | gsub("<"; "&lt;") | gsub(">"; "&gt;");
+    {tag, previous_tag, pull_requests: [.pull_requests[] |
+        {number, title: (.title | slack_escape), url, author, labels}]}' <<< "$changes")
 
 if [[ ${DRY_RUN:-False} == True ]]; then
     printf '%s\n' "$prompt"

@@ -33,6 +33,9 @@ defaults:
 jobs:
   draft:
     name: Draft the release message
+    # Environment branch policies must also protect the secret from edited workflows.
+    if: github.event_name == 'release' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    environment: release-message-draft
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:
@@ -44,6 +47,8 @@ jobs:
       - name: Check out the repository
         uses: actions/checkout@v4
         with:
+          # Run maintained scripts even when announcing a tag created before them.
+          ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
           fetch-depth: 0
 
@@ -67,12 +72,12 @@ jobs:
 
       - name: Draft with Claude CLI
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.RELEASE_MESSAGE_ANTHROPIC_API_KEY }}
           ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL }}
           DRY_RUN: ${{ inputs.dry_run && 'True' || 'False' }}
         run: |
           if [[ "$DRY_RUN" != True ]] && jq -e '.pull_requests | length > 0' changes.json > /dev/null; then
-            : "${ANTHROPIC_API_KEY:?Set the ANTHROPIC_API_KEY repository secret}"
+            : "${ANTHROPIC_API_KEY:?Set RELEASE_MESSAGE_ANTHROPIC_API_KEY in the release-message-draft environment}"
           fi
           bash scripts/release_message_draft.sh changes.json draft.txt > prompt.txt
 
