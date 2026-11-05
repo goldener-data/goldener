@@ -37,8 +37,12 @@ class PatchifyImageMask(Transform):
             params: A dictionary of parameters (not used in this transform).
 
         Returns:
-            A tensor of shape (B, N) where N is the number of patches (H // patch_size) * (W // patch_size)
+            A float32 tensor of shape (B, 1, N) where N is the number of patches (H // patch_size) * (W // patch_size)
             and each value is 1 if the ratio of non zero pixels in the patch is greater than match_ratio, otherwise 0.
+
+        Raises:
+            ValueError: If the input is not a binary, single-channel 4D mask or
+                its spatial dimensions are not divisible by patch_size.
         """
         if inpt.ndim != 4:
             raise ValueError("Input tensor must have shape (B, C, H, W)")

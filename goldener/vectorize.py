@@ -283,8 +283,9 @@ class GoldTensorVectorizationTool:
             in_selection_size: Number or fraction of vectors for `in_selection_tool` to keep.
 
         Raises:
-            ValueError: If keep, remove and random filters are not having the expected properties.
-            See the checks in the code for details.
+            ValueError: If keep/remove filters are random or have the wrong keep
+                setting, the random filter is not random and keeping, the selection
+                size is not positive (or exceeds 1 for a float), or fusion uses CONCAT.
         """
         self.transform_y = transform_y
         self.channel_pos = channel_pos
@@ -352,7 +353,8 @@ class GoldTensorVectorizationTool:
         1 vector location is non zero in the target.
 
         Args:
-            x: Input tensor to vectorize.
+            x: Input tensor with at least three dimensions, including batch and
+                feature dimensions. The feature axis is specified by channel_pos.
             y: Optional target tensor to filter the input tensor.
 
         Returns:
@@ -360,7 +362,9 @@ class GoldTensorVectorizationTool:
             about which element of the batch it corresponds to.
 
         Raises:
-            ValueError: If x and y shapes are incompatible. See check_x_and_y_shapes for details.
+            ValueError: If x has fewer than three dimensions, or if x and y shapes
+                are incompatible when target filtering is applied. See
+                check_x_and_y_shapes for target-filtering shape constraints.
         """
         if x.ndim < 3:
             raise ValueError("Input tensor x to vectorize must be at least 3D.")
