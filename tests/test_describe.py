@@ -1,5 +1,6 @@
 import logging
 from collections import defaultdict
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -968,6 +969,45 @@ class TestEstimateComputationTime:
         estimate = desc.estimate_computation_time(dataset)
 
         assert estimate is None
+
+    @pytest.mark.parametrize(
+        ("already_computed", "remaining_batches"),
+        [(0, 5), (6, 2), (10, 0), (25, 0)],
+        ids=["none_done", "partly_done", "all_done", "more_than_dataset"],
+    )
+    def test_already_computed_samples_are_excluded(
+        self, embedder, monkeypatch, already_computed, remaining_batches
+    ):
+        ticks = iter([0.0, 1.0])
+        monkeypatch.setattr(
+            "goldener.describe.time",
+            SimpleNamespace(perf_counter=lambda: next(ticks)),
+        )
+        desc = GoldDescriptor(
+            table_path="unit_test.describe_estimate_already_computed",
+            embedder=embedder,
+            batch_size=2,
+        )
+
+        estimate = desc.estimate_computation_time(
+            DummyDataset(dataset_len=10), already_computed=already_computed
+        )
+
+        assert estimate == pytest.approx(
+            remaining_batches / desc.estimation_time_batch_count
+        )
+
+    def test_rejects_negative_already_computed(self, embedder):
+        desc = GoldDescriptor(
+            table_path="unit_test.describe_estimate_negative",
+            embedder=embedder,
+            batch_size=2,
+        )
+
+        with pytest.raises(ValueError, match="already_computed"):
+            desc.estimate_computation_time(
+                DummyDataset(dataset_len=10), already_computed=-1
+            )
 
     def test_returns_estimate_from_table_input(self, embedder):
         sample = [

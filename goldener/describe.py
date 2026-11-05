@@ -715,7 +715,9 @@ class GoldDescriptor(GoldDoerWithTable):
 
         return description_table
 
-    def estimate_computation_time(self, dataset: Dataset | Table) -> float | None:
+    def estimate_computation_time(
+        self, dataset: Dataset | Table, already_computed: int = 0
+    ) -> float | None:
         """Estimate the total computation time for describing a dataset.
 
         Times `self.estimation_time_batch_count` initial batches — including data loading,
@@ -729,12 +731,22 @@ class GoldDescriptor(GoldDoerWithTable):
             dataset: The Dataset or PixelTable Table to estimate the description time
                 for. A Table is converted with the same GoldPxtTorchDataset wrapper
                 as in `describe_in_table`.
+            already_computed: Number of samples of the dataset that are already
+                described. They are subtracted from the dataset size before
+                extrapolating, so the estimate covers only the remaining samples.
+                Defaults to 0.
 
         Returns:
-            The estimated total computation time in seconds, or None when no estimate
-                is possible: an empty dataset returns None, and a dataset of unknown
-                size returns None after logging its average time per batch.
+            The estimated remaining computation time in seconds, or None when no
+                estimate is possible: an empty dataset returns None, and a dataset of
+                unknown size returns None after logging its average time per batch.
+
+        Raises:
+            ValueError: If `already_computed` is negative.
         """
+        if already_computed < 0:
+            raise ValueError("already_computed must be greater than or equal to 0")
+
         if isinstance(dataset, Table):
             dataset = GoldPxtTorchDataset(dataset)
 
@@ -762,7 +774,8 @@ class GoldDescriptor(GoldDoerWithTable):
         avg_time_per_batch = elapsed / batches_measured
 
         if hasattr(dataset, "__len__"):
-            total_batches = math.ceil(len(dataset) / self.batch_size)
+            remaining = max(len(dataset) - already_computed, 0)
+            total_batches = math.ceil(remaining / self.batch_size)
             return avg_time_per_batch * total_batches
 
         logger.info(
