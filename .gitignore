@@ -33,6 +33,20 @@ ENV/
 *.swp
 *.swo
 
+# AI agents
+.agents/
+.aider.tags.cache*/
+.claude/
+.cline/
+.codex/
+.continue/
+.cursor/
+.gemini/
+.kiro/
+.opencode/
+.roo/
+.windsurf/
+
 # Testing
 .coverage
 htmlcov/
