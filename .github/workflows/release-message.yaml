@@ -1,0 +1,145 @@
+name: Draft and publish the release message
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Published release tag to announce
+        required: true
+        type: string
+      dry_run:
+        description: Print the prompt without calling Claude or publishing
+        default: false
+        type: boolean
+      publish:
+        description: Publish to Slack after approval (otherwise only draft)
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: release-message-${{ github.event.release.tag_name || inputs.tag }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  draft:
+    name: Draft the release message
+    # Environment branch policies must also protect the secret from edited workflows.
+    if: github.event_name == 'release' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    environment: release-message-draft
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      has_changes: ${{ steps.collect.outputs.has_changes }}
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+      REPO: ${{ github.repository }}
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+        with:
+          # Run maintained scripts even when announcing a tag created before them.
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Collect merged pull requests with GitHub CLI
+        id: collect
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          bash scripts/release_message_collect.sh "$TAG" changes.json
+          echo "has_changes=$(jq '.pull_requests | length > 0' changes.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Node.js
+        if: steps.collect.outputs.has_changes == 'true' && !inputs.dry_run
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Claude Code
+        if: steps.collect.outputs.has_changes == 'true' && !inputs.dry_run
+        run: npm install --global @anthropic-ai/claude-code@2.1.296
+
+      - name: Draft with Claude CLI
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.RELEASE_MESSAGE_ANTHROPIC_API_KEY }}
+          ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL }}
+          DRY_RUN: ${{ inputs.dry_run && 'True' || 'False' }}
+        run: |
+          if [[ "$DRY_RUN" != True ]] && jq -e '.pull_requests | length > 0' changes.json > /dev/null; then
+            : "${ANTHROPIC_API_KEY:?Set RELEASE_MESSAGE_ANTHROPIC_API_KEY in the release-message-draft environment}"
+          fi
+          bash scripts/release_message_draft.sh changes.json draft.txt > prompt.txt
+
+      - name: Show the draft or dry-run prompt
+        run: |
+          preview=draft.txt
+          if [[ ! -f "$preview" ]]; then preview=prompt.txt; fi
+          {
+            echo '## Release message preview'
+            echo
+            echo '<pre>'
+            jq -Rs -r 'gsub("&"; "&amp;") | gsub("<"; "&lt;") | gsub(">"; "&gt;")' "$preview"
+            echo '</pre>'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Save the draft and its source data
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-message
+          path: |
+            changes.json
+            draft.txt
+            prompt.txt
+          if-no-files-found: error
+
+  publish:
+    name: Publish the approved draft to Slack
+    needs: draft
+    if: >-
+      needs.draft.outputs.has_changes == 'true' && !inputs.dry_run &&
+      (github.event_name == 'release' || inputs.publish)
+    runs-on: ubuntu-latest
+    environment: release-message
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Download the previewed draft
+        uses: actions/download-artifact@v4
+        with:
+          name: release-message
+          path: release-message
+
+      - name: Publish to Slack
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_CHANNEL: ${{ vars.SLACK_CHANNEL }}
+        run: |
+          : "${SLACK_BOT_TOKEN:?Set SLACK_BOT_TOKEN in the release-message environment}"
+          : "${SLACK_CHANNEL:?Set SLACK_CHANNEL in the release-message environment}"
+          jq -n --arg channel "$SLACK_CHANNEL" --rawfile text release-message/draft.txt '
+            ($text | sub("\n$"; "")) as $message |
+            if ($message | length) == 0 or ($message | length) > 3000 or
+               ($message | contains("<!") or contains("<@")) then
+              error("The draft is empty, too long, or contains a Slack mention")
+            else {channel: $channel, text: $message, unfurl_links: false, unfurl_media: false} end
+          ' > "$RUNNER_TEMP/slack-request.json"
+          # Do not retry: Slack may have accepted the message before a connection failure.
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 60 \
+            https://slack.com/api/chat.postMessage \
+            -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
+            -H 'Content-Type: application/json; charset=utf-8' \
+            --data-binary "@$RUNNER_TEMP/slack-request.json" > "$RUNNER_TEMP/slack-response.json"
+          jq -e 'if .ok == true then true else error(.error // "Slack rejected the message") end' \
+            "$RUNNER_TEMP/slack-response.json" > /dev/null
+          echo 'Release message published to Slack.' >> "$GITHUB_STEP_SUMMARY"
