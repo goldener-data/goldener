@@ -11,7 +11,9 @@ on high dimensional embeddings:
 
 import logging
 from abc import ABC, abstractmethod
+from typing import Any
 
+import numpy as np
 import torch
 from torch.nn import Module
 
@@ -115,18 +117,71 @@ class GoldTorchModuleReductionTool(GoldReductionTool):
 class GoldSKLearnReductionTool(GoldReductionToolWithFit):
     """Dimensionality reduction of 2D vectors using UMAP, PCA, TSNE, or GaussianRandomProjection.
 
+    The randomness of the reducer (used by `fit`, `fit_transform` and, for reducers
+    without `transform`, by the `transform` fallback) is driven by a NumPy
+    `RandomState` whose state can be inspected with `random_state` and restored with
+    `update_random_state` to replay the same random choices.
+
     Attributes:
         _reducer: An instance of UMAP, PCA, TSNE, or GaussianRandomProjection.
+        _random_state: The `RandomState` shared with the reducer, or None when the
+            reducer randomness is not controlled by this tool.
     """
 
-    def __init__(self, reducer: UMAP | PCA | TSNE | GaussianRandomProjection):
+    def __init__(
+        self,
+        reducer: UMAP | PCA | TSNE | GaussianRandomProjection,
+        random_state: np.random.RandomState | int | None = None,
+    ) -> None:
         """Initialize the GoldSKLearnReductionTool.
 
         Args:
             reducer: An instance of UMAP, PCA, TSNE, or GaussianRandomProjection for dimensionality reduction.
+            random_state: Optional random state overriding the `random_state` of the reducer.
+                An integer is used as seed of a new `RandomState`. When None, a `RandomState`
+                already set on the reducer is reused; otherwise the reducer randomness is left
+                untouched.
         """
         self._reducer = reducer
         self._has_transform = hasattr(reducer, "transform")
+
+        if isinstance(random_state, int):
+            random_state = np.random.RandomState(random_state)
+        elif random_state is None and isinstance(
+            reducer.random_state, np.random.RandomState
+        ):
+            random_state = reducer.random_state
+
+        self._random_state = random_state
+        if random_state is not None:
+            self._reducer.random_state = random_state
+
+    @property
+    def random_state(self) -> dict[str, Any] | None:
+        """Return a snapshot of the reducer random state.
+
+        Returns:
+            An independent copy of the `RandomState` state, as returned by
+            `numpy.random.RandomState.get_state(legacy=False)`, or None when the
+            reducer randomness is not controlled by this tool.
+        """
+        if self._random_state is None:
+            return None
+        return self._random_state.get_state(legacy=False)
+
+    def update_random_state(self, state: dict[str, Any]) -> None:
+        """Restore the reducer random state.
+
+        When the tool has no `RandomState` yet, a new one is created and set on the
+        reducer, overriding its previous `random_state`.
+
+        Args:
+            state: Random state, as returned by `random_state`.
+        """
+        if self._random_state is None:
+            self._random_state = np.random.RandomState()
+            self._reducer.random_state = self._random_state
+        self._random_state.set_state(state)
 
     def fit(self, x: torch.Tensor) -> None:
         """Fit the dimensionality reduction model to the 2D vectors.
