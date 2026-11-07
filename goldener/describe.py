@@ -766,7 +766,7 @@ class GoldDescriptor(GoldDoerWithTable):
 
         if hasattr(dataset, "__len__"):
             already_computed = count_computed_samples(
-                self.table_path, self.description_key
+                self.table_path, self.description_key, len(dataset)
             )
             remaining = max(len(dataset) - already_computed, 0)
             total_batches = math.ceil(remaining / self.batch_size)
