@@ -37,6 +37,7 @@ from goldener.embed import EmbeddingFusionStrategy, GoldEmbeddingFusionTool
 from goldener.select import GoldSelectionTool
 from goldener.pxt_utils import (
     GoldPxtTorchDataset,
+    count_computed_samples,
     get_valid_table,
     get_sample_row_from_idx,
     get_expr_from_column_name,
@@ -1053,12 +1054,21 @@ class GoldVectorizer(GoldDoerWithTable):
         return vectorized_table
 
     def estimate_computation_time(self, dataset: Dataset) -> float | None:
-        """Estimate the total computation time for vectorizing a dataset.
+        """Estimate the remaining computation time for vectorizing a dataset.
 
         Times `self.estimation_time_batch_count` initial batches — including data loading,
         preprocessing, and vectorization — running the exact same steps as
         `_sequential_vectorize` (via `_compute_batch`), then extrapolates if the dataset's
-        size is known.
+        size is known. Samples already stored in the vectorized table at `self.table_path`
+        are not counted, as `_sequential_vectorize` skips them when resuming.
+
+        Args:
+            dataset: The Dataset to estimate the vectorization time for.
+
+        Returns:
+            The estimated remaining computation time in seconds, or None when no
+                estimate is possible: an empty dataset returns None, and a dataset of
+                unknown size returns None after logging its average time per batch.
         """
         dataloader = DataLoader(
             dataset,
@@ -1084,7 +1094,11 @@ class GoldVectorizer(GoldDoerWithTable):
         avg_time_per_batch = elapsed / batches_measured
 
         if hasattr(dataset, "__len__"):
-            total_batches = math.ceil(len(dataset) / self.batch_size)
+            already_computed = count_computed_samples(
+                self.table_path, self.vectorized_key, len(dataset)
+            )
+            remaining = max(len(dataset) - already_computed, 0)
+            total_batches = math.ceil(remaining / self.batch_size)
             return avg_time_per_batch * total_batches
 
         logger.info(
