@@ -37,6 +37,7 @@ from goldener.embed import EmbeddingFusionStrategy, GoldEmbeddingFusionTool
 from goldener.select import GoldSelectionTool
 from goldener.pxt_utils import (
     GoldPxtTorchDataset,
+    count_computed_samples,
     get_valid_table,
     get_sample_row_from_idx,
     get_expr_from_column_name,
@@ -1052,34 +1053,23 @@ class GoldVectorizer(GoldDoerWithTable):
 
         return vectorized_table
 
-    def estimate_computation_time(
-        self, dataset: Dataset, already_computed: int = 0
-    ) -> float | None:
-        """Estimate the total computation time for vectorizing a dataset.
+    def estimate_computation_time(self, dataset: Dataset) -> float | None:
+        """Estimate the remaining computation time for vectorizing a dataset.
 
         Times `self.estimation_time_batch_count` initial batches — including data loading,
         preprocessing, and vectorization — running the exact same steps as
         `_sequential_vectorize` (via `_compute_batch`), then extrapolates if the dataset's
-        size is known.
+        size is known. Samples already stored in the vectorized table at `self.table_path`
+        are not counted, as `_sequential_vectorize` skips them when resuming.
 
         Args:
             dataset: The Dataset to estimate the vectorization time for.
-            already_computed: Number of samples of the dataset that are already
-                vectorized. They are subtracted from the dataset size before
-                extrapolating, so the estimate covers only the remaining samples.
-                Defaults to 0.
 
         Returns:
             The estimated remaining computation time in seconds, or None when no
                 estimate is possible: an empty dataset returns None, and a dataset of
                 unknown size returns None after logging its average time per batch.
-
-        Raises:
-            ValueError: If `already_computed` is negative.
         """
-        if already_computed < 0:
-            raise ValueError("already_computed must be greater than or equal to 0")
-
         dataloader = DataLoader(
             dataset,
             batch_size=self.batch_size,
@@ -1104,6 +1094,9 @@ class GoldVectorizer(GoldDoerWithTable):
         avg_time_per_batch = elapsed / batches_measured
 
         if hasattr(dataset, "__len__"):
+            already_computed = count_computed_samples(
+                self.table_path, self.vectorized_key
+            )
             remaining = max(len(dataset) - already_computed, 0)
             total_batches = math.ceil(remaining / self.batch_size)
             return avg_time_per_batch * total_batches

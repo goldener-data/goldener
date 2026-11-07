@@ -971,43 +971,32 @@ class TestEstimateComputationTime:
         assert estimate is None
 
     @pytest.mark.parametrize(
-        ("already_computed", "remaining_batches"),
-        [(0, 5), (6, 2), (10, 0), (25, 0)],
-        ids=["none_done", "partly_done", "all_done", "more_than_dataset"],
+        ("max_batches", "remaining_batches"),
+        [(None, 5), (2, 3)],
+        ids=["no_table_yet", "partly_described"],
     )
-    def test_already_computed_samples_are_excluded(
-        self, embedder, monkeypatch, already_computed, remaining_batches
+    def test_already_described_samples_are_excluded(
+        self, embedder, monkeypatch, max_batches, remaining_batches
     ):
+        desc = GoldDescriptor(
+            table_path="unit_test.describe_estimate_already_computed",
+            embedder=embedder,
+            batch_size=2,
+            max_batches=max_batches,
+        )
+        if max_batches is not None:
+            desc.describe_in_dataset(DummyDataset(dataset_len=10))
+
         ticks = iter([0.0, 1.0])
         monkeypatch.setattr(
             "goldener.describe.time",
             SimpleNamespace(perf_counter=lambda: next(ticks)),
         )
-        desc = GoldDescriptor(
-            table_path="unit_test.describe_estimate_already_computed",
-            embedder=embedder,
-            batch_size=2,
-        )
-
-        estimate = desc.estimate_computation_time(
-            DummyDataset(dataset_len=10), already_computed=already_computed
-        )
+        estimate = desc.estimate_computation_time(DummyDataset(dataset_len=10))
 
         assert estimate == pytest.approx(
             remaining_batches / desc.estimation_time_batch_count
         )
-
-    def test_rejects_negative_already_computed(self, embedder):
-        desc = GoldDescriptor(
-            table_path="unit_test.describe_estimate_negative",
-            embedder=embedder,
-            batch_size=2,
-        )
-
-        with pytest.raises(ValueError, match="already_computed"):
-            desc.estimate_computation_time(
-                DummyDataset(dataset_len=10), already_computed=-1
-            )
 
     def test_returns_estimate_from_table_input(self, embedder):
         sample = [

@@ -1296,40 +1296,29 @@ class TestEstimateComputationTime:
         assert estimate is None
 
     @pytest.mark.parametrize(
-        ("already_computed", "remaining_batches"),
-        [(0, 5), (6, 2), (10, 0), (25, 0)],
-        ids=["none_done", "partly_done", "all_done", "more_than_dataset"],
+        ("max_batches", "remaining_batches"),
+        [(None, 5), (2, 3)],
+        ids=["no_table_yet", "partly_vectorized"],
     )
-    def test_already_computed_samples_are_excluded(
-        self, monkeypatch, already_computed, remaining_batches
+    def test_already_vectorized_samples_are_excluded(
+        self, monkeypatch, max_batches, remaining_batches
     ):
+        gv = GoldVectorizer(
+            table_path="unit_test.vectorize_estimate_already_computed",
+            vectorizer=GoldTensorVectorizationTool(),
+            batch_size=2,
+            max_batches=max_batches,
+        )
+        if max_batches is not None:
+            gv.vectorize_in_dataset(DummyDataset(dataset_len=10))
+
         ticks = iter([0.0, 1.0])
         monkeypatch.setattr(
             "goldener.vectorize.time",
             SimpleNamespace(perf_counter=lambda: next(ticks)),
         )
-        gv = GoldVectorizer(
-            table_path="unit_test.vectorize_estimate_already_computed",
-            vectorizer=GoldTensorVectorizationTool(),
-            batch_size=2,
-        )
-
-        estimate = gv.estimate_computation_time(
-            DummyDataset(dataset_len=10), already_computed=already_computed
-        )
+        estimate = gv.estimate_computation_time(DummyDataset(dataset_len=10))
 
         assert estimate == pytest.approx(
             remaining_batches / gv.estimation_time_batch_count
         )
-
-    def test_rejects_negative_already_computed(self):
-        gv = GoldVectorizer(
-            table_path="unit_test.vectorize_estimate_negative",
-            vectorizer=GoldTensorVectorizationTool(),
-            batch_size=2,
-        )
-
-        with pytest.raises(ValueError, match="already_computed"):
-            gv.estimate_computation_time(
-                DummyDataset(dataset_len=10), already_computed=-1
-            )
