@@ -376,17 +376,17 @@ workflow manually from the Actions tab of the repository, on the branch or tag t
                 </a>
             </td>
             <td align="center">
-                <a href="https://github.com/abhiramvsmg">
-                    <img src="https://avatars.githubusercontent.com/u/141956198?v=4" width="100;" alt="abhiramvsmg"/>
-                    <br />
-                    <sub><b>Abhiram V</b></sub>
-                </a>
-            </td>
-            <td align="center">
                 <a href="https://github.com/TaniaW777">
                     <img src="https://avatars.githubusercontent.com/u/200526578?v=4" width="100;" alt="TaniaW777"/>
                     <br />
                     <sub><b>Wendtoin Filomène Tania ZABRE</b></sub>
+                </a>
+            </td>
+            <td align="center">
+                <a href="https://github.com/abhiramvsmg">
+                    <img src="https://avatars.githubusercontent.com/u/141956198?v=4" width="100;" alt="abhiramvsmg"/>
+                    <br />
+                    <sub><b>Abhiram V</b></sub>
                 </a>
             </td>
             <td align="center">
@@ -399,10 +399,10 @@ workflow manually from the Actions tab of the repository, on the branch or tag t
 		</tr>
 		<tr>
             <td align="center">
-                <a href="https://github.com/pre765">
-                    <img src="https://avatars.githubusercontent.com/u/199960263?v=4" width="100;" alt="pre765"/>
+                <a href="https://github.com/HafidIdrissi">
+                    <img src="https://avatars.githubusercontent.com/u/57899900?v=4" width="100;" alt="HafidIdrissi"/>
                     <br />
-                    <sub><b>pre765</b></sub>
+                    <sub><b>Hafid Idrissi</b></sub>
                 </a>
             </td>
             <td align="center">
@@ -413,10 +413,10 @@ workflow manually from the Actions tab of the repository, on the branch or tag t
                 </a>
             </td>
             <td align="center">
-                <a href="https://github.com/HafidIdrissi">
-                    <img src="https://avatars.githubusercontent.com/u/57899900?v=4" width="100;" alt="HafidIdrissi"/>
+                <a href="https://github.com/pre765">
+                    <img src="https://avatars.githubusercontent.com/u/199960263?v=4" width="100;" alt="pre765"/>
                     <br />
-                    <sub><b>Hafid Idrissi</b></sub>
+                    <sub><b>pre765</b></sub>
                 </a>
             </td>
             <td align="center">
@@ -461,6 +461,13 @@ workflow manually from the Actions tab of the repository, on the branch or tag t
                     <img src="https://avatars.githubusercontent.com/u/242377436?v=4" width="100;" alt="SHEKHAR-Y"/>
                     <br />
                     <sub><b>Shekhar</b></sub>
+                </a>
+            </td>
+            <td align="center">
+                <a href="https://github.com/ariktadas144">
+                    <img src="https://avatars.githubusercontent.com/u/198923810?v=4" width="100;" alt="ariktadas144"/>
+                    <br />
+                    <sub><b>ariktadas144</b></sub>
                 </a>
             </td>
 		</tr>
