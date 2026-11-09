@@ -27,14 +27,14 @@ def custom_collate(batch):
     return collate_keeping_sequences_as_sequences(batch)
 
 
-class CountingWeigher(GoldKnnDensityWeighingTool):
+class CountingWeigher(GoldDensityWeighingTool):
     def __init__(self):
-        super().__init__(k=1)
+        super().__init__()
         self.calls = 0
 
     def weigh(self, x):
         self.calls += 1
-        return super().weigh(x)
+        return x.new_ones((len(x),))
 
 
 class FixedScoreWeigher(GoldDensityWeighingTool):
@@ -48,9 +48,9 @@ class FixedScoreWeigher(GoldDensityWeighingTool):
         return torch.tensor(self.values, dtype=torch.float64)
 
 
-class InterruptingWeigher(GoldKnnDensityWeighingTool):
+class InterruptingWeigher(CountingWeigher):
     def __init__(self, interrupt):
-        super().__init__(k=1)
+        super().__init__()
         self.interrupt = interrupt
         self.calls = 0
 
@@ -58,7 +58,7 @@ class InterruptingWeigher(GoldKnnDensityWeighingTool):
         self.calls += 1
         if self.interrupt and self.calls == 2:
             raise RuntimeError("simulated interruption")
-        return super().weigh(x)
+        return x.new_ones((len(x),))
 
 
 @pytest.fixture
@@ -80,26 +80,27 @@ def test_knn_density_returns_raw_distance_power_and_sparse_points_score_higher()
     assert scores[3] > scores[0]
 
 
+@pytest.mark.parametrize("k", [1, 5])
+@pytest.mark.parametrize("power", [0, 0.5])
 @pytest.mark.parametrize(
-    "x,kwargs,expected",
-    [
-        (torch.empty((0, 3)), {}, (0,)),
-        (torch.tensor([[2.0, 3.0]]), {}, (1,)),
-        (torch.tensor([[0.0], [1.0], [2.0]]), {"power": 0}, (3,)),
-    ],
+    "size_offset", [0, 1, 2], ids=["empty", "singleton", "k-plus-one"]
 )
-def test_knn_density_weights_degenerate_populations(x, kwargs, expected):
-    scores = GoldKnnDensityWeighingTool(**kwargs).weigh(x)
+def test_knn_density_rejects_insufficient_populations(k, power, size_offset):
+    size = k + 1 if size_offset == 2 else size_offset
+    with pytest.raises(ValueError, match=r"at least k \+ 2"):
+        GoldKnnDensityWeighingTool(k=k, power=power).weigh(torch.zeros(size, 2))
 
-    assert scores.shape == expected
-    if len(scores):
-        assert torch.equal(scores, torch.ones_like(scores))
+
+@pytest.mark.parametrize("k", [1, 5])
+def test_knn_density_zero_power_at_minimum_population(k):
+    scores = GoldKnnDensityWeighingTool(k=k, power=0).weigh(torch.zeros(k + 2, 2))
+    assert torch.equal(scores, torch.ones(k + 2))
 
 
 def test_knn_density_uses_absolute_eps_for_identical_vectors():
-    scores = GoldKnnDensityWeighingTool(power=0.5, eps=1e-8).weigh(torch.zeros((4, 2)))
+    scores = GoldKnnDensityWeighingTool(power=0.5, eps=1e-8).weigh(torch.zeros((7, 2)))
 
-    assert torch.equal(scores, torch.full((4,), 1e-4))
+    assert torch.equal(scores, torch.full((7,), 1e-4))
 
 
 def test_knn_density_excludes_only_self_and_query_batching_preserves_results():
@@ -138,7 +139,13 @@ def test_knn_raw_scores_scale_in_original_distance_units():
         {"k": True},
         {"distance_batch_size": 0},
         {"power": -1},
+        {"power": float("nan")},
+        {"power": float("inf")},
+        {"power": True},
         {"eps": 0},
+        {"eps": float("nan")},
+        {"eps": float("inf")},
+        {"eps": True},
     ],
 )
 def test_knn_density_rejects_invalid_configuration(kwargs):
@@ -148,7 +155,12 @@ def test_knn_density_rejects_invalid_configuration(kwargs):
 
 @pytest.mark.parametrize(
     "x",
-    [torch.ones(3), torch.empty((2, 0)), torch.tensor([[float("nan")]])],
+    [
+        torch.ones(3),
+        torch.empty((2, 0)),
+        torch.tensor([[float("nan")]]),
+        torch.ones((7, 2), dtype=torch.int64),
+    ],
 )
 def test_knn_density_rejects_invalid_input(x):
     with pytest.raises(ValueError):
@@ -279,7 +291,9 @@ def test_weigh_in_dataset_snapshot_survives_drop_table():
             {"idx": 1, "vectorized": torch.tensor([1.0, 1.0])},
         ]
     )
-    weigher = GoldDensityWeigher("unit_test.drop_weights", drop_table=True)
+    weigher = GoldDensityWeigher(
+        "unit_test.drop_weights", weigher=CountingWeigher(), drop_table=True
+    )
 
     result = weigher.weigh_in_dataset(dataset)
 
@@ -327,7 +341,9 @@ def test_normalization_is_explicit_nonmutating_and_uses_unique_sample_scores():
             {"idx": 20, "vectorized": torch.tensor([10.0])},
         ]
     )
-    weigher = GoldDensityWeigher("unit_test.unequal", chunk=None)
+    weigher = GoldDensityWeigher(
+        "unit_test.unequal", weigher=GoldKnnDensityWeighingTool(k=1), chunk=None
+    )
 
     result = weigher.weigh_in_table(dataset)
     scores = weigher.get_weights_per_idx(result)
@@ -484,9 +500,10 @@ def test_table_and_dataset_inputs_preserve_custom_keys_and_sequence_metadata(chu
     )
     options = {
         "vectorized_key": "features",
-        "weight_key": "novelty",
+        "weight_key": "density",
         "to_keep_schema": {"label_seq": pxt.Array[(2,), pxt.Int]},
         "collate_fn": custom_collate,
+        "weigher": CountingWeigher(),
         "chunk": chunk,
     }
     table_weigher = GoldDensityWeigher("unit_test.table_weights", **options)
@@ -495,8 +512,8 @@ def test_table_and_dataset_inputs_preserve_custom_keys_and_sequence_metadata(chu
     from_table = table_weigher.weigh_in_table(source)
     from_dataset = dataset_weigher.weigh_in_table(dataset)
 
-    assert table_weigher.get_weights_per_idx(from_table, "novelty") == pytest.approx(
-        dataset_weigher.get_weights_per_idx(from_dataset, "novelty")
+    assert table_weigher.get_weights_per_idx(from_table, "density") == pytest.approx(
+        dataset_weigher.get_weights_per_idx(from_dataset, "density")
     )
     dataset_view = dataset_weigher.weigh_in_dataset(dataset)
     items = list(dataset_view)
@@ -522,12 +539,13 @@ def test_weigher_rejects_malformed_custom_tool_outputs(values):
 
 
 @pytest.mark.usefixtures("pxt_unit_test_dir")
-def test_estimation_does_not_change_torch_rng_state():
+@pytest.mark.parametrize("size", [6, 7], ids=["insufficient", "minimum"])
+def test_estimation_does_not_change_torch_rng_state(size):
     source = pxt.create_table(
         "unit_test.estimate_vectors",
         source=[
-            {"idx": 0, "idx_vector": 0, "vectorized": [0.0, 1.0]},
-            {"idx": 1, "idx_vector": 1, "vectorized": [1.0, 1.0]},
+            {"idx": i, "idx_vector": i, "vectorized": [float(i), 1.0]}
+            for i in range(size)
         ],
         primary_key="idx_vector",
     )
@@ -537,7 +555,10 @@ def test_estimation_does_not_change_torch_rng_state():
 
     estimate = weigher.estimate_computation_time(source)
 
-    assert estimate is not None and estimate >= 0
+    if size < 7:
+        assert estimate is None
+    else:
+        assert estimate is not None and estimate >= 0
     assert torch.equal(torch.get_rng_state(), before)
 
 

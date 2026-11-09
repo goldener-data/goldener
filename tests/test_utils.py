@@ -1,6 +1,10 @@
 import torch
 import pytest
+import numpy as np
 from goldener.utils import (
+    validate_positive_number,
+    validate_positive_integer,
+    validate_vectorized_input,
     check_x_and_y_shapes,
     get_size_and_sampling_count_per_chunk,
     get_ratio_list_sum,
@@ -15,6 +19,62 @@ from goldener.utils import (
     get_sampling_count_from_ratios,
     transform_batch_from_multilabel_to_independent_labels,
 )
+
+
+@pytest.mark.parametrize("value", [0, 1, 5, None])
+@pytest.mark.parametrize("allow_none", [False, True])
+@pytest.mark.parametrize("allow_zero", [False, True])
+def test_validate_positive_integer_valid_values(value, allow_none, allow_zero):
+    kwargs = {"allow_none": allow_none, "allow_zero": allow_zero}
+    if (value is None and not allow_none) or (value == 0 and not allow_zero):
+        requirement = "nonnegative" if allow_zero else "positive"
+        with pytest.raises(ValueError, match=f"count must be a {requirement} integer"):
+            validate_positive_integer(value, "count", **kwargs)
+    else:
+        validate_positive_integer(value, "count", **kwargs)
+
+
+@pytest.mark.parametrize("value", [True, False, -1, 1.0, "1", torch.tensor(1)])
+@pytest.mark.parametrize("allow_none", [False, True])
+@pytest.mark.parametrize("allow_zero", [False, True])
+def test_validate_positive_integer_rejects_invalid_values(
+    value, allow_none, allow_zero
+):
+    suffix = " or None" if allow_none else ""
+    requirement = "nonnegative" if allow_zero else "positive"
+    with pytest.raises(
+        ValueError, match=f"count must be a {requirement} integer{suffix}\\."
+    ):
+        validate_positive_integer(
+            value, "count", allow_none=allow_none, allow_zero=allow_zero
+        )
+
+
+@pytest.mark.parametrize("value", [1, 0.5, np.float32(0.5)])
+@pytest.mark.parametrize("allow_zero", [False, True])
+def test_validate_positive_number_accepts_positive_values(value, allow_zero):
+    validate_positive_number(value, "score", allow_zero=allow_zero)
+
+
+@pytest.mark.parametrize("value", [0, 0.0, -0.0])
+@pytest.mark.parametrize("allow_zero", [False, True])
+def test_validate_positive_number_zero_boundary(value, allow_zero):
+    if allow_zero:
+        validate_positive_number(value, "score", allow_zero=True)
+    else:
+        with pytest.raises(ValueError, match="score must be finite and positive"):
+            validate_positive_number(value, "score")
+
+
+@pytest.mark.parametrize(
+    "value",
+    [-1, float("nan"), float("inf"), -float("inf"), True, False, None, "1", 1j],
+)
+@pytest.mark.parametrize("allow_zero", [False, True])
+def test_validate_positive_number_rejects_invalid_values(value, allow_zero):
+    requirement = "nonnegative" if allow_zero else "positive"
+    with pytest.raises(ValueError, match=f"score must be finite and {requirement}"):
+        validate_positive_number(value, "score", allow_zero=allow_zero)
 
 
 class TestCheckXAndYShapes:
@@ -812,3 +872,11 @@ class TestTransformBatchFromMultilabelToBinaryLabels:
         assert torch.equal(x_out, expected_x)
         assert sorted(out["label"]) == expected_labels
         assert out["other"] == expected_other
+
+
+@pytest.mark.parametrize(
+    "dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64]
+)
+@pytest.mark.parametrize("rows", [0, 2], ids=["empty", "nonempty"])
+def test_validate_vectorized_input_accepts_floating_matrices(dtype, rows):
+    validate_vectorized_input(torch.ones(rows, 3, dtype=dtype), "TestTool")

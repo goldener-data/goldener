@@ -10,27 +10,33 @@ from sklearn.random_projection import GaussianRandomProjection
 
 
 class TestGoldSKLearnReductionTool:
-    def test_reducer_rejects_invalid(self):
-        """Test that reducer rejects 1D tensor input and requires 2D tensor."""
-        data_1d = torch.randn(10, dtype=torch.float32)
+    @pytest.mark.parametrize(
+        ("data", "message"),
+        [
+            pytest.param(torch.ones(10), "only accepts 2D tensors", id="1d"),
+            pytest.param(torch.empty(2, 0), "positive feature width", id="zero-width"),
+            pytest.param(
+                torch.ones(2, 5, dtype=torch.int64), "finite floating", id="integer"
+            ),
+            pytest.param(torch.full((2, 5), float("nan")), "finite floating", id="nan"),
+            pytest.param(
+                torch.full((2, 5), float("inf")), "finite floating", id="infinity"
+            ),
+        ],
+    )
+    def test_reducer_rejects_invalid(self, data, message):
         reducer = PCA(n_components=3)
         dr = GoldSKLearnReductionTool(reducer)
 
-        with pytest.raises(
-            ValueError, match="GoldReductionTool only accepts 2D tensors"
-        ):
-            dr.fit(data_1d)
+        with pytest.raises(ValueError, match=message):
+            dr.fit(data)
 
-        with pytest.raises(
-            ValueError, match="GoldReductionTool only accepts 2D tensors"
-        ):
-            dr.fit_transform(data_1d)
+        with pytest.raises(ValueError, match=message):
+            dr.fit_transform(data)
 
         dr.fit(torch.randn(10, 5))
-        with pytest.raises(
-            ValueError, match="GoldReductionTool only accepts 2D tensors"
-        ):
-            dr.transform(data_1d)
+        with pytest.raises(ValueError, match=message):
+            dr.transform(data)
 
     def test_pca(self):
         data = torch.randn(10, 5, dtype=torch.float32)

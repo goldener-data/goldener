@@ -7,6 +7,8 @@ used to filter the token vectors during the vectorization (see `goldener.vectori
 from typing import Any
 
 import torch
+
+from goldener.utils import validate_positive_integer
 from torchvision.transforms.v2 import Transform
 
 
@@ -20,8 +22,7 @@ class PatchifyImageMask(Transform):
 
     def __init__(self, patch_size: int = 16, match_ratio: float = 0.5) -> None:
         super().__init__()
-        if patch_size <= 0:
-            raise ValueError("patch_size must be a positive integer")
+        validate_positive_integer(patch_size, "patch_size")
         self.patch_size = patch_size
 
         if not 0.0 <= match_ratio <= 1.0:

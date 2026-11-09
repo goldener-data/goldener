@@ -238,6 +238,10 @@ sample_scores = weigher.get_weights_per_idx(weighted)
 sample_weights = weigher.normalize_weights(sample_scores)
 ```
 
+The default kNN weighing tool requires at least `k + 2` vectors per scored
+population (seven with the default `k=5`). When using `chunk` or `max_batches`,
+each independently scored chunk or prefix must meet this minimum.
+
 # Installation
 
 Installing Goldener is as simple as running the following command:
