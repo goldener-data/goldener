@@ -54,6 +54,9 @@ intermediate results so operations can resume without recomputing completed work
 - Reuse existing tensor, sampling, collation, and PixelTable helpers before adding
   another implementation. Keep tensor algorithms separate from persistence and
   DataLoader orchestration. Keep modality-specific behavior in `goldener/vision/`.
+- Reuse existing utility functions for runtime type checks when available. Extract
+  checks used in multiple places into a utility function, and consider whether a
+  new check is likely to be needed elsewhere when deciding where it belongs.
 - Validate invalid public inputs with informative exceptions, normally `ValueError`.
   Use `NotImplementedError` for unsupported capabilities, following the relevant API.
   Use module-level loggers for operational messages and warnings.
@@ -70,9 +73,14 @@ intermediate results so operations can resume without recomputing completed work
 - Public modules describe their role and main APIs; public classes describe their
   purpose and relevant configuration/state. Document public methods and helpers.
   Document private helpers when their behavior or invariants need explanation.
-- Use `Args:`, `Returns:`, `Raises:`, and `Attributes:` where relevant, with indented
-  entries. A trivial property or helper can have a one-line docstring. Prefer a
-  separate indented `Returns:` description when adding or expanding documentation.
+- Document public attributes in an `Attributes:` section of the class docstring,
+  explaining their meaning and any relevant defaults or constraints.
+- Include `Args:`, `Returns:`, and `Raises:` sections in public function and
+  method docstrings when they contain relevant information, with indented entries.
+  Document no arguments, no return value, or no expected exceptions in the prose only
+  when that clarification is useful.
+  methods are exempt from these required sections; a trivial private helper can
+  have a one-line docstring.
 - Explain tensor shapes and axis meanings, index domains, optional values, defaults,
   count-versus-ratio semantics, and side effects when relevant. Clarify whether
   results are sample indices, vector indices, cluster assignments, or embeddings.
