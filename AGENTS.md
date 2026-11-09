@@ -75,9 +75,10 @@ intermediate results so operations can resume without recomputing completed work
   Document private helpers when their behavior or invariants need explanation.
 - Document public attributes in an `Attributes:` section of the class docstring,
   explaining their meaning and any relevant defaults or constraints.
-- Always include `Args:`, `Returns:`, and `Raises:` sections in public function and
-  method docstrings, with indented entries. Explicitly state when there are no
-  arguments, no return value, or no expected exceptions. Private functions and
+- Include `Args:`, `Returns:`, and `Raises:` sections in public function and
+  method docstrings when they contain relevant information, with indented entries.
+  Document no arguments, no return value, or no expected exceptions in the prose only
+  when that clarification is useful.
   methods are exempt from these required sections; a trivial private helper can
   have a one-line docstring.
 - Explain tensor shapes and axis meanings, index domains, optional values, defaults,
