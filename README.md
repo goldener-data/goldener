@@ -218,6 +218,39 @@ batch_sampler = GoldClusterizedBatchSampler(
 )
 ```
 
+## Weighting samples by embedding density
+
+Density weights make samples in sparse embedding regions contribute more to a loss.
+Describe and vectorize the data first; the density weigher expects one vector per
+table row. When a sample has multiple vectors, it averages their raw scores and
+assigns the resulting sample weight to each vector. Final sample weights are
+normalized to mean one. They are static scores, and sparse outliers or label noise
+can receive high weights; cap them in the training loop when appropriate.
+`get_weights_per_idx` returns one value per sample, while
+`get_weights_per_idx_vector` returns the same sample weight repeated for each
+vector belonging to that sample.
+
+```python
+from goldener import GoldDensityWeigher, GoldDescriptor, GoldVectorizer
+
+described = GoldDescriptor(...).describe_in_table(dataset)
+vectors = GoldVectorizer(...).vectorize_in_table(described)
+weigher = GoldDensityWeigher("weights", chunk=None)
+weighted = weigher.weigh_in_table(vectors)
+sample_weights = weigher.get_weights_per_idx(weighted)
+```
+
+The table is staged before scoring, so a `max_batches` run can be resumed without
+computing weights on an incomplete dataset. Chunking computes density separately
+within each randomly assigned chunk and approximates full-population density;
+each chunk is normalized locally, so `chunk=1` produces uniform weights and
+chunk-specific scales do not compare across chunks. `chunk=None` uses all vectors
+together. A partial `max_batches` call leaves nullable weights in the table, and
+`weigh_in_dataset` raises until a later call completes ingestion and scoring.
+Custom tools and reducers must keep their configuration and behavior unchanged
+across resumes. Label-specific density and class balancing are not included in
+this version.
+
 # Installation
 
 Installing Goldener is as simple as running the following command:

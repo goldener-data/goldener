@@ -11,6 +11,7 @@ from goldener.embed import GoldTorchEmbeddingTool, GoldTorchEmbeddingToolConfig
 from goldener.select import GoldSelector
 from goldener.torch_utils import collate_keeping_sequences_as_sequences
 from goldener.vectorize import GoldTensorVectorizationTool, GoldVectorizer
+from goldener.weight import GoldDensityWeigher
 
 
 @pytest.fixture(
@@ -21,6 +22,7 @@ from goldener.vectorize import GoldTensorVectorizationTool, GoldVectorizer
         GoldSelector,
         GoldClusterizer,
         GoldVectorizer,
+        GoldDensityWeigher,
     ],
     ids=lambda cls: cls.__name__,
 )
