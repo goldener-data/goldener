@@ -1,13 +1,14 @@
 from collections import defaultdict
 
-import torch
-import pytest
 import pixeltable as pxt
+import pytest
+import torch
+
 from goldener.torch_utils import collate_keeping_sequences_as_sequences
 from goldener.vectorize import (
-    GoldTensorVectorizationTool,
     Filter2DWithCount,
     FilterLocation,
+    GoldTensorVectorizationTool,
     GoldVectorizer,
     Vectorized,
     unwrap_vectors_in_batch,
@@ -313,6 +314,8 @@ class TestFilter2DWithCount:
         f = Filter2DWithCount(
             filter_count=2, filter_location=FilterLocation.START, keep=True
         )
+        assert f.generator_state is None
+        f.update_generator_state(torch.zeros(4, dtype=torch.uint8))
         out = f.filter(x)
         assert out.shape[0] == 2
         assert torch.equal(out, x[:2])
@@ -401,6 +404,46 @@ class TestFilter2DWithCount:
             assert tensor.shape[0] == 2
             for row in tensor:
                 assert any(torch.equal(row, r) for r in x)
+
+    @pytest.mark.parametrize("filter_location", list(FilterLocation))
+    def test_generator_state_none_when_filter_has_no_generator(self, filter_location):
+        f = Filter2DWithCount(
+            filter_count=2, filter_location=filter_location, keep=True
+        )
+        assert f.generator_state is None
+
+    def test_generator_state_roundtrip_restores_selection(self):
+        x = self.make_tensor()
+        f = Filter2DWithCount(
+            filter_count=2,
+            filter_location=FilterLocation.RANDOM,
+            keep=True,
+            generator=torch.Generator().manual_seed(7),
+        )
+        state = f.generator_state
+        assert state is not None
+        first = f.filter(x)
+        assert f.generator_state is not None
+        assert not torch.equal(f.generator_state, state)
+        f.update_generator_state(state)
+        assert torch.equal(f.filter(x), first)
+
+    def test_update_generator_state_installs_generator_when_missing(self):
+        x = self.make_tensor()
+        state = torch.Generator().manual_seed(99).get_state()
+        f = Filter2DWithCount(
+            filter_count=2,
+            filter_location=FilterLocation.RANDOM,
+            keep=True,
+        )
+        f.update_generator_state(state)
+        seeded = Filter2DWithCount(
+            filter_count=2,
+            filter_location=FilterLocation.RANDOM,
+            keep=True,
+            generator=torch.Generator().manual_seed(99),
+        )
+        assert torch.equal(f.filter(x), seeded.filter(x))
 
     def test_invalid_filter_count(self):
         with pytest.raises(ValueError):
@@ -1293,3 +1336,62 @@ class TestEstimateComputationTime:
         estimate = gv.estimate_computation_time(dataset)
 
         assert estimate is None
+
+    def test_estimate_preserves_random_filter_selection(self):
+        def make_tool() -> GoldTensorVectorizationTool:
+            return GoldTensorVectorizationTool(
+                random=Filter2DWithCount(
+                    filter_count=2,
+                    filter_location=FilterLocation.RANDOM,
+                    keep=True,
+                    generator=torch.Generator().manual_seed(123),
+                )
+            )
+
+        x = torch.arange(48, dtype=torch.float32).reshape(2, 3, 8)
+        expected = make_tool().vectorize(x).vectors
+
+        tool = make_tool()
+        assert tool.random is not None
+        state_before = tool.random.generator_state
+        gv = GoldVectorizer(
+            table_path="unit_test.vectorize_estimate_rng",
+            vectorizer=tool,
+            batch_size=2,
+            estimation_time_batch_count=2,
+        )
+
+        estimate = gv.estimate_computation_time(DummyDataset(dataset_len=6))
+
+        assert estimate is not None
+        assert state_before is not None
+        assert torch.equal(tool.random.generator_state, state_before)
+        assert torch.equal(tool.vectorize(x).vectors, expected)
+
+    def test_estimate_restores_random_filter_state_when_iteration_fails(self):
+        random_filter = Filter2DWithCount(
+            filter_count=2,
+            filter_location=FilterLocation.RANDOM,
+            keep=True,
+            generator=torch.Generator().manual_seed(5),
+        )
+        state_before = random_filter.generator_state
+
+        class FailingDataset(DummyDataset):
+            def __getitem__(self, idx: int) -> dict[str, torch.Tensor | int | str]:
+                if idx >= 2:
+                    raise RuntimeError("boom")
+                return super().__getitem__(idx)
+
+        gv = GoldVectorizer(
+            table_path="unit_test.vectorize_estimate_rng_fail",
+            vectorizer=GoldTensorVectorizationTool(random=random_filter),
+            batch_size=2,
+            estimation_time_batch_count=2,
+        )
+
+        with pytest.raises(RuntimeError, match="boom"):
+            gv.estimate_computation_time(FailingDataset(dataset_len=6))
+
+        assert state_before is not None
+        assert torch.equal(random_filter.generator_state, state_before)
