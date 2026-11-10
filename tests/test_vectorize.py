@@ -1,13 +1,14 @@
 from collections import defaultdict
 
-import torch
-import pytest
 import pixeltable as pxt
+import pytest
+import torch
+
 from goldener.torch_utils import collate_keeping_sequences_as_sequences
 from goldener.vectorize import (
-    GoldTensorVectorizationTool,
     Filter2DWithCount,
     FilterLocation,
+    GoldTensorVectorizationTool,
     GoldVectorizer,
     Vectorized,
     unwrap_vectors_in_batch,
@@ -313,6 +314,8 @@ class TestFilter2DWithCount:
         f = Filter2DWithCount(
             filter_count=2, filter_location=FilterLocation.START, keep=True
         )
+        assert f.generator_state is None
+        f.update_generator_state(torch.zeros(4, dtype=torch.uint8))
         out = f.filter(x)
         assert out.shape[0] == 2
         assert torch.equal(out, x[:2])
@@ -402,18 +405,10 @@ class TestFilter2DWithCount:
             for row in tensor:
                 assert any(torch.equal(row, r) for r in x)
 
-    def test_generator_state_none_for_non_random_filter(self):
-        x = self.make_tensor()
+    @pytest.mark.parametrize("filter_location", list(FilterLocation))
+    def test_generator_state_none_when_filter_has_no_generator(self, filter_location):
         f = Filter2DWithCount(
-            filter_count=2, filter_location=FilterLocation.START, keep=True
-        )
-        assert f.generator_state is None
-        f.update_generator_state(torch.zeros(4, dtype=torch.uint8))
-        assert torch.equal(f.filter(x), x[:2])
-
-    def test_generator_state_none_when_random_filter_has_no_generator(self):
-        f = Filter2DWithCount(
-            filter_count=2, filter_location=FilterLocation.RANDOM, keep=True
+            filter_count=2, filter_location=filter_location, keep=True
         )
         assert f.generator_state is None
 
@@ -427,7 +422,7 @@ class TestFilter2DWithCount:
         )
         state = f.generator_state
         assert state is not None
-        first = f.filter(x).clone()
+        first = f.filter(x)
         assert f.generator_state is not None
         assert not torch.equal(f.generator_state, state)
         f.update_generator_state(state)
