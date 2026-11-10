@@ -94,6 +94,27 @@ intermediate results so operations can resume without recomputing completed work
   clearly by names and code structure. Do not narrate statements or add routine
   arrange/act/assert labels. Keep required API docstrings distinct from inline comments.
 
+### Module docstrings
+
+- Start each public library module with a top-level docstring before imports.
+  Open with a short statement of the module's main goal, then explain its role
+  in the data pipeline and when its functionality is used.
+- Follow the introduction with a concise bulleted overview of the `GoldDoer`
+  subclasses and `Gold...Tool` classes implemented in the module, including its
+  abstract interfaces and shared base classes. Name each class in backticks and
+  explain its responsibility; group closely related implementations when useful.
+  Distinguish tensor computation tools from dataset/table orchestration and explain
+  how the concrete implementations relate to their base classes.
+- Include supporting public configuration classes, enums, or helpers when needed
+  to understand the main APIs. Link related stages using qualified names such as
+  `goldener.describe.GoldDescriptor`, distinguishing those references from classes
+  implemented in the module. Modules without doers or tools should introduce their
+  own main APIs rather than inventing a doer/tool overview.
+- Use the module docstrings in `goldener/select.py`, `goldener/clusterize.py`, and
+  `goldener/embed.py` as references for structure and level of detail. Keep the
+  overview consistent when adding, removing, or renaming classes; leave detailed
+  parameters and algorithm contracts to class and method docstrings.
+
 ### GoldDoer and Gold...Tool class docstrings
 
 - Follow the content and order of existing class docstrings in the same API family.
