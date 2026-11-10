@@ -9,6 +9,7 @@ from goldener.describe import GoldDescriptor
 from goldener.do import GoldDoer, GoldDoerWithTable
 from goldener.embed import GoldTorchEmbeddingTool, GoldTorchEmbeddingToolConfig
 from goldener.select import GoldSelector
+from goldener.novelty import GoldNoveltyScorer
 from goldener.torch_utils import collate_keeping_sequences_as_sequences
 from goldener.vectorize import GoldTensorVectorizationTool, GoldVectorizer
 
@@ -21,6 +22,7 @@ from goldener.vectorize import GoldTensorVectorizationTool, GoldVectorizer
         GoldSelector,
         GoldClusterizer,
         GoldVectorizer,
+        GoldNoveltyScorer,
     ],
     ids=lambda cls: cls.__name__,
 )

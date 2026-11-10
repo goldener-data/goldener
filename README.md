@@ -112,6 +112,55 @@ selected = GoldSelector.get_selection_indices(selection_table, "to_annotate", "s
 
 ```
 
+## Scoring novel vectors against a reference
+
+Novelty scoring compares each vector with a fixed bank of reference vectors. The default scorer returns the nearest
+cosine distance; larger values mean greater novelty, but the scores are distances rather than calibrated probabilities.
+When a sample has multiple vectors, use `get_novel_indices(..., idx_key="idx")` to mark the sample novel if any vector
+exceeds the threshold. A zero vector has cosine distance 1 under Goldener's shared cosine distance helper.
+
+```python
+from goldener import (
+    GoldDescriptor,
+    GoldTensorVectorizationTool,
+    GoldNoveltyScorer,
+    GoldTorchEmbeddingTool,
+    GoldTorchEmbeddingToolConfig,
+)
+from goldener.vectorize import GoldVectorizer
+
+embedder = GoldTorchEmbeddingTool(GoldTorchEmbeddingToolConfig(model=my_model))
+reference_descriptor = GoldDescriptor(
+    table_path="local.reference_descriptions", embedder=embedder
+)
+query_descriptor = GoldDescriptor(
+    table_path="local.query_descriptions", embedder=embedder
+)
+vectorizer = GoldTensorVectorizationTool()
+reference_vectors = GoldVectorizer(
+    table_path="local.reference_vectors", vectorizer=vectorizer
+).vectorize_in_table(reference_descriptor.describe_in_table(reference_dataset))
+query_vectors = GoldVectorizer(
+    table_path="local.query_vectors", vectorizer=vectorizer
+).vectorize_in_table(query_descriptor.describe_in_table(query_dataset))
+
+novelty = GoldNoveltyScorer(table_path="local.novelty_scores", chunk=256)
+scores = novelty.score_in_table(query_vectors, reference=reference_vectors)
+novel_sample_ids = novelty.get_novel_indices(scores, threshold=0.25, idx_key="idx")
+```
+
+The complete reference is fitted in memory, and each query chunk is compared with that same reference. The fitted bank
+and optional reducer are not persisted. After restarting, fit a new scorer against the same reference and reducer
+settings before resuming; Goldener cannot detect a changed reference across processes. `max_batches` limits pending
+score batches while staging the full source, so repeated calls can resume. Use a new output table path to intentionally
+change the reference after scores have been written. A new scorer must be given the same reference and settings; Goldener
+cannot verify reference identity across processes. Dataset-backed scoring tables retain original vectors; table-backed
+results retain them only when `include_vectorized_in_table=True`. Retained bfloat16 vectors are widened to float32 for
+PixelTable storage without losing represented values. Exact scoring uses O(reference count × feature width)
+memory for the bank, plus O(query count × feature width) memory because version one stages the complete query source.
+It uses O(query count × reference count × feature width) computation. Scores are distances, not calibrated probabilities
+or universal thresholds.
+
 ## Splitting annotated data in train and validation sets
 
 Goldener can split data between the train and validation sets ensuring that the training set is containing
