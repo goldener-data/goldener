@@ -136,10 +136,12 @@ intermediate results so operations can resume without recomputing completed work
   distribution support accurately. For composed doers, explain stage order,
   optional stages, and how samples are assigned or passed between stages instead
   of implying that the doer owns a result table.
-- In doer `Attributes:`, explain the computation tools, table path and column keys,
-  collation and retained schema, batch/chunk settings, and lifecycle controls such
-  as `allow_existing`, `drop_table`, and `max_batches` when present. Include defaults,
-  constraints, and scope where needed, especially whether an option applies only
+  - For persisted doers, explain the computation tools, table path and column keys,
+    collation and retained schema, batch/chunk settings, and applicable lifecycle
+    controls such as `allow_existing`, `drop_table`, and `max_batches` when present.
+    For composed doers, document their own configuration and clarify which settings
+    are forwarded to stages. Include defaults, constraints, and scope where needed,
+    especially whether an option applies only to a dataset entry point or is forwarded.
   to a dataset entry point or is forwarded to composed stages.
 - For `Gold...Tool` classes, explain the tensor operation or algorithm, relevant
   input/output shapes and index meanings, and non-obvious behavior such as fitting,
