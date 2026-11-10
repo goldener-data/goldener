@@ -131,32 +131,54 @@ gs = GoldSelector(
 )
 ```
 
-## Reviewing annotations on new samples
+## Scoring novel vectors against a reference
 
-Suppose you receive a new batch of product photos labeled “damaged” and need to check the labels before adding
-the photos to your training set. Use previously reviewed photos with the same label as a reference and prioritize
-new photos that look least like those examples.
-
-`GoldNoveltyScorer` compares the new and reviewed photos using their embeddings. If a photo has multiple vectors, retrieving scores by `idx` returns the highest vector score for that photo.
+Novelty scoring compares each vector with a fixed bank of reference vectors. The default scorer returns the nearest
+cosine distance; larger values mean greater novelty, but the scores are distances rather than calibrated probabilities.
+When a sample has multiple vectors, use `get_novel_indices(..., idx_key="idx")` to mark the sample novel if any vector
+exceeds the threshold. A zero vector has cosine distance 1 under Goldener's shared cosine distance helper.
 
 ```python
-from goldener import GoldNearestNeighborNoveltyScoringTool, GoldNoveltyScorer
+from goldener import (
+    GoldDescriptor,
+    GoldTensorVectorizationTool,
+    GoldNoveltyScorer,
+    GoldTorchEmbeddingTool,
+    GoldTorchEmbeddingToolConfig,
+)
+from goldener.vectorize import GoldVectorizer
 
-# reviewed_embeddings is a 2D tensor and new_vectors is a PixelTable table,
-# produced with the same embedding model and GoldVectorizer settings.
-tool = GoldNearestNeighborNoveltyScoringTool()
-# Fit the tool on a 2D tensor of reviewed embeddings before creating the scorer.
-tool.fit(reviewed_embeddings)
-scorer = GoldNoveltyScorer(
-    table_path="damage_annotation_scores", scorer=tool, chunk=256
+embedder = GoldTorchEmbeddingTool(GoldTorchEmbeddingToolConfig(model=my_model))
+reference_descriptor = GoldDescriptor(
+    table_path="local.reference_descriptions", embedder=embedder
 )
-score_table = scorer.score_in_table(new_vectors)
-# Review up to 50 new photos, starting with the most unusual.
-sample_scores = scorer.get_novelty_scores_per_idx(
-    score_table, idx_key="idx", k=50, best=True
+query_descriptor = GoldDescriptor(
+    table_path="local.query_descriptions", embedder=embedder
 )
-review_ids = list(sample_scores)
+vectorizer = GoldTensorVectorizationTool()
+reference_vectors = GoldVectorizer(
+    table_path="local.reference_vectors", vectorizer=vectorizer
+).vectorize_in_table(reference_descriptor.describe_in_table(reference_dataset))
+query_vectors = GoldVectorizer(
+    table_path="local.query_vectors", vectorizer=vectorizer
+).vectorize_in_table(query_descriptor.describe_in_table(query_dataset))
+
+novelty = GoldNoveltyScorer(table_path="local.novelty_scores", chunk=256)
+scores = novelty.score_in_table(query_vectors, reference=reference_vectors)
+novel_sample_ids = novelty.get_novel_indices(scores, threshold=0.25, idx_key="idx")
 ```
+
+The complete reference is fitted in memory, and each query chunk is compared with that same reference. The fitted bank
+and optional reducer are not persisted. After restarting, fit a new scorer against the same reference and reducer
+settings before resuming; Goldener cannot detect a changed reference across processes. `max_batches` limits pending
+score batches while staging the full source, so repeated calls can resume. Use a new output table path to intentionally
+change the reference after scores have been written. A new scorer must be given the same reference and settings; Goldener
+cannot verify reference identity across processes. Dataset-backed scoring tables retain original vectors; table-backed
+results retain them only when `include_vectorized_in_table=True`. Retained bfloat16 vectors are widened to float32 for
+PixelTable storage without losing represented values. Exact scoring uses O(reference count × feature width)
+memory for the bank, plus O(query count × feature width) memory because version one stages the complete query source.
+It uses O(query count × reference count × feature width) computation. Scores are distances, not calibrated probabilities
+or universal thresholds.
 
 ## Splitting annotated data in train and validation sets
 

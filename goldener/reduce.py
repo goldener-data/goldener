@@ -40,6 +40,21 @@ class GoldReductionTool(ABC):
         """Whether this reducer can transform new rows using a fitted mapping."""
         return True
 
+    def _validate_input(self, x: torch.Tensor) -> None:
+        """Validate that input is already vectorized (2D torch.Tensor).
+
+        Args:
+            x: Input tensor to validate.
+
+        Raises:
+            ValueError: If input is not a 2D tensor.
+        """
+        if x.ndim != 2:
+            raise ValueError(
+                f"GoldReductionTool only accepts 2D tensors (num_vectors, feature_dim). "
+                f"Got shape {x.shape}. Please ensure your input is already vectorized."
+            )
+
     @abstractmethod
     def transform(self, x: torch.Tensor) -> torch.Tensor:
         """Transform the 2D vectors using the dimensionality reduction tool.
