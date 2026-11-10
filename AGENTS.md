@@ -94,6 +94,64 @@ intermediate results so operations can resume without recomputing completed work
   clearly by names and code structure. Do not narrate statements or add routine
   arrange/act/assert labels. Keep required API docstrings distinct from inline comments.
 
+### Module docstrings
+
+- Start each public library module with a top-level docstring before imports.
+  Open with a short statement of the module's main goal, then explain its role
+  in the data pipeline and when its functionality is used.
+- Follow the introduction with a concise bulleted overview of the `GoldDoer`
+  subclasses and `Gold...Tool` classes implemented in the module, including its
+  abstract interfaces and shared base classes. Name each class in backticks and
+  explain its responsibility; group closely related implementations when useful.
+  Distinguish tensor computation tools from dataset/table orchestration and explain
+  how the concrete implementations relate to their base classes.
+- Include supporting public configuration classes, enums, or helpers when needed
+  to understand the main APIs. Link related stages using qualified names such as
+  `goldener.describe.GoldDescriptor`, distinguishing those references from classes
+  implemented in the module. Modules without doers or tools should introduce their
+  own main APIs rather than inventing a doer/tool overview.
+- Use the module docstrings in `goldener/select.py`, `goldener/clusterize.py`, and
+  `goldener/embed.py` as references for structure and level of detail. Keep the
+  overview consistent when adding, removing, or renaming classes; leave detailed
+  parameters and algorithm contracts to class and method docstrings.
+
+### GoldDoer and Gold...Tool class docstrings
+
+- Follow the content and order of existing class docstrings in the same API family.
+  Use `GoldDescriptor`, `GoldVectorizer`, `GoldClusterizer`, and `GoldSelector` as
+  references for persisted doers; use `GoldSplitter` for composed orchestration.
+  For tools, use `GoldTorchEmbeddingTool`, `GoldTensorVectorizationTool`, and the
+  concrete selection tools as references. Match the structure, but verify every
+  claim against the class being documented rather than copying implementation details.
+- Start with a one-line description of the action and its data or result. Follow
+  with explanatory paragraphs, then an indented Google-style `Attributes:` section
+  for public configuration and state, including relevant inherited attributes.
+  Distinguish constructor inputs documented in `Args:` from stored attributes
+  and properties documented in `Attributes:`.
+- For `GoldDoer` subclasses, explain the supported Dataset/Table inputs, the tools
+  or pipeline stages used, and the outputs produced. For persisted doers, describe
+  local PixelTable storage, reuse of completed results on repeated or resumed calls,
+  batching or chunking, tensor-to-array conversion when applicable, and the `idx`
+  and `idx_vector` columns actually used to associate results with inputs. State
+  distribution support accurately. For composed doers, explain stage order,
+  optional stages, and how samples are assigned or passed between stages instead
+  of implying that the doer owns a result table.
+  - For persisted doers, explain the computation tools, table path and column keys,
+    collation and retained schema, batch/chunk settings, and applicable lifecycle
+    controls such as `allow_existing`, `drop_table`, and `max_batches` when present.
+    For composed doers, document their own configuration and clarify which settings
+    are forwarded to stages. Include defaults, constraints, and scope where needed,
+    especially whether an option applies only to a dataset entry point or is forwarded.
+  to a dataset entry point or is forwarded to composed stages.
+- For `Gold...Tool` classes, explain the tensor operation or algorithm, relevant
+  input/output shapes and index meanings, and non-obvious behavior such as fitting,
+  fusion/filter order, anchor support, backend limitations, or model hooks. Describe
+  mutable versus fixed configuration and random-state behavior when relevant.
+  Use `Attributes:` for the tool's configuration and state; keep dataset traversal
+  and table lifecycle details in the doer documentation. Abstract interfaces and
+  simple adapters can stay brief when their contracts are already documented by
+  the base class and public methods.
+
 ## README feature documentation
 
 - When adding a new feature, add or update its section in `README.md` as part of
