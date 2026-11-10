@@ -94,6 +94,18 @@ intermediate results so operations can resume without recomputing completed work
   clearly by names and code structure. Do not narrate statements or add routine
   arrange/act/assert labels. Keep required API docstrings distinct from inline comments.
 
+## README feature documentation
+
+- When adding a new feature, add or update its section in `README.md` as part of
+  completing the feature.
+- Start with the problem the feature solves and a brief description of what it
+  does and when to use it. Keep the explanation user-focused and omit internal
+  implementation details; leave technical reference details to API documentation.
+- Include a short usage example illustrating the main use case through the public
+  API. Show the essential setup and call, and briefly explain the result.
+- Use existing feature sections in `README.md` as inspiration for structure, tone,
+  and example length. Ensure the example matches the implemented API.
+
 ## Rules by API family
 
 ### Embedding tools (`goldener/embed.py`)
