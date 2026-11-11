@@ -685,8 +685,6 @@ class GoldSelector(GoldDoerWithTable):
         random_state: Optional random state for reproducibility during chunk assignment. Default is None.
     """
 
-    table_path: str
-
     _MINIMAL_SCHEMA: dict[str, type] = {
         "idx": pxt.Required[pxt.Int],
         "idx_vector": pxt.Required[pxt.Int],
