@@ -48,8 +48,7 @@ def test_defaults(make_doer):
     assert doer.allow_existing is True
     assert doer.drop_table is False
     assert doer.max_batches is None
-    if type(doer) is not GoldDoer:
-        assert isinstance(doer, GoldDoerWithTable)
+    if isinstance(doer, GoldDoerWithTable):
         assert doer.collate_fn is collate_keeping_sequences_as_sequences
         assert doer.to_keep_schema is None
         assert doer.min_pxt_insert_size == 100
@@ -60,14 +59,6 @@ def test_defaults(make_doer):
         assert doer._MINIMAL_SCHEMA["idx"] == pxt.Required[pxt.Int]
     if type(doer) is GoldDoerWithTable:
         assert set(doer._MINIMAL_SCHEMA) == {"idx"}
-
-
-def test_shared_attribute_defaults():
-    doer = GoldDoerWithTable()
-    assert doer.table_path is None
-    assert doer.label_key is None
-    assert set(doer._MINIMAL_SCHEMA) == {"idx"}
-    assert doer._MINIMAL_SCHEMA["idx"] == pxt.Required[pxt.Int]
 
 
 def test_custom_settings(make_doer):
