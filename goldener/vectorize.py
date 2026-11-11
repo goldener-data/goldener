@@ -555,8 +555,6 @@ class GoldVectorizer(GoldDoerWithTable):
         max_batches: Optional maximum number of batches to process. Useful for testing on a small subset of the dataset.
     """
 
-    table_path: str
-
     _MINIMAL_SCHEMA: dict[str, type] = {
         "idx": pxt.Required[pxt.Int],
         "idx_vector": pxt.Required[pxt.Int],
