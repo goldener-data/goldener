@@ -1,5 +1,7 @@
 from typing import Callable
 
+import pixeltable as pxt
+
 from goldener.torch_utils import collate_keeping_sequences_as_sequences
 
 
@@ -37,7 +39,17 @@ class GoldDoerWithTable(GoldDoer):
             into PixelTable. Defaults to 100.
         batch_size: Batch size used when iterating over the data. Defaults to 1.
         num_workers: Number of workers for the PyTorch DataLoader. Defaults to 0.
+        table_path: Optional path to the PixelTable table where results are stored.
+        label_key: Optional key for labels in the batch dictionary.
+
+    Attributes:
+        _MINIMAL_SCHEMA: Minimal PixelTable schema every populated table shares: the
+            sample index. Subclasses extend it with the columns their results need.
     """
+
+    _MINIMAL_SCHEMA: dict[str, type] = {
+        "idx": pxt.Required[pxt.Int],
+    }
 
     def __init__(
         self,
@@ -49,6 +61,8 @@ class GoldDoerWithTable(GoldDoer):
         min_pxt_insert_size: int = 100,
         batch_size: int = 1,
         num_workers: int = 0,
+        table_path: str | None = None,
+        label_key: str | None = None,
     ) -> None:
         super().__init__(
             allow_existing=allow_existing,
@@ -64,3 +78,5 @@ class GoldDoerWithTable(GoldDoer):
         self.min_pxt_insert_size = min_pxt_insert_size
         self.batch_size = batch_size
         self.num_workers = num_workers
+        self.table_path = table_path
+        self.label_key = label_key

@@ -101,9 +101,7 @@ class GoldDescriptor(GoldDoerWithTable):
             computation time. Default is 2.
     """
 
-    _MINIMAL_SCHEMA: dict[str, type] = {
-        "idx": pxt.Required[pxt.Int],
-    }
+    table_path: str
 
     def __init__(
         self,
@@ -177,14 +175,14 @@ class GoldDescriptor(GoldDoerWithTable):
             min_pxt_insert_size=min_pxt_insert_size,
             batch_size=batch_size,
             num_workers=num_workers,
+            table_path=table_path,
+            label_key=label_key,
         )
-        self.table_path = table_path
         self.embedder = embedder
         self.vectorizer = vectorizer
         self.transform = transform
         self.data_key = data_key
         self.target_key = target_key
-        self.label_key = label_key
         self.target_to_label = target_to_label
         self.exclude_full_zero_target = exclude_full_zero_target
         self.merge_multilabels = merge_multilabels
