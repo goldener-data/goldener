@@ -62,6 +62,14 @@ def test_defaults(make_doer):
         assert set(doer._MINIMAL_SCHEMA) == {"idx"}
 
 
+def test_shared_attribute_defaults():
+    doer = GoldDoerWithTable()
+    assert doer.table_path is None
+    assert doer.label_key is None
+    assert set(doer._MINIMAL_SCHEMA) == {"idx"}
+    assert doer._MINIMAL_SCHEMA["idx"] == pxt.Required[pxt.Int]
+
+
 def test_custom_settings(make_doer):
     def collate_fn(batch):
         return batch
