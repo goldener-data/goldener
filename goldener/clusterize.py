@@ -271,8 +271,6 @@ class GoldClusterizer(GoldDoerWithTable):
             of the sample (suboptimal but easiest solution). Default is False.
     """
 
-    table_path: str
-
     _MINIMAL_SCHEMA: dict[str, type] = {
         "idx": pxt.Required[pxt.Int],
         "idx_vector": pxt.Required[pxt.Int],
