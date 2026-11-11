@@ -101,8 +101,6 @@ class GoldDescriptor(GoldDoerWithTable):
             computation time. Default is 2.
     """
 
-    table_path: str
-
     def __init__(
         self,
         table_path: str,
