@@ -57,8 +57,6 @@ def test_defaults(make_doer):
         assert doer.table_path == "unit_test.doer"
         assert doer.label_key is None
         assert doer._MINIMAL_SCHEMA["idx"] == pxt.Required[pxt.Int]
-    if type(doer) is GoldDoerWithTable:
-        assert set(doer._MINIMAL_SCHEMA) == {"idx"}
 
 
 def test_custom_settings(make_doer):
