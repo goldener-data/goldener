@@ -39,12 +39,12 @@ class GoldDoerWithTable(GoldDoer):
             into PixelTable. Defaults to 100.
         batch_size: Batch size used when iterating over the data. Defaults to 1.
         num_workers: Number of workers for the PyTorch DataLoader. Defaults to 0.
-        table_path: Optional path to the PixelTable table where results are stored.
-        label_key: Optional key for labels in the batch dictionary.
+        table_path: Path to the PixelTable table where results are stored.
+        label_key: Optional key for label stratification.
 
-    Attributes:
-        _MINIMAL_SCHEMA: Minimal PixelTable schema every populated table shares: the
-            sample index. Subclasses extend it with the columns their results need.
+    Note:
+        `_MINIMAL_SCHEMA` defines the minimal expected columns in the intermediary
+        table. Each subclass should adapt it if needed.
     """
 
     _MINIMAL_SCHEMA: dict[str, type] = {
@@ -61,7 +61,8 @@ class GoldDoerWithTable(GoldDoer):
         min_pxt_insert_size: int = 100,
         batch_size: int = 1,
         num_workers: int = 0,
-        table_path: str | None = None,
+        *,
+        table_path: str,
         label_key: str | None = None,
     ) -> None:
         super().__init__(
