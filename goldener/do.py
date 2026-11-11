@@ -29,6 +29,7 @@ class GoldDoerWithTable(GoldDoer):
     """Shared initialization for GoldDoers that populate intermediate tables.
 
     Args:
+        table_path: Path to the PixelTable table where results are stored.
         allow_existing: Whether to allow using existing tables. Defaults to True.
         drop_table: Whether to drop intermediate tables. Defaults to False.
         max_batches: Optional maximum number of batches to process.
@@ -39,7 +40,6 @@ class GoldDoerWithTable(GoldDoer):
             into PixelTable. Defaults to 100.
         batch_size: Batch size used when iterating over the data. Defaults to 1.
         num_workers: Number of workers for the PyTorch DataLoader. Defaults to 0.
-        table_path: Path to the PixelTable table where results are stored.
         label_key: Optional key for label stratification.
 
     Note:
@@ -53,6 +53,7 @@ class GoldDoerWithTable(GoldDoer):
 
     def __init__(
         self,
+        table_path: str,
         allow_existing: bool = True,
         drop_table: bool = False,
         max_batches: int | None = None,
@@ -61,8 +62,6 @@ class GoldDoerWithTable(GoldDoer):
         min_pxt_insert_size: int = 100,
         batch_size: int = 1,
         num_workers: int = 0,
-        *,
-        table_path: str,
         label_key: str | None = None,
     ) -> None:
         super().__init__(
