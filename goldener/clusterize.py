@@ -330,19 +330,9 @@ class GoldClusterizer(GoldDoerWithTable):
         Raises:
             ValueError: If `chunk` is not a positive integer or None.
             NotImplementedError: If `distribute` is True.
+            ValueError: If key attributes or `to_keep_schema` collide with identity columns
+                or with each other (see `GoldDoerWithTable`).
         """
-        super().__init__(
-            allow_existing=allow_existing,
-            drop_table=drop_table,
-            max_batches=max_batches,
-            collate_fn=collate_fn,
-            to_keep_schema=to_keep_schema,
-            min_pxt_insert_size=min_pxt_insert_size,
-            batch_size=batch_size,
-            num_workers=num_workers,
-            table_path=table_path,
-            label_key=label_key,
-        )
         self.clustering_tool = clustering_tool
         self.reducer = reducer
         validate_positive_integer(chunk, "chunk", allow_none=True)
@@ -357,6 +347,18 @@ class GoldClusterizer(GoldDoerWithTable):
         self._distribute = distribute
         self.random_state = random_state
         self.force_same_cluster = force_same_cluster
+        super().__init__(
+            allow_existing=allow_existing,
+            drop_table=drop_table,
+            max_batches=max_batches,
+            collate_fn=collate_fn,
+            to_keep_schema=to_keep_schema,
+            min_pxt_insert_size=min_pxt_insert_size,
+            batch_size=batch_size,
+            num_workers=num_workers,
+            table_path=table_path,
+            label_key=label_key,
+        )
 
     @property
     def distribute(self) -> bool:

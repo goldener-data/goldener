@@ -94,6 +94,32 @@ class TestGoldDescriptor:
             descriptor.distribute = True
         assert descriptor.distribute is False
 
+    @pytest.mark.parametrize(
+        "kwargs, match",
+        [
+            pytest.param(
+                {"description_key": "idx"},
+                r"description_key='idx' collides with the identity column",
+                id="key_is_identity",
+            ),
+            pytest.param(
+                {"data_key": "embeddings"},
+                r"share the same column name: 'embeddings'",
+                id="duplicate_keys",
+            ),
+            pytest.param(
+                {"to_keep_schema": {"idx": pxt.Int}},
+                r"cannot redefine the identity columns \['idx'\]",
+                id="kept_identity",
+            ),
+        ],
+    )
+    def test_rejects_column_name_collisions(self, embedder, kwargs, match):
+        with pytest.raises(ValueError, match=match):
+            GoldDescriptor(
+                table_path="unit_test.test_collisions", embedder=embedder, **kwargs
+            )
+
     def test_estimation_time_batch_count_must_be_positive(self, embedder):
         with pytest.raises(
             ValueError, match="estimation_time_batch_count must be a positive integer"

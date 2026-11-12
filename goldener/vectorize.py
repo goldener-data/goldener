@@ -614,19 +614,9 @@ class GoldVectorizer(GoldDoerWithTable):
         Raises:
             NotImplementedError: If `distribute` is True.
             ValueError: If `estimation_time_batch_count` is not a positive integer.
+            ValueError: If key attributes or `to_keep_schema` collide with identity columns
+                or with each other (see `GoldDoerWithTable`).
         """
-        super().__init__(
-            allow_existing=allow_existing,
-            drop_table=drop_table,
-            max_batches=max_batches,
-            collate_fn=collate_fn,
-            to_keep_schema=to_keep_schema,
-            min_pxt_insert_size=min_pxt_insert_size,
-            batch_size=batch_size,
-            num_workers=num_workers,
-            table_path=table_path,
-            label_key=label_key,
-        )
         self.vectorizer = vectorizer
         self.data_key = data_key
         self.target_key = target_key
@@ -644,6 +634,18 @@ class GoldVectorizer(GoldDoerWithTable):
             estimation_time_batch_count, "estimation_time_batch_count"
         )
         self.estimation_time_batch_count = estimation_time_batch_count
+        super().__init__(
+            allow_existing=allow_existing,
+            drop_table=drop_table,
+            max_batches=max_batches,
+            collate_fn=collate_fn,
+            to_keep_schema=to_keep_schema,
+            min_pxt_insert_size=min_pxt_insert_size,
+            batch_size=batch_size,
+            num_workers=num_workers,
+            table_path=table_path,
+            label_key=label_key,
+        )
 
     @property
     def distribute(self) -> bool:
@@ -900,7 +902,7 @@ class GoldVectorizer(GoldDoerWithTable):
         return vectorized_table
 
     def _get_vectorized_valid_table(self, old_vectorized_table: Table | None) -> Table:
-        minimal_schema = self._MINIMAL_SCHEMA
+        minimal_schema = self._MINIMAL_SCHEMA.copy()
         if self.to_keep_schema is not None:
             minimal_schema |= self.to_keep_schema
 
