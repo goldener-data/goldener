@@ -83,3 +83,49 @@ def test_custom_settings(make_doer):
         assert doer.min_pxt_insert_size == 10
         assert doer.batch_size == 4
         assert doer.num_workers == 2
+
+
+_IDENTITY = "collides with the identity column"
+_DUPLICATE = "share the same column name"
+_KEPT_IDENTITY = "cannot redefine the identity columns"
+_COLUMN_COLLISIONS = {
+    GoldDescriptor: [
+        ({"description_key": "idx"}, _IDENTITY),
+        ({"data_key": "embeddings"}, _DUPLICATE),
+        (
+            {
+                "vectorizer": GoldTensorVectorizationTool(),
+                "to_keep_schema": {"idx_vector": pxt.Int},
+            },
+            _KEPT_IDENTITY,
+        ),
+    ],
+    GoldVectorizer: [
+        ({"vectorized_key": "idx_vector"}, _IDENTITY),
+        ({"vectorized_key": "embeddings"}, _DUPLICATE),
+        ({"to_keep_schema": {"idx_vector": pxt.Int}}, _KEPT_IDENTITY),
+    ],
+    GoldSelector: [
+        ({"selection_key": "idx_vector"}, _IDENTITY),
+        ({"selection_key": "vectorized"}, _DUPLICATE),
+        ({"to_keep_schema": {"idx_vector": pxt.Int}}, _KEPT_IDENTITY),
+    ],
+    GoldClusterizer: [
+        ({"cluster_key": "idx"}, _IDENTITY),
+        ({"label_key": "vectorized"}, _DUPLICATE),
+        ({"to_keep_schema": {"idx_vector": pxt.Int}}, _KEPT_IDENTITY),
+    ],
+}
+
+
+def test_rejects_column_name_collisions(make_doer):
+    if make_doer is GoldDoer:
+        pytest.skip("GoldDoer has no table columns to validate.")
+
+    with pytest.raises(ValueError, match=_KEPT_IDENTITY):
+        make_doer(to_keep_schema={"idx": pxt.Int})
+
+    doer_cls = getattr(make_doer, "func", make_doer)
+    for kwargs, match in _COLUMN_COLLISIONS.get(doer_cls, []):
+        with pytest.raises(ValueError, match=match):
+            make_doer(**kwargs)

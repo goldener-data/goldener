@@ -219,6 +219,12 @@ intermediate results so operations can resume without recomputing completed work
 - `GoldDescriptor`, `GoldVectorizer`, `GoldClusterizer`, and `GoldSelector` derive
   from `GoldDoerWithTable`; `GoldSplitter` derives from `GoldDoer` and composes stages.
   Put shared initialization in the appropriate base and forward options via `super()`.
+- `GoldDoerWithTable.__init__` validates column names: identity columns from
+  `_get_minimal_schema()` (`_MINIMAL_SCHEMA` by default), every string attribute with
+  `key` in its name, and `to_keep_schema` must not collide. Child classes must set
+  their own attributes first and call `super().__init__()` last so the check sees
+  them. Name new column attributes `*_key` and declare identity columns in
+  `_MINIMAL_SCHEMA` (override `_get_minimal_schema()` when they depend on settings).
 - Preserve paired entry points: `describe_in_*`, `vectorize_in_*`, `cluster_in_*`,
   `select_in_*`, and `split_in_*`, with `*_in_table` returning PixelTable tables and
   `*_in_dataset` returning the existing dataset wrapper. Follow each method's actual

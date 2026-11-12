@@ -742,17 +742,9 @@ class GoldSelector(GoldDoerWithTable):
         Raises:
             ValueError: If `exclude_labels` is provided but `label_key` is None.
             NotImplementedError: If `distribute` is True.
+            ValueError: If key attributes or `to_keep_schema` collide with identity columns
+                or with each other (see `GoldDoerWithTable`).
         """
-        super().__init__(
-            allow_existing=allow_existing,
-            drop_table=drop_table,
-            max_batches=max_batches,
-            collate_fn=collate_fn,
-            to_keep_schema=to_keep_schema,
-            min_pxt_insert_size=min_pxt_insert_size,
-            batch_size=batch_size,
-            num_workers=num_workers,
-        )
         self.table_path = table_path
         self.selection_tool = selection_tool
         self.reducer = reducer
@@ -772,6 +764,16 @@ class GoldSelector(GoldDoerWithTable):
             )
         self._distribute = distribute
         self.random_state = random_state
+        super().__init__(
+            allow_existing=allow_existing,
+            drop_table=drop_table,
+            max_batches=max_batches,
+            collate_fn=collate_fn,
+            to_keep_schema=to_keep_schema,
+            min_pxt_insert_size=min_pxt_insert_size,
+            batch_size=batch_size,
+            num_workers=num_workers,
+        )
 
     @property
     def distribute(self) -> bool:
@@ -1053,7 +1055,7 @@ class GoldSelector(GoldDoerWithTable):
             ValueError: If the source table does not contain the required `vectorized_key` column,
                 or if the source table is empty when trying to infer the vectorized data schema.
         """
-        minimal_schema = self._MINIMAL_SCHEMA.copy()
+        minimal_schema = self._get_minimal_schema()
 
         if self.to_keep_schema is not None:
             minimal_schema |= self.to_keep_schema
@@ -1173,7 +1175,7 @@ class GoldSelector(GoldDoerWithTable):
         Returns:
             The selection table with proper schema.
         """
-        minimal_schema = self._MINIMAL_SCHEMA.copy()
+        minimal_schema = self._get_minimal_schema()
         if self.to_keep_schema is not None:
             minimal_schema |= self.to_keep_schema
 

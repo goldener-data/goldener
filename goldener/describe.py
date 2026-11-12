@@ -101,10 +101,6 @@ class GoldDescriptor(GoldDoerWithTable):
             computation time. Default is 2.
     """
 
-    _MINIMAL_SCHEMA: dict[str, type] = {
-        "idx": pxt.Required[pxt.Int],
-    }
-
     def __init__(
         self,
         table_path: str,
@@ -167,17 +163,9 @@ class GoldDescriptor(GoldDoerWithTable):
         Raises:
             NotImplementedError: If `distribute` is True.
             ValueError: If `estimation_time_batch_count` is not a positive integer.
+            ValueError: If key attributes or `to_keep_schema` collide with identity columns
+                or with each other (see `GoldDoerWithTable`).
         """
-        super().__init__(
-            allow_existing=allow_existing,
-            drop_table=drop_table,
-            max_batches=max_batches,
-            collate_fn=collate_fn,
-            to_keep_schema=to_keep_schema,
-            min_pxt_insert_size=min_pxt_insert_size,
-            batch_size=batch_size,
-            num_workers=num_workers,
-        )
         self.table_path = table_path
         self.embedder = embedder
         self.vectorizer = vectorizer
@@ -206,6 +194,27 @@ class GoldDescriptor(GoldDoerWithTable):
         if device is None:
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.device = device
+        super().__init__(
+            allow_existing=allow_existing,
+            drop_table=drop_table,
+            max_batches=max_batches,
+            collate_fn=collate_fn,
+            to_keep_schema=to_keep_schema,
+            min_pxt_insert_size=min_pxt_insert_size,
+            batch_size=batch_size,
+            num_workers=num_workers,
+        )
+
+    def _get_minimal_schema(self) -> dict[str, type]:
+        """Return a copy of the identity columns of the description table and their types.
+
+        Returns:
+            A new dictionary with `idx`, and `idx_vector` when a vectorizer is set.
+        """
+        minimal_schema = super()._get_minimal_schema()
+        if self.vectorizer is not None:
+            minimal_schema["idx_vector"] = pxt.Required[pxt.Int]
+        return minimal_schema
 
     @property
     def distribute(self) -> bool:
@@ -486,9 +495,7 @@ class GoldDescriptor(GoldDoerWithTable):
     def _get_description_valid_table(
         self, old_description_table: Table | None
     ) -> Table:
-        minimal_schema = self._MINIMAL_SCHEMA.copy()
-        if self.vectorizer is not None:
-            minimal_schema["idx_vector"] = pxt.Required[pxt.Int]
+        minimal_schema = self._get_minimal_schema()
         if self.to_keep_schema is not None:
             minimal_schema |= self.to_keep_schema
 
