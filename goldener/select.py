@@ -752,8 +752,9 @@ class GoldSelector(GoldDoerWithTable):
             min_pxt_insert_size=min_pxt_insert_size,
             batch_size=batch_size,
             num_workers=num_workers,
+            table_path=table_path,
+            label_key=label_key,
         )
-        self.table_path = table_path
         self.selection_tool = selection_tool
         self.reducer = reducer
         self.chunk = chunk
@@ -764,7 +765,6 @@ class GoldSelector(GoldDoerWithTable):
             raise ValueError(
                 "If exclude_labels is provided, label_key must also be provided."
             )
-        self.label_key = label_key
         self.exclude_labels = exclude_labels
         if distribute:
             raise NotImplementedError(

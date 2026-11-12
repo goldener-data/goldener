@@ -26,7 +26,7 @@ from goldener.vectorize import GoldTensorVectorizationTool, GoldVectorizer
 )
 def make_doer(request):
     cls = request.param
-    if cls in (GoldDoer, GoldDoerWithTable):
+    if cls is GoldDoer:
         return cls
     kwargs = {"table_path": "unit_test.doer"}
     if cls is GoldDescriptor:
@@ -48,13 +48,15 @@ def test_defaults(make_doer):
     assert doer.allow_existing is True
     assert doer.drop_table is False
     assert doer.max_batches is None
-    if type(doer) is not GoldDoer:
-        assert isinstance(doer, GoldDoerWithTable)
+    if isinstance(doer, GoldDoerWithTable):
         assert doer.collate_fn is collate_keeping_sequences_as_sequences
         assert doer.to_keep_schema is None
         assert doer.min_pxt_insert_size == 100
         assert doer.batch_size == 1
         assert doer.num_workers == 0
+        assert doer.table_path == "unit_test.doer"
+        assert doer.label_key is None
+        assert doer._MINIMAL_SCHEMA["idx"] == pxt.Required[pxt.Int]
 
 
 def test_custom_settings(make_doer):
@@ -70,6 +72,7 @@ def test_custom_settings(make_doer):
             min_pxt_insert_size=10,
             batch_size=4,
             num_workers=2,
+            label_key="labels",
         )
 
     doer = make_doer(**kwargs)
@@ -83,3 +86,5 @@ def test_custom_settings(make_doer):
         assert doer.min_pxt_insert_size == 10
         assert doer.batch_size == 4
         assert doer.num_workers == 2
+        assert doer.table_path == "unit_test.doer"
+        assert doer.label_key == "labels"

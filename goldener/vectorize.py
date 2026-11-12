@@ -623,12 +623,12 @@ class GoldVectorizer(GoldDoerWithTable):
             min_pxt_insert_size=min_pxt_insert_size,
             batch_size=batch_size,
             num_workers=num_workers,
+            table_path=table_path,
+            label_key=label_key,
         )
-        self.table_path = table_path
         self.vectorizer = vectorizer
         self.data_key = data_key
         self.target_key = target_key
-        self.label_key = label_key
         self.target_to_label = target_to_label
         self.exclude_labels = exclude_labels
         self.exclude_full_zero_target = exclude_full_zero_target

@@ -342,8 +342,9 @@ class GoldClusterizer(GoldDoerWithTable):
             min_pxt_insert_size=min_pxt_insert_size,
             batch_size=batch_size,
             num_workers=num_workers,
+            table_path=table_path,
+            label_key=label_key,
         )
-        self.table_path = table_path
         self.clustering_tool = clustering_tool
         self.reducer = reducer
         if chunk is not None and chunk <= 0:
@@ -352,7 +353,6 @@ class GoldClusterizer(GoldDoerWithTable):
         self.vectorized_key = vectorized_key
         self.include_vectorized_in_table = include_vectorized_in_table
         self.cluster_key = cluster_key
-        self.label_key = label_key
         if distribute:
             raise NotImplementedError(
                 "Distributed processing is not implemented for GoldClusterizer."
