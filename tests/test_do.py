@@ -88,3 +88,54 @@ def test_custom_settings(make_doer):
         assert doer.num_workers == 2
         assert doer.table_path == "unit_test.doer"
         assert doer.label_key == "labels"
+
+
+class _DoerWithKeys(GoldDoerWithTable):
+    def __init__(
+        self,
+        data_key: str | None = "data",
+        target_key: str | None = "target",
+        output_key: str | None = "output",
+        **kwargs,
+    ) -> None:
+        self.data_key = data_key
+        self.target_key = target_key
+        self.output_key = output_key
+        super().__init__(table_path="unit_test.doer", **kwargs)
+
+
+@pytest.mark.parametrize(
+    "kwargs, match",
+    [
+        pytest.param(
+            {"label_key": "idx"},
+            r"label_key='idx' collides with the identity column 'idx'",
+            id="key_is_identity",
+        ),
+        pytest.param(
+            {"data_key": "a", "output_key": "a", "target_key": "b", "label_key": "b"},
+            r"share the same column name: 'a' \(data_key, output_key\); "
+            r"'b' \(target_key, label_key\)",
+            id="all_duplicates_reported",
+        ),
+        pytest.param(
+            {"to_keep_schema": {"idx": pxt.Int, "label": pxt.String}},
+            r"cannot redefine the identity columns \['idx'\]",
+            id="kept_identity",
+        ),
+    ],
+)
+def test_rejects_column_name_collisions(kwargs, match):
+    with pytest.raises(ValueError, match=match):
+        _DoerWithKeys(**kwargs)
+
+
+def test_accepts_kept_column_named_after_key_and_unset_keys():
+    doer = _DoerWithKeys(
+        target_key=None,
+        output_key=None,
+        label_key="label",
+        to_keep_schema={"label": pxt.String},
+    )
+
+    assert doer.label_key == "label"
