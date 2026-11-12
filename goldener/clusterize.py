@@ -335,7 +335,6 @@ class GoldClusterizer(GoldDoerWithTable):
             ValueError: If key attributes or `to_keep_schema` collide with identity columns
                 or with each other (see `GoldDoerWithTable`).
         """
-        self.table_path = table_path
         self.clustering_tool = clustering_tool
         self.reducer = reducer
         if chunk is not None and chunk <= 0:
@@ -344,7 +343,6 @@ class GoldClusterizer(GoldDoerWithTable):
         self.vectorized_key = vectorized_key
         self.include_vectorized_in_table = include_vectorized_in_table
         self.cluster_key = cluster_key
-        self.label_key = label_key
         if distribute:
             raise NotImplementedError(
                 "Distributed processing is not implemented for GoldClusterizer."
@@ -361,6 +359,8 @@ class GoldClusterizer(GoldDoerWithTable):
             min_pxt_insert_size=min_pxt_insert_size,
             batch_size=batch_size,
             num_workers=num_workers,
+            table_path=table_path,
+            label_key=label_key,
         )
 
     @property
@@ -567,7 +567,7 @@ class GoldClusterizer(GoldDoerWithTable):
             ValueError: If the source table does not contain the required `vectorized_key` column,
                 or if the source table is empty when trying to infer the vectorized data schema.
         """
-        minimal_schema = self._get_minimal_schema()
+        minimal_schema = self._MINIMAL_SCHEMA.copy()
 
         if self.to_keep_schema is not None:
             minimal_schema |= self.to_keep_schema
@@ -695,7 +695,7 @@ class GoldClusterizer(GoldDoerWithTable):
         Returns:
             The clustering table with proper schema.
         """
-        minimal_schema = self._get_minimal_schema()
+        minimal_schema = self._MINIMAL_SCHEMA.copy()
         if self.to_keep_schema is not None:
             minimal_schema |= self.to_keep_schema
 

@@ -524,6 +524,34 @@ class TestGoldVectorizer:
             vectorizer.distribute = True
         assert vectorizer.distribute is False
 
+    @pytest.mark.parametrize(
+        "kwargs, match",
+        [
+            pytest.param(
+                {"vectorized_key": "idx_vector"},
+                r"vectorized_key='idx_vector' collides with the identity column",
+                id="key_is_identity",
+            ),
+            pytest.param(
+                {"vectorized_key": "embeddings"},
+                r"share the same column name: 'embeddings'",
+                id="duplicate_keys",
+            ),
+            pytest.param(
+                {"to_keep_schema": {"idx_vector": pxt.Int}},
+                r"cannot redefine the identity columns \['idx_vector'\]",
+                id="kept_identity",
+            ),
+        ],
+    )
+    def test_rejects_column_name_collisions(self, kwargs, match):
+        with pytest.raises(ValueError, match=match):
+            GoldVectorizer(
+                table_path="unit_test.test_collisions",
+                vectorizer=GoldTensorVectorizationTool(),
+                **kwargs,
+            )
+
     def test_estimation_time_batch_count_must_be_positive(self):
         with pytest.raises(
             ValueError, match="estimation_time_batch_count must be a positive integer"

@@ -616,11 +616,9 @@ class GoldVectorizer(GoldDoerWithTable):
             ValueError: If key attributes or `to_keep_schema` collide with identity columns
                 or with each other (see `GoldDoerWithTable`).
         """
-        self.table_path = table_path
         self.vectorizer = vectorizer
         self.data_key = data_key
         self.target_key = target_key
-        self.label_key = label_key
         self.target_to_label = target_to_label
         self.exclude_labels = exclude_labels
         self.exclude_full_zero_target = exclude_full_zero_target
@@ -646,6 +644,8 @@ class GoldVectorizer(GoldDoerWithTable):
             min_pxt_insert_size=min_pxt_insert_size,
             batch_size=batch_size,
             num_workers=num_workers,
+            table_path=table_path,
+            label_key=label_key,
         )
 
     @property
@@ -903,7 +903,7 @@ class GoldVectorizer(GoldDoerWithTable):
         return vectorized_table
 
     def _get_vectorized_valid_table(self, old_vectorized_table: Table | None) -> Table:
-        minimal_schema = self._get_minimal_schema()
+        minimal_schema = self._MINIMAL_SCHEMA.copy()
         if self.to_keep_schema is not None:
             minimal_schema |= self.to_keep_schema
 

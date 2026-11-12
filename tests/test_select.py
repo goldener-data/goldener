@@ -65,6 +65,30 @@ class TestGoldSelector:
             selector.distribute = True
         assert selector.distribute is False
 
+    @pytest.mark.parametrize(
+        "kwargs, match",
+        [
+            pytest.param(
+                {"selection_key": "idx"},
+                r"selection_key='idx' collides with the identity column",
+                id="key_is_identity",
+            ),
+            pytest.param(
+                {"selection_key": "vectorized"},
+                r"share the same column name: 'vectorized'",
+                id="duplicate_keys",
+            ),
+            pytest.param(
+                {"to_keep_schema": {"idx_vector": pxt.Int}},
+                r"cannot redefine the identity columns \['idx_vector'\]",
+                id="kept_identity",
+            ),
+        ],
+    )
+    def test_rejects_column_name_collisions(self, kwargs, match):
+        with pytest.raises(ValueError, match=match):
+            GoldSelector(table_path="unit_test.test_collisions", **kwargs)
+
     def test_collate_fn_defaults_to_collate_keeping_sequences_as_sequences(self):
         selector = GoldSelector(table_path="unit_test.select_default_collate")
         assert selector.collate_fn is collate_keeping_sequences_as_sequences

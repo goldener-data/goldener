@@ -26,7 +26,7 @@ from goldener.vectorize import GoldTensorVectorizationTool, GoldVectorizer
 )
 def make_doer(request):
     cls = request.param
-    if cls in (GoldDoer, GoldDoerWithTable):
+    if cls is GoldDoer:
         return cls
     kwargs = {"table_path": "unit_test.doer"}
     if cls is GoldDescriptor:
@@ -48,13 +48,15 @@ def test_defaults(make_doer):
     assert doer.allow_existing is True
     assert doer.drop_table is False
     assert doer.max_batches is None
-    if type(doer) is not GoldDoer:
-        assert isinstance(doer, GoldDoerWithTable)
+    if isinstance(doer, GoldDoerWithTable):
         assert doer.collate_fn is collate_keeping_sequences_as_sequences
         assert doer.to_keep_schema is None
         assert doer.min_pxt_insert_size == 100
         assert doer.batch_size == 1
         assert doer.num_workers == 0
+        assert doer.table_path == "unit_test.doer"
+        assert doer.label_key is None
+        assert doer._MINIMAL_SCHEMA["idx"] == pxt.Required[pxt.Int]
 
 
 def test_custom_settings(make_doer):
@@ -70,6 +72,7 @@ def test_custom_settings(make_doer):
             min_pxt_insert_size=10,
             batch_size=4,
             num_workers=2,
+            label_key="labels",
         )
 
     doer = make_doer(**kwargs)
@@ -83,49 +86,56 @@ def test_custom_settings(make_doer):
         assert doer.min_pxt_insert_size == 10
         assert doer.batch_size == 4
         assert doer.num_workers == 2
+        assert doer.table_path == "unit_test.doer"
+        assert doer.label_key == "labels"
 
 
-_IDENTITY = "collides with the identity column"
-_DUPLICATE = "share the same column name"
-_KEPT_IDENTITY = "cannot redefine the identity columns"
-_COLUMN_COLLISIONS = {
-    GoldDescriptor: [
-        ({"description_key": "idx"}, _IDENTITY),
-        ({"data_key": "embeddings"}, _DUPLICATE),
-        (
-            {
-                "vectorizer": GoldTensorVectorizationTool(),
-                "to_keep_schema": {"idx_vector": pxt.Int},
-            },
-            _KEPT_IDENTITY,
+class _DoerWithKeys(GoldDoerWithTable):
+    def __init__(
+        self,
+        data_key: str | None = "data",
+        target_key: str | None = "target",
+        output_key: str | None = "output",
+        **kwargs,
+    ) -> None:
+        self.data_key = data_key
+        self.target_key = target_key
+        self.output_key = output_key
+        super().__init__(table_path="unit_test.doer", **kwargs)
+
+
+@pytest.mark.parametrize(
+    "kwargs, match",
+    [
+        pytest.param(
+            {"label_key": "idx"},
+            r"label_key='idx' collides with the identity column 'idx'",
+            id="key_is_identity",
+        ),
+        pytest.param(
+            {"data_key": "a", "output_key": "a", "target_key": "b", "label_key": "b"},
+            r"share the same column name: 'a' \(data_key, output_key\); "
+            r"'b' \(target_key, label_key\)",
+            id="all_duplicates_reported",
+        ),
+        pytest.param(
+            {"to_keep_schema": {"idx": pxt.Int, "label": pxt.String}},
+            r"cannot redefine the identity columns \['idx'\]",
+            id="kept_identity",
         ),
     ],
-    GoldVectorizer: [
-        ({"vectorized_key": "idx_vector"}, _IDENTITY),
-        ({"vectorized_key": "embeddings"}, _DUPLICATE),
-        ({"to_keep_schema": {"idx_vector": pxt.Int}}, _KEPT_IDENTITY),
-    ],
-    GoldSelector: [
-        ({"selection_key": "idx_vector"}, _IDENTITY),
-        ({"selection_key": "vectorized"}, _DUPLICATE),
-        ({"to_keep_schema": {"idx_vector": pxt.Int}}, _KEPT_IDENTITY),
-    ],
-    GoldClusterizer: [
-        ({"cluster_key": "idx"}, _IDENTITY),
-        ({"label_key": "vectorized"}, _DUPLICATE),
-        ({"to_keep_schema": {"idx_vector": pxt.Int}}, _KEPT_IDENTITY),
-    ],
-}
+)
+def test_rejects_column_name_collisions(kwargs, match):
+    with pytest.raises(ValueError, match=match):
+        _DoerWithKeys(**kwargs)
 
 
-def test_rejects_column_name_collisions(make_doer):
-    if make_doer is GoldDoer:
-        pytest.skip("GoldDoer has no table columns to validate.")
+def test_accepts_kept_column_named_after_key_and_unset_keys():
+    doer = _DoerWithKeys(
+        target_key=None,
+        output_key=None,
+        label_key="label",
+        to_keep_schema={"label": pxt.String},
+    )
 
-    with pytest.raises(ValueError, match=_KEPT_IDENTITY):
-        make_doer(to_keep_schema={"idx": pxt.Int})
-
-    doer_cls = getattr(make_doer, "func", make_doer)
-    for kwargs, match in _COLUMN_COLLISIONS.get(doer_cls, []):
-        with pytest.raises(ValueError, match=match):
-            make_doer(**kwargs)
+    assert doer.label_key == "label"

@@ -745,7 +745,6 @@ class GoldSelector(GoldDoerWithTable):
             ValueError: If key attributes or `to_keep_schema` collide with identity columns
                 or with each other (see `GoldDoerWithTable`).
         """
-        self.table_path = table_path
         self.selection_tool = selection_tool
         self.reducer = reducer
         self.chunk = chunk
@@ -756,7 +755,6 @@ class GoldSelector(GoldDoerWithTable):
             raise ValueError(
                 "If exclude_labels is provided, label_key must also be provided."
             )
-        self.label_key = label_key
         self.exclude_labels = exclude_labels
         if distribute:
             raise NotImplementedError(
@@ -773,6 +771,8 @@ class GoldSelector(GoldDoerWithTable):
             min_pxt_insert_size=min_pxt_insert_size,
             batch_size=batch_size,
             num_workers=num_workers,
+            table_path=table_path,
+            label_key=label_key,
         )
 
     @property
@@ -1055,7 +1055,7 @@ class GoldSelector(GoldDoerWithTable):
             ValueError: If the source table does not contain the required `vectorized_key` column,
                 or if the source table is empty when trying to infer the vectorized data schema.
         """
-        minimal_schema = self._get_minimal_schema()
+        minimal_schema = self._MINIMAL_SCHEMA.copy()
 
         if self.to_keep_schema is not None:
             minimal_schema |= self.to_keep_schema
@@ -1175,7 +1175,7 @@ class GoldSelector(GoldDoerWithTable):
         Returns:
             The selection table with proper schema.
         """
-        minimal_schema = self._get_minimal_schema()
+        minimal_schema = self._MINIMAL_SCHEMA.copy()
         if self.to_keep_schema is not None:
             minimal_schema |= self.to_keep_schema
 

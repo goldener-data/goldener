@@ -166,13 +166,11 @@ class GoldDescriptor(GoldDoerWithTable):
             ValueError: If key attributes or `to_keep_schema` collide with identity columns
                 or with each other (see `GoldDoerWithTable`).
         """
-        self.table_path = table_path
         self.embedder = embedder
         self.vectorizer = vectorizer
         self.transform = transform
         self.data_key = data_key
         self.target_key = target_key
-        self.label_key = label_key
         self.target_to_label = target_to_label
         self.exclude_full_zero_target = exclude_full_zero_target
         self.merge_multilabels = merge_multilabels
@@ -203,18 +201,9 @@ class GoldDescriptor(GoldDoerWithTable):
             min_pxt_insert_size=min_pxt_insert_size,
             batch_size=batch_size,
             num_workers=num_workers,
+            table_path=table_path,
+            label_key=label_key,
         )
-
-    def _get_minimal_schema(self) -> dict[str, type]:
-        """Return a copy of the identity columns of the description table and their types.
-
-        Returns:
-            A new dictionary with `idx`, and `idx_vector` when a vectorizer is set.
-        """
-        minimal_schema = super()._get_minimal_schema()
-        if self.vectorizer is not None:
-            minimal_schema["idx_vector"] = pxt.Required[pxt.Int]
-        return minimal_schema
 
     @property
     def distribute(self) -> bool:
@@ -495,7 +484,9 @@ class GoldDescriptor(GoldDoerWithTable):
     def _get_description_valid_table(
         self, old_description_table: Table | None
     ) -> Table:
-        minimal_schema = self._get_minimal_schema()
+        minimal_schema = self._MINIMAL_SCHEMA.copy()
+        if self.vectorizer is not None:
+            minimal_schema["idx_vector"] = pxt.Required[pxt.Int]
         if self.to_keep_schema is not None:
             minimal_schema |= self.to_keep_schema
 

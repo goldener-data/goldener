@@ -260,6 +260,34 @@ class TestGoldClusterizer:
             clusterizer.distribute = True
         assert clusterizer.distribute is False
 
+    @pytest.mark.parametrize(
+        "kwargs, match",
+        [
+            pytest.param(
+                {"cluster_key": "idx_vector"},
+                r"cluster_key='idx_vector' collides with the identity column",
+                id="key_is_identity",
+            ),
+            pytest.param(
+                {"label_key": "vectorized"},
+                r"share the same column name: 'vectorized'",
+                id="duplicate_keys",
+            ),
+            pytest.param(
+                {"to_keep_schema": {"idx_vector": pxt.Int}},
+                r"cannot redefine the identity columns \['idx_vector'\]",
+                id="kept_identity",
+            ),
+        ],
+    )
+    def test_rejects_column_name_collisions(self, kwargs, match):
+        with pytest.raises(ValueError, match=match):
+            GoldClusterizer(
+                table_path="unit_test.test_collisions",
+                clustering_tool=GoldRandomClusteringTool(),
+                **kwargs,
+            )
+
     def test_collate_fn_defaults_to_collate_keeping_sequences_as_sequences(self):
         clusterizer = GoldClusterizer(
             table_path="unit_test.cluster_default_collate",

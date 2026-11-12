@@ -1,3 +1,4 @@
+from collections import defaultdict
 from typing import Callable
 
 import pixeltable as pxt
@@ -35,6 +36,7 @@ class GoldDoerWithTable(GoldDoer):
     `super().__init__()`, so that the validation sees them.
 
     Args:
+        table_path: Path to the PixelTable table where results are stored.
         allow_existing: Whether to allow using existing tables. Defaults to True.
         drop_table: Whether to drop intermediate tables. Defaults to False.
         max_batches: Optional maximum number of batches to process.
@@ -45,11 +47,16 @@ class GoldDoerWithTable(GoldDoer):
             into PixelTable. Defaults to 100.
         batch_size: Batch size used when iterating over the data. Defaults to 1.
         num_workers: Number of workers for the PyTorch DataLoader. Defaults to 0.
+        label_key: Optional key for label stratification.
 
     Raises:
-        ValueError: If a key attribute is named after an identity column, if two key
+        ValueError: If a key attribute is named after an identity column, if key
             attributes share the same value, or if `to_keep_schema` defines an
             identity column.
+
+    Note:
+        `_MINIMAL_SCHEMA` defines the minimal expected columns in the intermediary
+        table. Each subclass should adapt it if needed.
     """
 
     _MINIMAL_SCHEMA: dict[str, type] = {
@@ -58,6 +65,7 @@ class GoldDoerWithTable(GoldDoer):
 
     def __init__(
         self,
+        table_path: str,
         allow_existing: bool = True,
         drop_table: bool = False,
         max_batches: int | None = None,
@@ -66,6 +74,7 @@ class GoldDoerWithTable(GoldDoer):
         min_pxt_insert_size: int = 100,
         batch_size: int = 1,
         num_workers: int = 0,
+        label_key: str | None = None,
     ) -> None:
         super().__init__(
             allow_existing=allow_existing,
@@ -81,29 +90,24 @@ class GoldDoerWithTable(GoldDoer):
         self.min_pxt_insert_size = min_pxt_insert_size
         self.batch_size = batch_size
         self.num_workers = num_workers
+        self.table_path = table_path
+        self.label_key = label_key
         self._validate_column_names()
-
-    def _get_minimal_schema(self) -> dict[str, type]:
-        """Return a copy of the identity columns of the table and their types.
-
-        Returns:
-            A new dictionary mapping identity column names to PixelTable types.
-        """
-        return self._MINIMAL_SCHEMA.copy()
 
     def _validate_column_names(self) -> None:
         """Check that identity columns, key attributes and kept columns do not collide.
 
-        Key attributes are the instance attributes whose name contains `key` and whose
-        value is a string; None values are ignored. Kept columns may share a name with
-        an input key attribute (e.g. `label_key` and a kept label column).
+        Identity columns are the keys of `_MINIMAL_SCHEMA`. Key attributes are the
+        instance attributes whose name contains `key` and whose value is a string;
+        None values are ignored. Kept columns may share a name with an input key
+        attribute (e.g. `label_key` and a kept label column).
 
         Raises:
-            ValueError: If a key attribute is named after an identity column, if two key
-                attributes share the same value, or if `to_keep_schema` defines an
-                identity column.
+            ValueError: If a key attribute is named after an identity column, if key
+                attributes share the same value (all duplicates are reported at once),
+                or if `to_keep_schema` defines an identity column.
         """
-        identity_columns = set(self._get_minimal_schema())
+        identity_columns = set(self._MINIMAL_SCHEMA)
         key_attributes = {
             name: value
             for name, value in vars(self).items()
@@ -116,14 +120,18 @@ class GoldDoerWithTable(GoldDoer):
                     f"{name}='{value}' collides with the identity column '{value}'."
                 )
 
-        attributes_by_value: dict[str, list[str]] = {}
+        attributes_by_value: dict[str, list[str]] = defaultdict(list)
         for name, value in key_attributes.items():
-            attributes_by_value.setdefault(value, []).append(name)
-        for value, names in attributes_by_value.items():
-            if len(names) > 1:
-                raise ValueError(
-                    f"{', '.join(names)} share the same column name '{value}'."
-                )
+            attributes_by_value[value].append(name)
+        duplicates = [
+            f"'{value}' ({', '.join(names)})"
+            for value, names in attributes_by_value.items()
+            if len(names) > 1
+        ]
+        if duplicates:
+            raise ValueError(
+                f"Key attributes share the same column name: {'; '.join(duplicates)}."
+            )
 
         if self.to_keep_schema is not None:
             collisions = sorted(identity_columns & set(self.to_keep_schema))
