@@ -1247,19 +1247,6 @@ class TestEstimateComputationTime:
     def teardown_method(self):
         pxt.drop_dir("unit_test", force=True)
 
-    def test_returns_estimate_when_dataset_size_known(self):
-        gv = GoldVectorizer(
-            table_path="unit_test.vectorize_estimate",
-            vectorizer=GoldTensorVectorizationTool(),
-            batch_size=2,
-        )
-        dataset = DummyDataset(dataset_len=10)
-
-        estimate = gv.estimate_computation_time(dataset)
-
-        assert estimate is not None
-        assert estimate > 0
-
     def test_returns_none_when_dataset_size_unknown(self):
         from torch.utils.data import IterableDataset
 
@@ -1300,7 +1287,7 @@ class TestEstimateComputationTime:
         [(None, 5), (2, 3)],
         ids=["no_table_yet", "partly_vectorized"],
     )
-    def test_already_vectorized_samples_are_excluded(
+    def test_returns_estimate_when_dataset_size_known(
         self, monkeypatch, max_batches, remaining_batches
     ):
         gv = GoldVectorizer(

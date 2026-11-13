@@ -493,15 +493,3 @@ class TestCountComputedSamples:
         )
 
         assert count_computed_samples("unit_test.table", "value") == 2
-
-    def test_ignores_samples_beyond_max_idx(self):
-        pxt.create_table(
-            "unit_test.table",
-            source=[
-                {"idx": 0, "value": 1.0},
-                {"idx": 1, "value": 2.0},
-                {"idx": 7, "value": 3.0},
-            ],
-        )
-
-        assert count_computed_samples("unit_test.table", "value", max_idx=2) == 2

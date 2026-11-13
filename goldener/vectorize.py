@@ -1095,7 +1095,7 @@ class GoldVectorizer(GoldDoerWithTable):
 
         if hasattr(dataset, "__len__"):
             already_computed = count_computed_samples(
-                self.table_path, self.vectorized_key, len(dataset)
+                self.table_path, self.vectorized_key
             )
             remaining = max(len(dataset) - already_computed, 0)
             total_batches = math.ceil(remaining / self.batch_size)
