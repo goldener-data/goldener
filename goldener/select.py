@@ -818,14 +818,14 @@ class GoldSelector(GoldDoerWithTable):
             logger.info(f"No existing selection table from {self.table_path}")
             old_selection_table = None
 
-        # selection table are expected to have a primary key allowing to idempotent updates
+        # selection table is expected to have a primary key allowing to idempotent updates
         if old_selection_table is not None:
-            check_pxt_table_has_primary_key(old_selection_table, set(["idx_vector"]))
+            check_pxt_table_has_primary_key(old_selection_table, {"idx_vector"})
 
         if not self.allow_existing and old_selection_table is not None:
             raise ValueError(
-                f"Table at path {self.table_path} already exists and "
-                "allow_existing is set to False."
+                f"Table at path {self.table_path} already exists while "
+                "allow_existing is False."
             )
 
         if isinstance(select_from, Table):

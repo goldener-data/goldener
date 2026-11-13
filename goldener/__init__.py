@@ -61,7 +61,7 @@ from goldener.vectorize import (
     Vectorized,
     GoldTensorVectorizationTool,
 )
-from goldener.weight import (
+from goldener.weigh import (
     GoldDensityWeighingTool,
     GoldKnnDensityWeighingTool,
     GoldDensityWeigher,
