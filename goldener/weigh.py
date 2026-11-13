@@ -43,12 +43,12 @@ logger = getLogger(__name__)
 class GoldDensityWeighingTool(ABC):
     """Compute one nonnegative density score for each vector in a 2D tensor.
 
-    Attributes:
+    Args:
         device: Device used for tensor computation. Defaults to ``"cpu"``.
 
     The input matrix has shape `(num_vectors, feature_dim)` and implementations
-    return a one-dimensional vector with one score per queried row.
-    `weigh_batch` scores query rows against the full input population.
+    return a one-dimensional vector with one score per queried row. Optional
+    `query_indices` select rows to score against the full input population.
     """
 
     def __init__(self, device: torch.device | str = "cpu") -> None:
@@ -159,7 +159,8 @@ class GoldKnnDensityWeighingTool(GoldDensityWeighingTool):
             x: Finite floating tensor shaped `(num_vectors, feature_dim)`,
                 with at least `k + 2` rows. All rows remain potential neighbors.
 
-        Returns:Nonnegative scores shaped `(num_vectors,)` with the input dtype and device.
+        Returns:
+            A nonnegative density score shaped `(num_vectors,)` on the input device and torch.float64 dtype
 
         Raises:
             ValueError: If the input is invalid, has fewer than `k + 2` rows.
@@ -176,6 +177,8 @@ class GoldKnnDensityWeighingTool(GoldDensityWeighingTool):
 
         Returns:
             Scores shaped `(batch_size,)`, with the batch device and dtype.
+            Empty batches return no scores. One nearest entry is discarded per
+            query to exclude itself, retaining other identical neighbors.
 
         Raises:
             ValueError: If shapes, values, or population size are invalid.
@@ -253,7 +256,7 @@ class GoldDensityWeigher(GoldDoerWithTable):
         self,
         table_path: str,
         weigher: GoldDensityWeighingTool = GoldKnnDensityWeighingTool(),
-        weighing_batch_size: int | None = None,
+        weighing_batch_size: int | None = 0,
         reducer: GoldReductionTool | None = None,
         chunk: int | None = None,
         collate_fn: Callable | None = None,
@@ -276,8 +279,6 @@ class GoldDensityWeigher(GoldDoerWithTable):
         Args:
             table_path: Path to store the PixelTable table.
             weigher: The GoldDensityWeighingTool implementing the weighing algorithm.
-            weighing_batch_size: Positive number of query rows scored per batch,
-                using the full chunk as reference. None scores the whole chunk at once.
             reducer: Optional GoldReductionTool instance for dimensionality reduction before weighing. Reducers
                 supporting fitting are fitted independently on each chunk;
                 transform-only reducers are applied without fitting.
@@ -324,7 +325,9 @@ class GoldDensityWeigher(GoldDoerWithTable):
         self.table_path = table_path
         self.weigher = weigher
         if weighing_batch_size is not None:
-            validate_positive_integer(weighing_batch_size, "weighing_batch_size")
+            validate_positive_number(
+                weighing_batch_size, "weighing_batch_size", allow_zero=False
+            )
         self.weighing_batch_size = weighing_batch_size
         self.reducer = reducer
         self.chunk = chunk
@@ -744,14 +747,6 @@ class GoldDensityWeigher(GoldDoerWithTable):
             if include_vectorized:
                 to_insert_keys.append(self.vectorized_key)
 
-            if include_vectorized:
-                batch[self.vectorized_key] = [
-                    vector.detach().cpu().numpy()
-                    if isinstance(vector, torch.Tensor)
-                    else vector
-                    for vector in batch[self.vectorized_key]
-                ]
-
             batch_as_list = make_batch_ready_for_table(
                 batch,
                 to_insert_keys,
@@ -889,6 +884,8 @@ class GoldDensityWeigher(GoldDoerWithTable):
             ValueError: If the reducer does not return a two-dimensional tensor with the
                 same number of rows
         """
+        vectors = vectors
+
         if self.reducer is not None:
             vectors = (
                 self.reducer.fit_transform(vectors)
@@ -932,8 +929,8 @@ class GoldDensityWeigher(GoldDoerWithTable):
         weight_col = get_expr_from_column_name(table, weight_key)
         if table.where(weight_col == None).count() > 0:  # noqa: E711
             raise RuntimeError(
-                "Not all vectors have scores in the table. "
-                "Cannot compute weights per sample index."
+                f"Not all vectors have scores in the table at {table.path}. "
+                f"Cannot compute weights per sample index."
             )
 
         idx_vector_col = get_expr_from_column_name(table, "idx_vector")
