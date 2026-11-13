@@ -116,7 +116,11 @@ class TestGoldKnnDensityWeighingTool:
 
         assert torch.equal(scores, torch.full((7,), 1e-4))
 
-    @pytest.mark.parametrize("row_indices", [[3, 0, 2, 1], [2], [1, 1, 3], []])
+    @pytest.mark.parametrize(
+        "row_indices",
+        [[3, 0, 2, 1], [2], [1, 1, 3], []],
+        ids=["reordered", "single-query", "duplicate-queries", "empty-query"],
+    )
     def test_knn_density_excludes_only_self_and_query_batching_preserves_results(
         self,
         row_indices,
@@ -152,42 +156,84 @@ class TestGoldKnnDensityWeighingTool:
         assert torch.allclose(scaled_scores, scores * (10**0.5))
 
     @pytest.mark.parametrize(
-        "kwargs",
+        "kwargs,match",
         [
-            {"k": 0},
-            {"k": True},
-            {"distance_batch_size": 0},
-            {"power": -1},
-            {"power": float("nan")},
-            {"power": float("inf")},
-            {"power": True},
-            {"eps": 0},
-            {"eps": float("nan")},
-            {"eps": float("inf")},
-            {"eps": True},
+            pytest.param({"k": 0}, "k must be a positive integer", id="zero-k"),
+            pytest.param({"k": True}, "k must be a positive integer", id="boolean-k"),
+            pytest.param(
+                {"distance_batch_size": 0},
+                "distance_batch_size must be a positive integer",
+                id="zero-distance-batch-size",
+            ),
+            pytest.param(
+                {"power": -1},
+                "power must be finite and nonnegative",
+                id="negative-power",
+            ),
+            pytest.param(
+                {"power": float("nan")},
+                "power must be finite and nonnegative",
+                id="nan-power",
+            ),
+            pytest.param(
+                {"power": float("inf")},
+                "power must be finite and nonnegative",
+                id="infinite-power",
+            ),
+            pytest.param(
+                {"power": True},
+                "power must be finite and nonnegative",
+                id="boolean-power",
+            ),
+            pytest.param({"eps": 0}, "eps must be finite and positive", id="zero-eps"),
+            pytest.param(
+                {"eps": float("nan")}, "eps must be finite and positive", id="nan-eps"
+            ),
+            pytest.param(
+                {"eps": float("inf")},
+                "eps must be finite and positive",
+                id="infinite-eps",
+            ),
+            pytest.param(
+                {"eps": True}, "eps must be finite and positive", id="boolean-eps"
+            ),
         ],
     )
-    def test_knn_density_rejects_invalid_configuration(self, kwargs):
-        with pytest.raises(ValueError):
+    def test_knn_density_rejects_invalid_configuration(self, kwargs, match):
+        with pytest.raises(ValueError, match=match):
             GoldKnnDensityWeighingTool(**kwargs)
 
     @pytest.mark.parametrize(
-        "x",
+        "x,match",
         [
-            torch.ones(3),
-            torch.empty((2, 0)),
-            torch.tensor([[float("nan")]]),
-            torch.ones((7, 2), dtype=torch.int64),
+            pytest.param(
+                torch.ones(3), "only accepts 2D tensors", id="one-dimensional"
+            ),
+            pytest.param(
+                torch.empty((2, 0)), "positive feature width", id="empty-features"
+            ),
+            pytest.param(
+                torch.tensor([[float("nan")]]),
+                "finite floating point values",
+                id="nonfinite-input",
+            ),
+            pytest.param(
+                torch.ones((7, 2), dtype=torch.int64),
+                "finite floating point values",
+                id="integer-input",
+            ),
         ],
     )
-    def test_knn_density_rejects_invalid_input(self, x):
-        with pytest.raises(ValueError):
+    def test_knn_density_rejects_invalid_input(self, x, match):
+        with pytest.raises(ValueError, match=match):
             GoldKnnDensityWeighingTool().weigh(x)
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=match):
             GoldKnnDensityWeighingTool().weigh_batch(torch.zeros(7, 2), x)
 
     @pytest.mark.parametrize(
-        "dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64]
+        "dtype",
+        [torch.float16, torch.bfloat16, torch.float32, torch.float64],
+        ids=["float16", "bfloat16", "float32", "float64"],
     )
     def test_knn_density_preserves_supported_float_dtypes(self, dtype):
         x = torch.tensor([[0.0, 1.0], [0.1, 1.0], [4.0, 1.0]], dtype=dtype)
@@ -207,52 +253,23 @@ class TestGoldKnnDensityWeighingTool:
         assert scores[-1] > scores[0]
 
 
+class TestGoldDensityWeigherConfiguration:
+    def test_distribution_and_constructor_limits_are_validated(self):
+        with pytest.raises(NotImplementedError, match="Distributed processing"):
+            GoldDensityWeigher("unit_test.distribute", distribute=True)
+        weigher = GoldDensityWeigher("unit_test.distribute")
+        with pytest.raises(NotImplementedError, match="Distributed processing"):
+            weigher.distribute = True
+        with pytest.raises(ValueError, match="positive integer"):
+            GoldDensityWeigher("unit_test.invalid_chunk", chunk=0)
+
+
 @pytest.mark.usefixtures("pxt_unit_test_dir")
 class TestGoldDensityWeigher:
-    @pytest.mark.parametrize(
-        "include_vectorized", [False, True], ids=["omitted", "stored"]
-    )
-    def test_add_weighing_rows_optionally_stores_vectors(self, include_vectorized):
-        dataset = VectorDataset(
-            [
-                {
-                    "idx": 4,
-                    "idx_vector": 71,
-                    "features": torch.tensor([0.0, 1.0]),
-                    "label": "a",
-                }
-            ]
-        )
-        schema = {
-            "idx": pxt.Int,
-            "idx_vector": pxt.Required[pxt.Int],
-            "label": pxt.String,
-            "weight": pxt.Float,
-        }
-        if include_vectorized:
-            schema["features"] = pxt.Array[(2,), pxt.Float]
-        table = pxt.create_table(
-            "unit_test.optional_vectors", schema=schema, primary_key="idx_vector"
-        )
-        weigher = GoldDensityWeigher(
-            "unit_test.optional_vectors",
-            vectorized_key="features",
-            to_keep_schema={"label": pxt.String},
-        )
-        options = {"include_vectorized": True} if include_vectorized else {}
-
-        weigher._add_rows_to_weighing_table_from_dataset(dataset, table, **options)
-
-        rows = table.collect()
-        assert len(rows) == 1
-        row = rows[0]
-        assert (row["idx"], row["idx_vector"], row["label"]) == (4, 71, "a")
-        assert ("features" in row) == include_vectorized
-        if include_vectorized:
-            assert torch.equal(torch.as_tensor(row["features"]), dataset[0]["features"])
-
     @pytest.mark.parametrize("source_type", ["dataset", "table"])
-    @pytest.mark.parametrize("include_vectorized_in_table", [False, True])
+    @pytest.mark.parametrize(
+        "include_vectorized_in_table", [False, True], ids=["omitted", "stored"]
+    )
     def test_weigher_scores_each_prefix_and_preserves_existing_vector_scores(
         self, source_type, include_vectorized_in_table
     ):
@@ -315,6 +332,15 @@ class TestGoldDensityWeigher:
             (20, 91, "a"),
             (20, 14, "a"),
         }
+        if source_type == "dataset" or include_vectorized_in_table:
+            expected_vectors = {
+                sample["idx_vector"]: sample["vectorized"] for sample in dataset.samples
+            }
+            for row in rows:
+                torch.testing.assert_close(
+                    torch.as_tensor(row["vectorized"]),
+                    expected_vectors[row["idx_vector"]],
+                )
         assert all(row["weight"] is None for row in rows)
         assert tool.calls == 0
         assert weigher.setup_weighing_table(source).count() == 2
@@ -362,7 +388,6 @@ class TestGoldDensityWeigher:
                 "unit_test.resumable_weights", allow_existing=False
             ).setup_weighing_table(source)
 
-        # A new doer reuses completed weights without calling its tensor tool.
         new_tool = CountingWeigher()
         again = GoldDensityWeigher(
             "unit_test.resumable_weights",
@@ -393,7 +418,7 @@ class TestGoldDensityWeigher:
         assert next(iter(result))["weight"] > 0
         assert weigher.weigher.calls == 1
         assert weigher.weigher.batch_shapes == []
-        with pytest.raises(pxt.Error):
+        with pytest.raises(pxt.Error, match="drop_weights"):
             pxt.get_table("unit_test.drop_weights")
 
     def test_empty_table_returns_empty_result(self):
@@ -608,7 +633,11 @@ class TestGoldDensityWeigher:
         assert {tuple(item["label_seq"].tolist()) for item in items} == {(2, 3), (5, 8)}
         assert "density_chunk" not in items[0]
 
-    @pytest.mark.parametrize("values", [[1.0], [float("nan"), 1.0], [-1.0, 1.0]])
+    @pytest.mark.parametrize(
+        "values",
+        [[1.0], [float("nan"), 1.0], [-1.0, 1.0]],
+        ids=["wrong-score-count", "nonfinite-score", "negative-score"],
+    )
     def test_weigher_rejects_malformed_custom_tool_outputs(self, values):
         dataset = VectorDataset(
             [
@@ -626,15 +655,6 @@ class TestGoldDensityWeigher:
         with pytest.raises(ValueError, match="one finite nonnegative score"):
             weigher.weigh_in_table(dataset)
 
-    def test_distribution_and_constructor_limits_are_validated(self):
-        with pytest.raises(NotImplementedError, match="Distributed processing"):
-            GoldDensityWeigher("unit_test.distribute", distribute=True)
-        weigher = GoldDensityWeigher("unit_test.distribute")
-        with pytest.raises(NotImplementedError, match="Distributed processing"):
-            weigher.distribute = True
-        with pytest.raises(ValueError, match="positive integer"):
-            GoldDensityWeigher("unit_test.invalid_chunk", chunk=0)
-
     def test_existing_result_table_must_have_idx_vector_primary_key(self):
         pxt.create_table(
             "unit_test.wrong_pk",
@@ -650,7 +670,9 @@ class TestGoldDensityWeigher:
         with pytest.raises(ValueError, match="idx_vector"):
             GoldDensityWeigher("unit_test.wrong_pk").weigh_in_table(VectorDataset([]))
 
-    @pytest.mark.parametrize("label_key", [None, "label"])
+    @pytest.mark.parametrize(
+        "label_key", [None, "label"], ids=["whole-population", "per-label"]
+    )
     def test_weigher_uses_independent_label_populations_and_reuses_scores(
         self, label_key
     ):
