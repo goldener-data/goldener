@@ -375,6 +375,13 @@ workflow manually from the Actions tab of the repository, on the branch or tag t
 		</tr>
 		<tr>
             <td align="center">
+                <a href="https://github.com/Mr-Neutr0n">
+                    <img src="https://avatars.githubusercontent.com/u/64578610?v=4" width="100;" alt="Mr-Neutr0n"/>
+                    <br />
+                    <sub><b>hari</b></sub>
+                </a>
+            </td>
+            <td align="center">
                 <a href="https://github.com/HafidIdrissi">
                     <img src="https://avatars.githubusercontent.com/u/57899900?v=4" width="100;" alt="HafidIdrissi"/>
                     <br />
@@ -382,10 +389,10 @@ workflow manually from the Actions tab of the repository, on the branch or tag t
                 </a>
             </td>
             <td align="center">
-                <a href="https://github.com/Mr-Neutr0n">
-                    <img src="https://avatars.githubusercontent.com/u/64578610?v=4" width="100;" alt="Mr-Neutr0n"/>
+                <a href="https://github.com/ariktadas144">
+                    <img src="https://avatars.githubusercontent.com/u/198923810?v=4" width="100;" alt="ariktadas144"/>
                     <br />
-                    <sub><b>hari</b></sub>
+                    <sub><b>ariktadas144</b></sub>
                 </a>
             </td>
             <td align="center">
@@ -409,6 +416,8 @@ workflow manually from the Actions tab of the repository, on the branch or tag t
                     <sub><b>Ali Berke Kahraman</b></sub>
                 </a>
             </td>
+		</tr>
+		<tr>
             <td align="center">
                 <a href="https://github.com/Dhruv06000">
                     <img src="https://avatars.githubusercontent.com/u/196720010?v=4" width="100;" alt="Dhruv06000"/>
@@ -416,8 +425,6 @@ workflow manually from the Actions tab of the repository, on the branch or tag t
                     <sub><b>Dhruv Kumar</b></sub>
                 </a>
             </td>
-		</tr>
-		<tr>
             <td align="center">
                 <a href="https://github.com/Josequevedov08">
                     <img src="https://avatars.githubusercontent.com/u/170109140?v=4" width="100;" alt="Josequevedov08"/>
@@ -440,10 +447,10 @@ workflow manually from the Actions tab of the repository, on the branch or tag t
                 </a>
             </td>
             <td align="center">
-                <a href="https://github.com/ariktadas144">
-                    <img src="https://avatars.githubusercontent.com/u/198923810?v=4" width="100;" alt="ariktadas144"/>
+                <a href="https://github.com/mangomac">
+                    <img src="https://avatars.githubusercontent.com/u/333602023?v=4" width="100;" alt="mangomac"/>
                     <br />
-                    <sub><b>ariktadas144</b></sub>
+                    <sub><b>mango</b></sub>
                 </a>
             </td>
 		</tr>
