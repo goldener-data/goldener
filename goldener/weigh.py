@@ -43,15 +43,20 @@ logger = getLogger(__name__)
 class GoldDensityWeighingTool(ABC):
     """Compute one nonnegative density score for each vector in a 2D tensor.
 
-    Args:
+    Attributes:
         device: Device used for tensor computation. Defaults to ``"cpu"``.
 
     The input matrix has shape `(num_vectors, feature_dim)` and implementations
-    return a one-dimensional vector with one score per queried row. Optional
-    `query_indices` select rows to score against the full input population.
+    return a one-dimensional vector with one score per queried row.
+    `weigh_batch` scores query rows against the full input population.
     """
 
     def __init__(self, device: torch.device | str = "cpu") -> None:
+        """Initialize the density weighing tool.
+
+        Args:
+            device: Torch device used for computation. Defaults to CPU.
+        """
         self.device = torch.device(device)
 
     def _validate_input(self, x: torch.Tensor) -> None:
@@ -160,7 +165,7 @@ class GoldKnnDensityWeighingTool(GoldDensityWeighingTool):
                 with at least `k + 2` rows. All rows remain potential neighbors.
 
         Returns:
-            A nonnegative density score shaped `(num_vectors,)` on the input device and torch.float64 dtype
+            Nonnegative scores shaped `(num_vectors,)` with the input dtype and device.
 
         Raises:
             ValueError: If the input is invalid, has fewer than `k + 2` rows.
@@ -222,6 +227,8 @@ class GoldDensityWeigher(GoldDoerWithTable):
     Attributes:
         table_path: Path to the PixelTable table where weighing results will be stored locally.
         weigher: The GoldDensityWeighingTool implementing the weighing algorithm.
+        weighing_batch_size: Optional batch size for the weigher's `weigh_batch` method. If None,
+            the weighing is done all at once for each chunk.
         reducer: Optional GoldReductionTool instance for dimensionality reduction before weighing.
         chunk: Optional chunk size for processing data in chunks to reduce memory consumption.
         collate_fn: Optional function to collate dataset samples into batches composed of
@@ -236,7 +243,7 @@ class GoldDensityWeigher(GoldDoerWithTable):
         to_keep_schema: Optional dictionary defining additional columns to keep from the original dataset/table
             into the weighing table. The keys are the column names and the values are the PixelTable types.
         min_pxt_insert_size: Minimum number of rows to accumulate before inserting into PixelTable. Default is 100.
-        batch_size: Batch size used for dataset ingestion and density queries.
+        batch_size: Batch size used for dataset ingestion.
         num_workers: Number of workers for the PyTorch DataLoader during iteration on data.
         allow_existing: If False, an error will be raised when the table already exists. Default is True.
         distribute: Whether to use distributed processing for weighing and table population. Not implemented yet. Default is False.
@@ -249,14 +256,13 @@ class GoldDensityWeigher(GoldDoerWithTable):
     _MINIMAL_SCHEMA: dict[str, type] = {
         "idx": pxt.Required[pxt.Int],
         "idx_vector": pxt.Required[pxt.Int],
-        "density_chunk": pxt.Int,
     }
 
     def __init__(
         self,
         table_path: str,
         weigher: GoldDensityWeighingTool = GoldKnnDensityWeighingTool(),
-        weighing_batch_size: int | None = 0,
+        weighing_batch_size: int | None = None,
         reducer: GoldReductionTool | None = None,
         chunk: int | None = None,
         collate_fn: Callable | None = None,
@@ -279,6 +285,8 @@ class GoldDensityWeigher(GoldDoerWithTable):
         Args:
             table_path: Path to store the PixelTable table.
             weigher: The GoldDensityWeighingTool implementing the weighing algorithm.
+            weighing_batch_size: Optional batch size for the weigher's `weigh_batch` method. If None,
+                the weighing is done all at once for each chunk.
             reducer: Optional GoldReductionTool instance for dimensionality reduction before weighing. Reducers
                 supporting fitting are fitted independently on each chunk;
                 transform-only reducers are applied without fitting.
@@ -293,7 +301,7 @@ class GoldDensityWeigher(GoldDoerWithTable):
             label_key: Optional key for label stratification. Default is None.
             to_keep_schema: Optional schema for additional columns to preserve.
             min_pxt_insert_size: Minimum number of rows to accumulate before inserting into PixelTable. Default is 100.
-            batch_size: Batch size used for dataset ingestion and density queries. Defaults to 1.
+            batch_size: Batch size used for dataset ingestion. Defaults to 1.
             num_workers: Number of workers for the PyTorch DataLoader during iteration on data. Defaults to 0.
             allow_existing: Whether to allow using an existing table. Defaults to True.
             distribute: Whether to use distributed weighing. Not implemented yet. Defaults to False.
@@ -307,12 +315,28 @@ class GoldDensityWeigher(GoldDoerWithTable):
             ValueError: If `chunk` is not a positive integer or `None`.
             NotImplementedError: If `distribute` is True.
         """
+        self.weigher = weigher
+        if weighing_batch_size is not None:
+            validate_positive_number(
+                weighing_batch_size, "weighing_batch_size", allow_zero=False
+            )
+        self.weighing_batch_size = weighing_batch_size
+        self.reducer = reducer
+        validate_positive_integer(chunk, "chunk", allow_none=True)
+        self.chunk = chunk
+        self.vectorized_key = vectorized_key
+        self.include_vectorized_in_table = include_vectorized_in_table
+        self.weight_key = weight_key
+        self.label_key = label_key
         if distribute:
             raise NotImplementedError(
                 "Distributed processing is not implemented for GoldDensityWeigher."
             )
-        validate_positive_integer(chunk, "chunk", allow_none=True)
+        self._distribute = distribute
+        self.random_state = random_state
+
         super().__init__(
+            table_path=table_path,
             allow_existing=allow_existing,
             drop_table=drop_table,
             max_batches=max_batches,
@@ -322,21 +346,6 @@ class GoldDensityWeigher(GoldDoerWithTable):
             batch_size=batch_size,
             num_workers=num_workers,
         )
-        self.table_path = table_path
-        self.weigher = weigher
-        if weighing_batch_size is not None:
-            validate_positive_number(
-                weighing_batch_size, "weighing_batch_size", allow_zero=False
-            )
-        self.weighing_batch_size = weighing_batch_size
-        self.reducer = reducer
-        self.chunk = chunk
-        self.vectorized_key = vectorized_key
-        self.include_vectorized_in_table = include_vectorized_in_table
-        self.weight_key = weight_key
-        self.label_key = label_key
-        self.random_state = random_state
-        self._distribute = distribute
 
     @property
     def distribute(self) -> bool:
@@ -381,7 +390,7 @@ class GoldDensityWeigher(GoldDoerWithTable):
         Returns:
             A PixelTable Table containing at least the weighing information in the `weight_key` column
             and `idx` (index of the sample) and `idx_vector` (index of the vector) columns as well.
-            The table also contains `density_chunk`, the vector column when available, and configured retained columns.
+            The table also contains the vector column when available and configured retained columns.
 
         Raises:
             ValueError: If required columns, vectors, IDs, or stored schema are
@@ -440,7 +449,7 @@ class GoldDensityWeigher(GoldDoerWithTable):
         Returns:
             A PixelTable Table with the appropriate schema for weighing,
             populated with rows corresponding to the source dataset or table up to `max_batches`.
-            Existing rows and scores are preserved; new rows have no scores or chunk assignments.
+            Existing rows and scores are preserved; new rows have no scores.
 
         Raises:
             ValueError: If `allow_existing` is False and the table at `table_path` already exists,
@@ -798,7 +807,7 @@ class GoldDensityWeigher(GoldDoerWithTable):
 
         Args:
             weigh_from: The source table with vectorized data.
-            weighing_table: The table to store weighing results and chunk IDs.
+            weighing_table: The table to store weighing results.
             label_value: Optional label value to filter vectors by.
 
         Raises:
@@ -909,22 +918,36 @@ class GoldDensityWeigher(GoldDoerWithTable):
         weight_key: str = "weight",
         idx_key: Literal["idx", "idx_vector"] = "idx",
         label_key: str | None = None,
+        label_value: str | None = None,
         aggregation: Callable[[list[float]], float] = np.mean,
         normalize: bool = True,
     ) -> dict[int, float]:
-        """Get the weight of per specified index
+        """Retrieve weights by sample or vector index without changing stored scores.
+
+        Sample scores are aggregated before normalization. By default, each
+        returned score is divided by the largest returned score when it is
+        positive; all-zero scores remain zero.
 
         Args:
-            table: PixelTable table to query.
-            weight_key: Column name used to store weighing values. Defaults to "weight".
-            idx_key: Column name used to get sample indices. Defaults to "idx".
+            table: PixelTable table in which every vector has a score.
+            weight_key: Column containing raw vector scores. Defaults to "weight".
+            idx_key: "idx" aggregates vectors belonging to each sample;
+                "idx_vector" returns individual vector scores. Defaults to "idx".
+            label_key: Optional label column to filter. Requires `label_value`.
+            label_value: Label to select when `label_key` is provided.
+            aggregation: Function applied to each sample's vector scores.
+                Defaults to the arithmetic mean. Ignored for "idx_vector".
+            normalize: Whether to divide by the maximum returned score after
+                filtering and aggregation. Defaults to True. False returns raw
+                or aggregated scores without rescaling.
 
         Returns:
-            A dictionary mapping sample indices to the arithmetic mean of their available
-            raw per-vector scores. Samples without scored vectors are omitted.
+            A dictionary mapping the requested sample or vector indices to weights.
 
         Raises:
-            Runtime error if not all vectors have scores.
+            ValueError: If `label_key` is provided without `label_value`.
+            RuntimeError: If any vector in the table lacks a score, or no scores
+                are found for the requested filter.
         """
         weight_col = get_expr_from_column_name(table, weight_key)
         if table.where(weight_col == None).count() > 0:  # noqa: E711
@@ -937,8 +960,12 @@ class GoldDensityWeigher(GoldDoerWithTable):
         idx_col = get_expr_from_column_name(table, "idx")
         pool: Table | Query = table
         if label_key is not None:
+            if label_value is None:
+                raise ValueError(
+                    "If label_key is provided, label_value must also be provided."
+                )
             label_col = get_expr_from_column_name(table, label_key)
-            pool = pool.where(label_col == label_key)
+            pool = pool.where(label_col == label_value)
 
         rows = pool.select(idx_col, idx_vector_col, weight_col).collect()
         scores: dict[int, float]
@@ -952,6 +979,11 @@ class GoldDensityWeigher(GoldDoerWithTable):
             scores = {}
             for idx, index_scores in scores_per_index.items():
                 scores[idx] = aggregation(index_scores)
+
+        if not scores:
+            raise RuntimeError(
+                "No scores found for the specified index key and label filter."
+            )
 
         if normalize:
             max_score = np.max(list(scores.values()))

@@ -234,13 +234,15 @@ described = GoldDescriptor(...).describe_in_table(dataset)
 vectors = GoldVectorizer(...).vectorize_in_table(described)
 weigher = GoldDensityWeigher("weights")
 weighted = weigher.weigh_in_table(vectors)
-sample_scores = weigher.get_weights_per_idx(weighted)
-sample_weights = weigher.normalize_weights(sample_scores)
+sample_weights = weigher.get_weights_per_idx(weighted)
 ```
 
-The default kNN weighing tool requires at least `k + 2` vectors per scored
-population (seven with the default `k=5`). When using `chunk` or `max_batches`,
-each independently scored chunk or prefix must meet this minimum.
+The result maps each sample's `idx` to the mean of its vector scores, divided
+by the largest sample score by default. The largest positive weight is therefore
+1; all-zero scores remain zero. Retrieval leaves the stored scores unchanged.
+Use `normalize=False` for raw scores, or `idx_key="idx_vector"` for one weight
+per vector. Retrieval requires every vector in the table to have a score and
+raises an error when no scores are found.
 
 # Installation
 
