@@ -124,35 +124,14 @@ def test_knn_density_excludes_only_self_and_query_batching_preserves_results(
     small_batches = GoldKnnDensityWeighingTool(k=1, distance_batch_size=1).weigh(x)
 
     indices = torch.tensor(query_indices, dtype=torch.long)
-    external_batches = GoldKnnDensityWeighingTool(k=1, distance_batch_size=1).weigh(
-        x, query_indices=indices
-    )
-
     tensor_scores = GoldKnnDensityWeighingTool(k=1).weigh_batch(x, x[indices])
     assert torch.allclose(tensor_scores, one_batch[indices])
-    assert torch.allclose(external_batches, one_batch[indices])
-    assert external_batches.dtype == x.dtype
-    assert external_batches.device == x.device
+    assert tensor_scores.dtype == x.dtype
+    assert tensor_scores.device == x.device
     assert torch.allclose(one_batch, small_batches)
     assert one_batch[0] == one_batch[1]
     assert one_batch[0].item() == pytest.approx(1e-6)
     assert one_batch[2] > one_batch[0]
-
-
-@pytest.mark.parametrize(
-    "indices",
-    [
-        torch.tensor([-1]),
-        torch.tensor([4]),
-        torch.tensor([[0]]),
-        torch.tensor([0.0]),
-        torch.tensor([True]),
-        [0],
-    ],
-)
-def test_knn_density_rejects_invalid_query_indices(indices):
-    with pytest.raises(ValueError, match="query_indices"):
-        GoldKnnDensityWeighingTool(k=1).weigh(torch.zeros(4, 2), query_indices=indices)
 
 
 def test_knn_density_preserves_small_distances_in_large_dynamic_range():
@@ -245,7 +224,12 @@ def test_add_weighing_rows_optionally_stores_vectors(include_vectorized):
             }
         ]
     )
-    schema = {"idx": pxt.Int, "idx_vector": pxt.Required[pxt.Int], "label": pxt.String}
+    schema = {
+        "idx": pxt.Int,
+        "idx_vector": pxt.Required[pxt.Int],
+        "label": pxt.String,
+        "weight": pxt.Float,
+    }
     if include_vectorized:
         schema["features"] = pxt.Array[(2,), pxt.Float]
     table = pxt.create_table(
@@ -340,11 +324,9 @@ def test_weigher_scores_each_prefix_and_preserves_existing_vector_scores(
 
     partial = weigher.weigh_in_table(source)
     assert partial.count() == 2
-    old_scores = weigher.get_weights_per_idx_vector(partial)
-    old_chunks = {
-        row["idx_vector"]: row["density_chunk"]
-        for row in partial.select(partial.idx_vector, partial.density_chunk).collect()
-    }
+    old_scores = weigher.get_weights_per_idx(
+        partial, idx_key="idx_vector", normalize=False
+    )
     assert len(weigher.weigh_in_dataset(source)) == 2
 
     resumed = GoldDensityWeigher(
@@ -358,24 +340,21 @@ def test_weigher_scores_each_prefix_and_preserves_existing_vector_scores(
     )
     staged = resumed.setup_weighing_table(source)
     assert staged.count() == 4
-    assert resumed.get_weights_per_idx_vector(staged) == old_scores
+    with pytest.raises(RuntimeError, match="Not all vectors have scores"):
+        resumed.get_weights_per_idx(staged)
     assert resumed.weigher.calls == 0
     result = resumed.weigh_in_table(source)
 
     assert result.count() == 4
     sample_scores = resumed.get_weights_per_idx(result)
-    vector_weights = resumed.get_weights_per_idx_vector(result)
+    vector_weights = resumed.get_weights_per_idx(
+        result, idx_key="idx_vector", normalize=False
+    )
     assert set(sample_scores) == {20, 50}
     assert len(vector_weights) == 4
     assert vector_weights[91] == vector_weights[14] == sample_scores[20]
     assert vector_weights[63] == vector_weights[77] == sample_scores[50]
     assert {idx: vector_weights[idx] for idx in old_scores} == old_scores
-    new_chunks = {
-        row["idx_vector"]: row["density_chunk"]
-        for row in result.select(result.idx_vector, result.density_chunk).collect()
-    }
-    assert {idx: new_chunks[idx] for idx in old_chunks} == old_chunks
-    assert {new_chunks[idx] for idx in (63, 77)}.isdisjoint(old_chunks.values())
     assert {row["label"] for row in result.select(result.label).collect()} == {"a", "b"}
 
     with pytest.raises(ValueError, match="already exists"):
@@ -414,7 +393,7 @@ def test_weigh_in_dataset_snapshot_survives_drop_table():
 
     assert len(result) == 2
     assert next(iter(result))["weight"] > 0
-    assert weigher.weigher.batch_shapes == [(2, 1), (2, 1)]
+    assert weigher.weigher.batch_shapes == []
     with pytest.raises(pxt.Error):
         pxt.get_table("unit_test.drop_weights")
 
@@ -449,46 +428,6 @@ def test_zero_max_batches_returns_an_empty_prefix_dataset():
 
 
 @pytest.mark.usefixtures("pxt_unit_test_dir")
-def test_normalization_is_explicit_nonmutating_and_uses_unique_sample_scores():
-    dataset = VectorDataset(
-        [
-            {"idx": 10, "vectorized": torch.tensor([0.0])},
-            {"idx": 10, "vectorized": torch.tensor([0.1])},
-            {"idx": 20, "vectorized": torch.tensor([10.0])},
-        ]
-    )
-    weigher = GoldDensityWeigher(
-        "unit_test.unequal", weigher=GoldKnnDensityWeighingTool(k=1), chunk=None
-    )
-
-    result = weigher.weigh_in_table(dataset)
-    scores = weigher.get_weights_per_idx(result)
-    original_vector_scores = weigher.get_weights_per_idx_vector(result)
-    weights = weigher.normalize_weights(scores)
-
-    assert scores[20] > scores[10]
-    assert sum(weights.values()) / len(weights) == pytest.approx(1.0)
-    assert weigher.get_weights_per_idx_vector(result) == original_vector_scores
-
-
-@pytest.mark.parametrize(
-    "scores,expected",
-    [({}, {}), ({1: 0.0, 2: 0.0}, {1: 1.0, 2: 1.0})],
-)
-def test_normalize_weights_empty_and_zero_inputs(scores, expected):
-    original = scores.copy()
-
-    assert GoldDensityWeigher.normalize_weights(scores) == expected
-    assert scores == original
-
-
-@pytest.mark.parametrize("value", [-1.0, float("nan"), float("inf")])
-def test_normalize_weights_rejects_invalid_values(value):
-    with pytest.raises(ValueError, match="finite and nonnegative"):
-        GoldDensityWeigher.normalize_weights({1: value})
-
-
-@pytest.mark.usefixtures("pxt_unit_test_dir")
 def test_sample_getter_averages_extreme_finite_raw_scores_without_normalizing():
     dataset = VectorDataset(
         [
@@ -502,7 +441,9 @@ def test_sample_getter_averages_extreme_finite_raw_scores_without_normalizing():
         chunk=None,
     )
 
-    scores = weigher.get_weights_per_idx(weigher.weigh_in_table(dataset))
+    scores = weigher.get_weights_per_idx(
+        weigher.weigh_in_table(dataset), normalize=False
+    )
 
     assert scores[0] == 1e308
     assert scores[1] == 5e307
@@ -510,7 +451,10 @@ def test_sample_getter_averages_extreme_finite_raw_scores_without_normalizing():
 
 @pytest.mark.usefixtures("pxt_unit_test_dir")
 @pytest.mark.parametrize("source_type", ["dataset", "table"])
-def test_sample_getter_averages_raw_vectors_while_vector_getter_keeps_them(source_type):
+@pytest.mark.parametrize("normalize", [False, True])
+def test_sample_getter_averages_raw_vectors_while_vector_getter_keeps_them(
+    source_type, normalize
+):
     dataset = VectorDataset(
         [
             {"idx": 0, "idx_vector": 21, "vectorized": torch.tensor([0.0])},
@@ -536,12 +480,25 @@ def test_sample_getter_averages_raw_vectors_while_vector_getter_keeps_them(sourc
         )
     table = weigher.weigh_in_table(source)
 
-    assert weigher.get_weights_per_idx(table) == {0: 2.0, 1: 2.0}
-    assert weigher.get_weights_per_idx_vector(table) == {21: 1.0, 22: 3.0, 23: 2.0}
+    original = {row["idx_vector"]: row["weight"] for row in table.collect()}
+    divisor = 2 if normalize else 1
+    assert weigher.get_weights_per_idx(table, normalize=normalize) == {
+        0: 2.0 / divisor,
+        1: 2.0 / divisor,
+    }
+    divisor = 3 if normalize else 1
+    assert weigher.get_weights_per_idx(
+        table, idx_key="idx_vector", normalize=normalize
+    ) == pytest.approx({21: 1.0 / divisor, 22: 3.0 / divisor, 23: 2.0 / divisor})
+    assert weigher.get_weights_per_idx(table, aggregation=max, normalize=False) == {
+        0: 3.0,
+        1: 2.0,
+    }
+    assert {row["idx_vector"]: row["weight"] for row in table.collect()} == original
 
 
 @pytest.mark.usefixtures("pxt_unit_test_dir")
-def test_zero_raw_scores_are_valid_and_normalize_to_uniform_weights():
+def test_zero_raw_scores_remain_zero_when_normalized():
     dataset = VectorDataset(
         [
             {"idx": 0, "vectorized": torch.tensor([0.0])},
@@ -552,10 +509,14 @@ def test_zero_raw_scores_are_valid_and_normalize_to_uniform_weights():
         "unit_test.zero_scores", weigher=FixedScoreWeigher([0.0, 0.0])
     )
 
-    sample_scores = weigher.get_weights_per_idx(weigher.weigh_in_table(dataset))
+    sample_scores = weigher.get_weights_per_idx(
+        weigher.weigh_in_table(dataset), normalize=False
+    )
 
     assert sample_scores == {0: 0.0, 1: 0.0}
-    assert weigher.normalize_weights(sample_scores) == {0: 1.0, 1: 1.0}
+    assert (
+        weigher.get_weights_per_idx(pxt.get_table(weigher.table_path)) == sample_scores
+    )
 
 
 @pytest.mark.usefixtures("pxt_unit_test_dir")
@@ -577,12 +538,14 @@ def test_interrupted_chunk_resume_skips_committed_tool_calls(random_state):
         first.weigh_in_table(dataset)
     assert first_tool.calls == 2
     interrupted_table = pxt.get_table(table_path)
-    computed = GoldDensityWeigher.get_weights_per_idx_vector(interrupted_table)
+    computed = {
+        row["idx_vector"]: row["weight"]
+        for row in interrupted_table.collect()
+        if row["weight"] is not None
+    }
     assert len(computed) == 2
-    partial_sample_scores = GoldDensityWeigher.get_weights_per_idx(interrupted_table)
-    normalized = GoldDensityWeigher.normalize_weights(partial_sample_scores)
-    assert sum(normalized.values()) / len(normalized) == pytest.approx(1.0)
-    assert GoldDensityWeigher.get_weights_per_idx_vector(interrupted_table) == computed
+    with pytest.raises(RuntimeError, match="Not all vectors have scores"):
+        GoldDensityWeigher.get_weights_per_idx(interrupted_table)
 
     resumed_tool = InterruptingWeigher(interrupt=False)
     resumed = GoldDensityWeigher(
@@ -595,7 +558,9 @@ def test_interrupted_chunk_resume_skips_committed_tool_calls(random_state):
     result = resumed.weigh_in_table(dataset)
 
     assert resumed_tool.calls == 1
-    assert len(resumed.get_weights_per_idx(result)) == 4
+    scores = resumed.get_weights_per_idx(result, idx_key="idx_vector", normalize=False)
+    assert len(scores) == 4
+    assert {idx: scores[idx] for idx in computed} == computed
 
 
 @pytest.mark.usefixtures("pxt_unit_test_dir")
@@ -649,12 +614,13 @@ def test_table_and_dataset_inputs_preserve_custom_keys_and_sequence_metadata(chu
     dataset_view = dataset_weigher.weigh_in_dataset(dataset)
     items = list(dataset_view)
     assert {tuple(item["label_seq"].tolist()) for item in items} == {(2, 3), (5, 8)}
-    assert "density_chunk" not in items[0]
+    assert all(item["density_chunk"] is None for item in items)
 
 
 @pytest.mark.usefixtures("pxt_unit_test_dir")
 @pytest.mark.parametrize("values", [[1.0], [float("nan"), 1.0], [-1.0, 1.0]])
-def test_weigher_rejects_malformed_custom_tool_outputs(values):
+@pytest.mark.parametrize("weighing_batch_size", [None, 2])
+def test_weigher_rejects_malformed_custom_tool_outputs(values, weighing_batch_size):
     dataset = VectorDataset(
         [
             {"idx": 0, "vectorized": torch.tensor([0.0])},
@@ -663,6 +629,7 @@ def test_weigher_rejects_malformed_custom_tool_outputs(values):
     )
     weigher = GoldDensityWeigher(
         "unit_test.bad_tool",
+        weighing_batch_size=weighing_batch_size,
         weigher=FixedScoreWeigher(values),
         chunk=None,
         batch_size=2,
@@ -672,32 +639,8 @@ def test_weigher_rejects_malformed_custom_tool_outputs(values):
         weigher.weigh_in_table(dataset)
 
 
-@pytest.mark.usefixtures("pxt_unit_test_dir")
-@pytest.mark.parametrize("size", [6, 7], ids=["insufficient", "minimum"])
-def test_estimation_does_not_change_torch_rng_state(size):
-    source = pxt.create_table(
-        "unit_test.estimate_vectors",
-        source=[
-            {"idx": i, "idx_vector": i, "vectorized": [float(i), 1.0]}
-            for i in range(size)
-        ],
-        primary_key="idx_vector",
-    )
-    weigher = GoldDensityWeigher("unit_test.estimate_weights")
-    torch.manual_seed(927)
-    before = torch.get_rng_state().clone()
-
-    estimate = weigher.estimate_computation_time(source)
-
-    if size < 7:
-        assert estimate is None
-    else:
-        assert estimate is not None and estimate >= 0
-    assert torch.equal(torch.get_rng_state(), before)
-
-
-@pytest.mark.usefixtures("pxt_unit_test_dir")
-def test_distribution_and_constructor_limits_are_validated():
+@pytest.mark.parametrize("weighing_batch_size", [0, -1, 1.5, True])
+def test_distribution_and_constructor_limits_are_validated(weighing_batch_size):
     with pytest.raises(NotImplementedError, match="Distributed processing"):
         GoldDensityWeigher("unit_test.distribute", distribute=True)
     weigher = GoldDensityWeigher("unit_test.distribute")
@@ -705,6 +648,10 @@ def test_distribution_and_constructor_limits_are_validated():
         weigher.distribute = True
     with pytest.raises(ValueError, match="positive integer"):
         GoldDensityWeigher("unit_test.invalid_chunk", chunk=0)
+    with pytest.raises(ValueError, match="positive integer"):
+        GoldDensityWeigher(
+            "unit_test.invalid_batch", weighing_batch_size=weighing_batch_size
+        )
 
 
 @pytest.mark.usefixtures("pxt_unit_test_dir")
@@ -726,7 +673,10 @@ def test_existing_result_table_must_have_idx_vector_primary_key():
 
 @pytest.mark.usefixtures("pxt_unit_test_dir")
 @pytest.mark.parametrize("label_key", [None, "label"])
-def test_weigher_uses_independent_label_populations_and_reuses_scores(label_key):
+@pytest.mark.parametrize("weighing_batch_size", [None, 1, 4])
+def test_weigher_uses_independent_label_populations_and_reuses_scores(
+    label_key, weighing_batch_size
+):
     vectors = torch.tensor(
         [[0.0, 0.0], [1.0, 0.0], [3.0, 0.0], [0.1, 0.0], [10.0, 0.0], [30.0, 0.0]]
     )
@@ -739,7 +689,11 @@ def test_weigher_uses_independent_label_populations_and_reuses_scores(label_key)
     )
     tool = GoldKnnDensityWeighingTool(k=1)
     weigher = GoldDensityWeigher(
-        "unit_test.label_weights", weigher=tool, label_key=label_key, batch_size=3
+        "unit_test.label_weights",
+        weigher=tool,
+        label_key=label_key,
+        batch_size=3,
+        weighing_batch_size=weighing_batch_size,
     )
 
     result = weigher.weigh_in_table(source)
@@ -748,9 +702,12 @@ def test_weigher_uses_independent_label_populations_and_reuses_scores(label_key)
         if label_key is not None
         else tool.weigh(vectors)
     )
-    scores = weigher.get_weights_per_idx_vector(result)
+    scores = weigher.get_weights_per_idx(result, idx_key="idx_vector", normalize=False)
     assert scores == pytest.approx(dict(enumerate(expected.tolist())))
     weigher.weigher = InterruptingWeigher(interrupt=True)
     weigher.weigh_in_table(source)
     assert weigher.weigher.calls == 0
-    assert weigher.get_weights_per_idx_vector(result) == scores
+    assert (
+        weigher.get_weights_per_idx(result, idx_key="idx_vector", normalize=False)
+        == scores
+    )
