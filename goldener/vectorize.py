@@ -50,6 +50,7 @@ from goldener.torch_utils import (
     make_2d_tensor,
 )
 from goldener.utils import (
+    validate_positive_integer,
     check_x_and_y_shapes,
     filter_batch_from_indices,
     transform_batch_from_multiple_to_binarized_targets,
@@ -629,11 +630,9 @@ class GoldVectorizer(GoldDoerWithTable):
                 "Distributed processing is not implemented for GoldVectorizer."
             )
         self._distribute = distribute
-        if (
-            not isinstance(estimation_time_batch_count, int)
-            or estimation_time_batch_count <= 0
-        ):
-            raise ValueError("estimation_time_batch_count must be a positive integer.")
+        validate_positive_integer(
+            estimation_time_batch_count, "estimation_time_batch_count"
+        )
         self.estimation_time_batch_count = estimation_time_batch_count
         super().__init__(
             allow_existing=allow_existing,

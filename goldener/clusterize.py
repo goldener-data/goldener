@@ -39,6 +39,8 @@ from goldener.pxt_utils import (
 from goldener.reduce import GoldReductionTool, GoldReductionToolWithFit
 from goldener.torch_utils import get_dataset_sample_dict
 from goldener.utils import (
+    validate_positive_integer,
+    validate_vectorized_input,
     filter_batch_from_indices,
 )
 
@@ -50,19 +52,16 @@ class GoldClusteringTool(ABC):
     """Run clustering on input vectors."""
 
     def _validate_input(self, x: torch.Tensor) -> None:
-        """Validate that input is already vectorized (2D torch.Tensor).
+        """Validate finite floating vectors with positive feature width.
 
         Args:
-            x: Input tensor to validate.
+            x: Floating tensor of shape (num_vectors, feature_dim).
 
         Raises:
-            ValueError: If input is not a 2D tensor.
+            ValueError: If input is not a 2D tensor with positive feature
+                width, or contains non-floating or nonfinite values.
         """
-        if x.ndim != 2:
-            raise ValueError(
-                f"GoldClusteringTool only accepts 2D tensors (num_vectors, feature_dim). "
-                f"Got shape {x.shape}. Please ensure your input is already vectorized."
-            )
+        validate_vectorized_input(x, "GoldClusteringTool")
 
     @abstractmethod
     def fit(self, x: torch.Tensor, n_clusters: int) -> torch.Tensor:
@@ -149,8 +148,7 @@ def get_random_chunk_assignment(
     if not to_chunk:
         raise ValueError("to_chunk must be a non-empty list of indices.")
 
-    if max_chunk_size is not None and max_chunk_size <= 0:
-        raise ValueError("max_chunk_size must be a positive integer or None.")
+    validate_positive_integer(max_chunk_size, "max_chunk_size", allow_none=True)
 
     to_chunk_size = len(to_chunk)
     if max_chunk_size is None or max_chunk_size >= to_chunk_size:
@@ -162,7 +160,7 @@ def get_random_chunk_assignment(
     random_assignment = (
         GoldRandomClusteringTool(random_state=random_state)
         .fit(
-            torch.empty(to_chunk_size, 1),  # dummy input for random clustering
+            torch.zeros(to_chunk_size, 1),  # dummy input for random clustering
             chunk_count,
         )
         .tolist()
@@ -337,8 +335,7 @@ class GoldClusterizer(GoldDoerWithTable):
         """
         self.clustering_tool = clustering_tool
         self.reducer = reducer
-        if chunk is not None and chunk <= 0:
-            raise ValueError("chunk must be a positive integer or None.")
+        validate_positive_integer(chunk, "chunk", allow_none=True)
         self.chunk = chunk
         self.vectorized_key = vectorized_key
         self.include_vectorized_in_table = include_vectorized_in_table

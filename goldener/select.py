@@ -13,6 +13,7 @@ used to choose the data to annotate and, by the `goldener.split.GoldSplitter`, t
 import math
 from abc import ABC, abstractmethod
 from enum import Enum
+from functools import partial
 from logging import getLogger
 from typing import Callable, Any
 from typing_extensions import assert_never
@@ -47,6 +48,8 @@ from goldener.pxt_utils import (
 from goldener.reduce import GoldReductionTool, GoldReductionToolWithFit
 from goldener.torch_utils import get_dataset_sample_dict
 from goldener.utils import (
+    validate_positive_integer,
+    validate_vectorized_input,
     filter_batch_from_indices,
     get_indices_with_labels,
     split_sampling_among_chunks,
@@ -65,7 +68,10 @@ class DistanceType(Enum):
     @property
     def distance_function(self) -> Callable[[torch.Tensor, torch.Tensor], torch.Tensor]:
         if self is DistanceType.EUCLIDEAN:
-            return torch.cdist
+            return partial(
+                torch.cdist,
+                compute_mode="donot_use_mm_for_euclid_dist",
+            )
         elif self is DistanceType.COSINE:
             return cosine_distance
         else:
@@ -84,19 +90,16 @@ class GoldSelectionTool(ABC):
         self.distance_func = distance.distance_function
 
     def _validate_input(self, x: torch.Tensor) -> None:
-        """Validate that input is already vectorized (2D torch.Tensor).
+        """Validate finite floating vectors with positive feature width.
 
         Args:
-            x: Input tensor to validate.
+            x: Floating tensor of shape (num_vectors, feature_dim).
 
         Raises:
-            ValueError: If input is not a 2D tensor.
+            ValueError: If input is not a 2D tensor with positive feature
+                width, or contains non-floating or nonfinite values.
         """
-        if x.ndim != 2:
-            raise ValueError(
-                f"GoldSelectionTool only accepts 2D tensors (num_vectors, feature_dim). "
-                f"Got shape {x.shape}. Please ensure your input is already vectorized."
-            )
+        validate_vectorized_input(x, "GoldSelectionTool")
 
     @abstractmethod
     def select(
@@ -536,12 +539,10 @@ class GoldZCoreSelectionTool(GoldSelectionTool):
         super().__init__(distance=distance)
 
         self.device = device
-        if n_dim_for_score <= 0:
-            raise ValueError("n_dim_for_score must be a positive integer.")
+        validate_positive_integer(n_dim_for_score, "n_dim_for_score")
         self.n_dim_for_score = n_dim_for_score
 
-        if n_random_anchors <= 0:
-            raise ValueError("n_random_anchors must be a positive integer.")
+        validate_positive_integer(n_random_anchors, "n_random_anchors")
         self.n_random_anchors = n_random_anchors
         self.n_redundancy = n_redundancy
         self.redundancy_scale = redundancy_scale
@@ -819,14 +820,14 @@ class GoldSelector(GoldDoerWithTable):
             logger.info(f"No existing selection table from {self.table_path}")
             old_selection_table = None
 
-        # selection table are expected to have a primary key allowing to idempotent updates
+        # selection table is expected to have a primary key allowing to idempotent updates
         if old_selection_table is not None:
-            check_pxt_table_has_primary_key(old_selection_table, set(["idx_vector"]))
+            check_pxt_table_has_primary_key(old_selection_table, {"idx_vector"})
 
         if not self.allow_existing and old_selection_table is not None:
             raise ValueError(
-                f"Table at path {self.table_path} already exists and "
-                "allow_existing is set to False."
+                f"Table at path {self.table_path} already exists while "
+                "allow_existing is False."
             )
 
         if isinstance(select_from, Table):
@@ -939,8 +940,7 @@ class GoldSelector(GoldDoerWithTable):
                     "When select_size is a float, it must be in the range ]0.0, 1.0]."
                 )
         else:
-            if select_size <= 0:
-                raise ValueError("select_size must be a positive integer.")
+            validate_positive_integer(select_size, "select_size")
 
         selection_table = self.setup_selection_table(select_from)
         if isinstance(select_from, Dataset):

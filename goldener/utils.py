@@ -7,11 +7,86 @@ or splitting multilabel samples into independent labels).
 
 import math
 from collections import defaultdict
+from numbers import Real
 from typing import Iterable, Any, TypeVar
 
 import torch
 
 from goldener.torch_utils import get_unique_values_in_tensor
+
+
+def validate_positive_integer(
+    value: object, name: str, *, allow_none: bool = False, allow_zero: bool = False
+) -> None:
+    """Validate a Python integer, optionally accepting zero or `None`.
+
+    Args:
+        value: Value to validate. Integer-valued floats are not accepted.
+        name: Parameter name included in the error message.
+        allow_none: Whether `None` is also valid. Defaults to `False`.
+        allow_zero: Whether zero is valid. Defaults to `False`.
+
+    Raises:
+        ValueError: If the value is not an integer in the permitted range or
+            an allowed `None`. Booleans are not accepted.
+    """
+    if value is None and allow_none:
+        return
+    requirement = "nonnegative" if allow_zero else "positive"
+    suffix = " or None" if allow_none else ""
+    message = f"{name} must be a {requirement} integer{suffix}."
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(message)
+    if value < 0 if allow_zero else value <= 0:
+        raise ValueError(message)
+
+
+def validate_positive_number(
+    value: object, name: str, *, allow_zero: bool = False
+) -> None:
+    """Validate a finite positive real number, optionally accepting zero.
+
+    Args:
+        value: Real scalar to validate. Booleans are not accepted.
+        name: Parameter name included in the error message.
+        allow_zero: Whether zero is valid. Defaults to `False`.
+
+    Raises:
+        ValueError: If the value is not finite, is not a real scalar, or is
+            outside the permitted range.
+    """
+    requirement = "nonnegative" if allow_zero else "positive"
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, Real)
+        or not math.isfinite(value)
+        or (value < 0 if allow_zero else value <= 0)
+    ):
+        raise ValueError(f"{name} must be finite and {requirement}.")
+
+
+def validate_vectorized_input(x: torch.Tensor, tool_name: str) -> None:
+    """Validate finite floating vectors with positive feature width.
+
+    Args:
+        x: Floating tensor with shape (num_vectors, feature_dim), finite
+            values and positive feature width. Zero rows are allowed.
+        tool_name: Tool name included in shape and feature width error messages.
+
+    Raises:
+        ValueError: If the input is not a 2D tensor with positive feature
+            width, or contains non-floating or nonfinite values.
+    """
+    if not isinstance(x, torch.Tensor) or x.ndim != 2:
+        shape = getattr(x, "shape", None)
+        raise ValueError(
+            f"{tool_name} only accepts 2D tensors (num_vectors, feature_dim). "
+            f"Got shape {shape}. Please ensure your input is already vectorized."
+        )
+    if x.shape[1] == 0:
+        raise ValueError(f"{tool_name} requires positive feature width.")
+    if not x.is_floating_point() or not torch.isfinite(x).all():
+        raise ValueError("x must contain only finite floating point values.")
 
 
 def check_x_and_y_shapes(x_shape: tuple[int, ...], y_shape: tuple[int, ...]) -> None:

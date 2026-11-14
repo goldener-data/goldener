@@ -22,6 +22,8 @@ from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 from sklearn.random_projection import GaussianRandomProjection
 
+from goldener.utils import validate_vectorized_input
+
 
 logger = logging.getLogger(__name__)
 
@@ -34,19 +36,16 @@ class GoldReductionTool(ABC):
     """
 
     def _validate_input(self, x: torch.Tensor) -> None:
-        """Validate that input is already vectorized (2D torch.Tensor).
+        """Validate finite floating vectors with positive feature width.
 
         Args:
-            x: Input tensor to validate.
+            x: Floating tensor of shape (num_vectors, feature_dim).
 
         Raises:
-            ValueError: If input is not a 2D tensor.
+            ValueError: If input is not a 2D tensor with positive feature
+                width, or contains non-floating or nonfinite values.
         """
-        if x.ndim != 2:
-            raise ValueError(
-                f"GoldReductionTool only accepts 2D tensors (num_vectors, feature_dim). "
-                f"Got shape {x.shape}. Please ensure your input is already vectorized."
-            )
+        validate_vectorized_input(x, "GoldReductionTool")
 
     @abstractmethod
     def transform(self, x: torch.Tensor) -> torch.Tensor:

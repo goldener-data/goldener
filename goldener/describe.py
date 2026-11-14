@@ -36,7 +36,7 @@ from goldener.torch_utils import (
     collate_keeping_sequences_as_sequences,
     get_dataset_sample_dict,
 )
-from goldener.utils import filter_batch_from_indices
+from goldener.utils import validate_positive_integer, filter_batch_from_indices
 from goldener.vectorize import (
     GoldTensorVectorizationTool,
     vectorize_and_unwrap_in_batch,
@@ -182,11 +182,9 @@ class GoldDescriptor(GoldDoerWithTable):
                 "Distributed processing is not implemented for GoldDescriptor."
             )
         self._distribute = distribute
-        if (
-            not isinstance(estimation_time_batch_count, int)
-            or estimation_time_batch_count <= 0
-        ):
-            raise ValueError("estimation_time_batch_count must be a positive integer.")
+        validate_positive_integer(
+            estimation_time_batch_count, "estimation_time_batch_count"
+        )
         self.estimation_time_batch_count = estimation_time_batch_count
 
         if device is None:

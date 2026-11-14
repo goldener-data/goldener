@@ -8,6 +8,8 @@ from typing import Callable
 
 import torch
 
+from goldener.utils import validate_positive_integer
+
 from goldener.vectorize import (
     GoldTensorVectorizationTool,
     Filter2DWithCount,
@@ -33,8 +35,7 @@ def get_vit_prefix_tokens_vectorizer(
     Args:
         n_prefixes: The number of prefix tokens to keep (default is 5).
     """
-    if n_prefixes <= 0:
-        raise ValueError("n_prefixes must be a positive integer")
+    validate_positive_integer(n_prefixes, "n_prefixes")
 
     return GoldTensorVectorizationTool(
         keep=Filter2DWithCount(
@@ -62,10 +63,8 @@ def get_vit_patch_tokens_vectorizer(
         transform_y: An optional callable to transform the target variable y.
         generator: An optional torch.Generator for reproducibility when n_random is set.
     """
-    if n_prefixes is not None and n_prefixes <= 0:
-        raise ValueError("n_prefixes must be a positive integer or None")
-    if n_random is not None and n_random <= 0:
-        raise ValueError("n_random must be a positive integer or None")
+    validate_positive_integer(n_prefixes, "n_prefixes", allow_none=True)
+    validate_positive_integer(n_random, "n_random", allow_none=True)
 
     return GoldTensorVectorizationTool(
         remove=(

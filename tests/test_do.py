@@ -11,6 +11,7 @@ from goldener.embed import GoldTorchEmbeddingTool, GoldTorchEmbeddingToolConfig
 from goldener.select import GoldSelector
 from goldener.torch_utils import collate_keeping_sequences_as_sequences
 from goldener.vectorize import GoldTensorVectorizationTool, GoldVectorizer
+from goldener.weigh import GoldDensityWeigher
 
 
 @pytest.fixture(
@@ -21,6 +22,7 @@ from goldener.vectorize import GoldTensorVectorizationTool, GoldVectorizer
         GoldSelector,
         GoldClusterizer,
         GoldVectorizer,
+        GoldDensityWeigher,
     ],
     ids=lambda cls: cls.__name__,
 )
@@ -48,6 +50,8 @@ def test_defaults(make_doer):
     assert doer.allow_existing is True
     assert doer.drop_table is False
     assert doer.max_batches is None
+    if isinstance(doer, (GoldSelector, GoldDensityWeigher)):
+        assert doer.include_vectorized_in_table is False
     if isinstance(doer, GoldDoerWithTable):
         assert doer.collate_fn is collate_keeping_sequences_as_sequences
         assert doer.to_keep_schema is None
