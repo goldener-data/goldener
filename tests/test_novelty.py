@@ -242,8 +242,8 @@ def test_table_scoring_resumes_pending_rows_and_preserves_vector_ids(clean_unit_
         ],
         if_not_exists="insert",
     )
-    with pytest.raises(ValueError, match="missing from the supplied source"):
-        restarted_scorer.score_in_table(source)
+    result = restarted_scorer.score_in_table(source)
+    assert 999 in GoldNoveltyScorer.get_novelty_scores(result, "novelty_score")
     with pytest.raises(ValueError, match="allow_existing"):
         GoldNoveltyScorer(
             table_path="unit_test.novelty_output", allow_existing=False
@@ -320,20 +320,33 @@ def test_reducer_without_transform_is_rejected_before_fitting(clean_unit_test):
 
 
 @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
+@pytest.mark.parametrize("batch_size, insert_size", [(1, 1), (2, 100)])
 def test_dataset_scoring_uses_index_fallbacks_and_drop_table_snapshot(
-    clean_unit_test, dtype
+    clean_unit_test, dtype, batch_size, insert_size
 ):
     reference = VectorDataset(
         [{"vectorized": torch.tensor([1.0, 0.0], dtype=dtype), "idx": 8}]
     )
     queries = VectorDataset(
         [
-            {"vectorized": torch.tensor([1.0, 0.0], dtype=dtype)},
-            {"vectorized": torch.tensor([0.0, 1.0], dtype=dtype)},
+            {
+                "vectorized": torch.tensor([1.0, 0.0], dtype=dtype),
+                "labels": ["cat", "dog"],
+                "attrs": torch.tensor([3.0]),
+            },
+            {
+                "vectorized": torch.tensor([0.0, 1.0], dtype=dtype),
+                "labels": ["bird"],
+                "attrs": torch.tensor([4.0]),
+            },
         ]
     )
     scorer = GoldNoveltyScorer(
-        table_path="unit_test.novelty_dataset", batch_size=2, drop_table=True
+        table_path="unit_test.novelty_dataset",
+        batch_size=batch_size,
+        min_pxt_insert_size=insert_size,
+        to_keep_schema={"labels": pxt.Json, "attrs": pxt.Array[(1,), pxt.Float]},
+        drop_table=True,
     )
 
     result = scorer.score_in_dataset(queries, reference)
@@ -342,6 +355,9 @@ def test_dataset_scoring_uses_index_fallbacks_and_drop_table_snapshot(
     samples = list(result)
     assert [sample["idx_vector"] for sample in samples] == [0, 1]
     assert [sample["novelty"] for sample in samples] == pytest.approx([0.0, 1.0])
+    assert [sample["labels"] for sample in samples] == [["cat", "dog"], ["bird"]]
+    assert [sample["attrs"].shape for sample in samples] == [(1,), (1,)]
+    assert [sample["attrs"].item() for sample in samples] == [3.0, 4.0]
     if dtype is torch.bfloat16:
         assert all(
             np.asarray(sample["vectorized"]).dtype == np.float32 for sample in samples
@@ -371,14 +387,23 @@ def test_table_scoring_can_omit_original_vectors(clean_unit_test):
         if_exists="replace_force",
     )
     reference = VectorDataset([{"vectorized": torch.tensor([1.0, 0.0]), "idx": 0}])
-    scorer = GoldNoveltyScorer(table_path="unit_test.novelty_scores_only")
+    scorer = GoldNoveltyScorer(
+        table_path="unit_test.novelty_scores_only", max_batches=0
+    )
 
     result = scorer.score_in_table(source, reference)
+    assert result.count() == 2
+    assert GoldNoveltyScorer.get_novelty_scores(result) == {}
+    scorer.max_batches = None
+    result = scorer.score_in_table(source)
 
     assert "vectorized" not in result.columns()
     assert GoldNoveltyScorer.get_novelty_scores(result) == pytest.approx(
         {90: 0.0, 95: 1.0}
     )
+    result.insert([{"idx": 9, "idx_vector": 999, "novelty": None}])
+    with pytest.raises(ValueError, match="missing from the supplied source"):
+        scorer.score_in_table(source)
 
 
 def test_existing_scalar_vector_column_is_rejected(clean_unit_test):
@@ -426,14 +451,14 @@ def test_existing_scalar_vector_column_is_rejected(clean_unit_test):
         ),
     ],
 )
-def test_source_vector_validation(sample, message):
-    scorer = GoldNoveltyScorer(table_path="unused.output")
+def test_source_vector_validation(clean_unit_test, sample, message):
+    scorer = GoldNoveltyScorer(table_path="unit_test.invalid_source")
     with pytest.raises(ValueError, match=message):
-        scorer._vectors(VectorDataset([sample]))
+        scorer.setup_scoring_table(VectorDataset([sample]))
 
 
-def test_source_rejects_duplicate_vector_ids():
-    scorer = GoldNoveltyScorer(table_path="unused.output")
+def test_source_rejects_duplicate_vector_ids(clean_unit_test):
+    scorer = GoldNoveltyScorer(table_path="unit_test.duplicate_source")
     source = VectorDataset(
         [
             {"vectorized": torch.tensor([1.0, 0.0]), "idx_vector": 5},
@@ -442,7 +467,7 @@ def test_source_rejects_duplicate_vector_ids():
     )
 
     with pytest.raises(ValueError, match="idx_vector values must be unique"):
-        scorer._vectors(source)
+        scorer.setup_scoring_table(source)
 
 
 @pytest.mark.parametrize(

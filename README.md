@@ -149,17 +149,15 @@ scores = novelty.score_in_table(query_vectors, reference=reference_vectors)
 novel_sample_ids = novelty.get_novel_indices(scores, threshold=0.25, idx_key="idx")
 ```
 
-The complete reference is fitted in memory, and each query chunk is compared with that same reference. The fitted bank
-and optional reducer are not persisted. After restarting, fit a new scorer against the same reference and reducer
-settings before resuming; Goldener cannot detect a changed reference across processes. `max_batches` limits pending
-score batches while staging the full source, so repeated calls can resume. Use a new output table path to intentionally
-change the reference after scores have been written. A new scorer must be given the same reference and settings; Goldener
-cannot verify reference identity across processes. Dataset-backed scoring tables retain original vectors; table-backed
-results retain them only when `include_vectorized_in_table=True`. Retained bfloat16 vectors are widened to float32 for
-PixelTable storage without losing represented values. Exact scoring uses O(reference count × feature width)
-memory for the bank, plus O(query count × feature width) memory because version one stages the complete query source.
-It uses O(query count × reference count × feature width) computation. Scores are distances, not calibrated probabilities
-or universal thresholds.
+The complete reference and optional fitted reducer are kept in memory. Query vectors are loaded and scored in chunks
+against that same reference. Results are stored by `idx_vector`, and repeated calls reuse completed scores.
+`max_batches` limits pending score batches per call; all source rows are staged before scoring. After restarting, fit a
+new scorer with the same reference and settings before resuming. Use a new output table to change the reference.
+
+Dataset-backed scoring tables retain original vectors; table-backed results retain them only when
+`include_vectorized_in_table=True`. Retained bfloat16 vectors are stored as float32 because PixelTable does not support
+bfloat16 arrays; scoring uses the stored vector dtype. The nearest-neighbor tool keeps the complete reference in memory
+and batches pairwise distances using `distance_batch_size`. Distributed scoring is not implemented.
 
 ## Splitting annotated data in train and validation sets
 
