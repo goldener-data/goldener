@@ -80,6 +80,7 @@ class Filter2DWithCount:
         _filter_location: Location to filter from (start, end, random).
         _filter_count: Number of rows to filter.
         _keep: Whether to keep or remove the filtered rows.
+        _generator: Random number generator used for random filtering, if provided.
         _random_sampler: Sampler for random filtering.
     """
 
@@ -107,14 +108,10 @@ class Filter2DWithCount:
         self._filter_location = filter_location
         self._filter_count = filter_count
         self._keep = keep
+        self._generator = generator
 
         if self._filter_location == FilterLocation.RANDOM:
-            self._random_sampler = partial(
-                RandomSampler,
-                replacement=False,
-                num_samples=self._filter_count,
-                generator=generator,
-            )
+            self._reset_random_sampler()
 
     @property
     def is_random(self) -> bool:
@@ -142,6 +139,34 @@ class Filter2DWithCount:
             The number of rows that the filter is set to filter.
         """
         return self._filter_count
+
+    @property
+    def generator_state(self) -> torch.Tensor | None:
+        """Return the state of the random generator.
+
+        Returns:
+            The generator state when this is a random filter with a generator,
+            otherwise None.
+        """
+        if not self.is_random or self._generator is None:
+            return None
+        return self._generator.get_state().clone()
+
+    def update_generator_state(self, state: torch.Tensor) -> None:
+        """Set the random generator state and recreate the sampler.
+
+        Does nothing when the filter is not random.
+
+        Args:
+            state: Generator state, as returned by `generator_state`.
+        """
+        if not self.is_random:
+            return
+
+        if self._generator is None:
+            self._generator = Generator()
+        self._generator.set_state(state)
+        self._reset_random_sampler()
 
     def filter(
         self,
@@ -216,6 +241,15 @@ class Filter2DWithCount:
             {k: v[-self._filter_count :] for k, v in x.items()}
             if self._keep
             else {k: v[: -self._filter_count] for k, v in x.items()}
+        )
+
+    def _reset_random_sampler(self) -> None:
+        """Recreate the random sampler bound to the current generator."""
+        self._random_sampler = partial(
+            RandomSampler,
+            replacement=False,
+            num_samples=self._filter_count,
+            generator=self._generator,
         )
 
     def _random_filter(self, x: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
@@ -580,22 +614,12 @@ class GoldVectorizer(GoldDoerWithTable):
         Raises:
             NotImplementedError: If `distribute` is True.
             ValueError: If `estimation_time_batch_count` is not a positive integer.
+            ValueError: If key attributes or `to_keep_schema` collide with identity columns
+                or with each other (see `GoldDoerWithTable`).
         """
-        super().__init__(
-            allow_existing=allow_existing,
-            drop_table=drop_table,
-            max_batches=max_batches,
-            collate_fn=collate_fn,
-            to_keep_schema=to_keep_schema,
-            min_pxt_insert_size=min_pxt_insert_size,
-            batch_size=batch_size,
-            num_workers=num_workers,
-        )
-        self.table_path = table_path
         self.vectorizer = vectorizer
         self.data_key = data_key
         self.target_key = target_key
-        self.label_key = label_key
         self.target_to_label = target_to_label
         self.exclude_labels = exclude_labels
         self.exclude_full_zero_target = exclude_full_zero_target
@@ -612,6 +636,18 @@ class GoldVectorizer(GoldDoerWithTable):
         ):
             raise ValueError("estimation_time_batch_count must be a positive integer.")
         self.estimation_time_batch_count = estimation_time_batch_count
+        super().__init__(
+            allow_existing=allow_existing,
+            drop_table=drop_table,
+            max_batches=max_batches,
+            collate_fn=collate_fn,
+            to_keep_schema=to_keep_schema,
+            min_pxt_insert_size=min_pxt_insert_size,
+            batch_size=batch_size,
+            num_workers=num_workers,
+            table_path=table_path,
+            label_key=label_key,
+        )
 
     @property
     def distribute(self) -> bool:
@@ -868,7 +904,7 @@ class GoldVectorizer(GoldDoerWithTable):
         return vectorized_table
 
     def _get_vectorized_valid_table(self, old_vectorized_table: Table | None) -> Table:
-        minimal_schema = self._MINIMAL_SCHEMA
+        minimal_schema = self._MINIMAL_SCHEMA.copy()
         if self.to_keep_schema is not None:
             minimal_schema |= self.to_keep_schema
 
@@ -1061,6 +1097,9 @@ class GoldVectorizer(GoldDoerWithTable):
         `_sequential_vectorize` (via `_compute_batch`), then extrapolates if the dataset's
         size is known. Samples already stored in the vectorized table at `self.table_path`
         are not counted, as `_sequential_vectorize` skips them when resuming.
+        
+        When the vectorizer includes a random filter, its generator state is restored
+        afterwards so the timed batches do not change later vector selection.
 
         Args:
             dataset: The Dataset to estimate the vectorization time for.
@@ -1069,29 +1108,37 @@ class GoldVectorizer(GoldDoerWithTable):
             The estimated remaining computation time in seconds, or None when no
                 estimate is possible: an empty dataset returns None, and a dataset of
                 unknown size returns None after logging its average time per batch.
+                
         """
-        dataloader = DataLoader(
-            dataset,
-            batch_size=self.batch_size,
-            num_workers=self.num_workers,
-            collate_fn=self.collate_fn,
+        random_filter = self.vectorizer.random
+        generator_state = (
+            random_filter.generator_state if random_filter is not None else None
         )
+        try:
+            dataloader = DataLoader(
+                dataset,
+                batch_size=self.batch_size,
+                num_workers=self.num_workers,
+                collate_fn=self.collate_fn,
+            )
 
-        start_idx = 0
-        batch_idx = 0
-        already_vectorized: set[int] = set()
-        batches_measured = 0
+            start_idx = 0
+            batch_idx = 0
+            already_vectorized: set[int] = set()
+            batches_measured = 0
 
-        start = time.perf_counter()
-        for batch in islice(dataloader, self.estimation_time_batch_count):
-            self._compute_batch(batch, batch_idx, start_idx, False, already_vectorized)
-            batches_measured += 1
-        elapsed = time.perf_counter() - start
+            start = time.perf_counter()
+            for batch in islice(dataloader, self.estimation_time_batch_count):
+                self._compute_batch(
+                    batch, batch_idx, start_idx, False, already_vectorized
+                )
+                batches_measured += 1
+            elapsed = time.perf_counter() - start
 
-        if batches_measured == 0:
-            return None
+            if batches_measured == 0:
+                return None
 
-        avg_time_per_batch = elapsed / batches_measured
+            avg_time_per_batch = elapsed / batches_measured
 
         if hasattr(dataset, "__len__"):
             table = pxt.get_table(self.table_path, if_not_exists="ignore")
@@ -1106,10 +1153,13 @@ class GoldVectorizer(GoldDoerWithTable):
             total_batches = math.ceil(remaining / self.batch_size)
             return avg_time_per_batch * total_batches
 
-        logger.info(
-            f"Goldvectorizer: average computation time per batch: {avg_time_per_batch:.4f}s"
-        )
-        return None
+            logger.info(
+                f"Goldvectorizer: average computation time per batch: {avg_time_per_batch:.4f}s"
+            )
+            return None
+        finally:
+            if random_filter is not None and generator_state is not None:
+                random_filter.update_generator_state(generator_state)
 
 
 def unwrap_vectors_in_batch(

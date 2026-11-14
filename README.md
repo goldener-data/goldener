@@ -352,17 +352,17 @@ workflow manually from the Actions tab of the repository, on the branch or tag t
                 </a>
             </td>
             <td align="center">
-                <a href="https://github.com/abhiramvsmg">
-                    <img src="https://avatars.githubusercontent.com/u/141956198?v=4" width="100;" alt="abhiramvsmg"/>
-                    <br />
-                    <sub><b>Abhiram V</b></sub>
-                </a>
-            </td>
-            <td align="center">
                 <a href="https://github.com/TaniaW777">
                     <img src="https://avatars.githubusercontent.com/u/200526578?v=4" width="100;" alt="TaniaW777"/>
                     <br />
                     <sub><b>Wendtoin Filomène Tania ZABRE</b></sub>
+                </a>
+            </td>
+            <td align="center">
+                <a href="https://github.com/abhiramvsmg">
+                    <img src="https://avatars.githubusercontent.com/u/141956198?v=4" width="100;" alt="abhiramvsmg"/>
+                    <br />
+                    <sub><b>Abhiram V</b></sub>
                 </a>
             </td>
             <td align="center">
@@ -375,13 +375,6 @@ workflow manually from the Actions tab of the repository, on the branch or tag t
 		</tr>
 		<tr>
             <td align="center">
-                <a href="https://github.com/pre765">
-                    <img src="https://avatars.githubusercontent.com/u/199960263?v=4" width="100;" alt="pre765"/>
-                    <br />
-                    <sub><b>pre765</b></sub>
-                </a>
-            </td>
-            <td align="center">
                 <a href="https://github.com/Mr-Neutr0n">
                     <img src="https://avatars.githubusercontent.com/u/64578610?v=4" width="100;" alt="Mr-Neutr0n"/>
                     <br />
@@ -393,6 +386,20 @@ workflow manually from the Actions tab of the repository, on the branch or tag t
                     <img src="https://avatars.githubusercontent.com/u/57899900?v=4" width="100;" alt="HafidIdrissi"/>
                     <br />
                     <sub><b>Hafid Idrissi</b></sub>
+                </a>
+            </td>
+            <td align="center">
+                <a href="https://github.com/ariktadas144">
+                    <img src="https://avatars.githubusercontent.com/u/198923810?v=4" width="100;" alt="ariktadas144"/>
+                    <br />
+                    <sub><b>ariktadas144</b></sub>
+                </a>
+            </td>
+            <td align="center">
+                <a href="https://github.com/pre765">
+                    <img src="https://avatars.githubusercontent.com/u/199960263?v=4" width="100;" alt="pre765"/>
+                    <br />
+                    <sub><b>pre765</b></sub>
                 </a>
             </td>
             <td align="center">
@@ -409,6 +416,8 @@ workflow manually from the Actions tab of the repository, on the branch or tag t
                     <sub><b>Ali Berke Kahraman</b></sub>
                 </a>
             </td>
+		</tr>
+		<tr>
             <td align="center">
                 <a href="https://github.com/Dhruv06000">
                     <img src="https://avatars.githubusercontent.com/u/196720010?v=4" width="100;" alt="Dhruv06000"/>
@@ -416,8 +425,6 @@ workflow manually from the Actions tab of the repository, on the branch or tag t
                     <sub><b>Dhruv Kumar</b></sub>
                 </a>
             </td>
-		</tr>
-		<tr>
             <td align="center">
                 <a href="https://github.com/Josequevedov08">
                     <img src="https://avatars.githubusercontent.com/u/170109140?v=4" width="100;" alt="Josequevedov08"/>
@@ -437,6 +444,13 @@ workflow manually from the Actions tab of the repository, on the branch or tag t
                     <img src="https://avatars.githubusercontent.com/u/242377436?v=4" width="100;" alt="SHEKHAR-Y"/>
                     <br />
                     <sub><b>Shekhar</b></sub>
+                </a>
+            </td>
+            <td align="center">
+                <a href="https://github.com/mangomac">
+                    <img src="https://avatars.githubusercontent.com/u/333602023?v=4" width="100;" alt="mangomac"/>
+                    <br />
+                    <sub><b>mango</b></sub>
                 </a>
             </td>
 		</tr>

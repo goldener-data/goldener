@@ -332,7 +332,24 @@ class GoldClusterizer(GoldDoerWithTable):
         Raises:
             ValueError: If `chunk` is not a positive integer or None.
             NotImplementedError: If `distribute` is True.
+            ValueError: If key attributes or `to_keep_schema` collide with identity columns
+                or with each other (see `GoldDoerWithTable`).
         """
+        self.clustering_tool = clustering_tool
+        self.reducer = reducer
+        if chunk is not None and chunk <= 0:
+            raise ValueError("chunk must be a positive integer or None.")
+        self.chunk = chunk
+        self.vectorized_key = vectorized_key
+        self.include_vectorized_in_table = include_vectorized_in_table
+        self.cluster_key = cluster_key
+        if distribute:
+            raise NotImplementedError(
+                "Distributed processing is not implemented for GoldClusterizer."
+            )
+        self._distribute = distribute
+        self.random_state = random_state
+        self.force_same_cluster = force_same_cluster
         super().__init__(
             allow_existing=allow_existing,
             drop_table=drop_table,
@@ -342,24 +359,9 @@ class GoldClusterizer(GoldDoerWithTable):
             min_pxt_insert_size=min_pxt_insert_size,
             batch_size=batch_size,
             num_workers=num_workers,
+            table_path=table_path,
+            label_key=label_key,
         )
-        self.table_path = table_path
-        self.clustering_tool = clustering_tool
-        self.reducer = reducer
-        if chunk is not None and chunk <= 0:
-            raise ValueError("chunk must be a positive integer or None.")
-        self.chunk = chunk
-        self.vectorized_key = vectorized_key
-        self.include_vectorized_in_table = include_vectorized_in_table
-        self.cluster_key = cluster_key
-        self.label_key = label_key
-        if distribute:
-            raise NotImplementedError(
-                "Distributed processing is not implemented for GoldClusterizer."
-            )
-        self._distribute = distribute
-        self.random_state = random_state
-        self.force_same_cluster = force_same_cluster
 
     @property
     def distribute(self) -> bool:
