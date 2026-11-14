@@ -262,6 +262,8 @@ class TestGoldDensityWeigherConfiguration:
             weigher.distribute = True
         with pytest.raises(ValueError, match="positive integer"):
             GoldDensityWeigher("unit_test.invalid_chunk", chunk=0)
+        with pytest.raises(ValueError, match="positive integer"):
+            GoldDensityWeigher("unit_test.invalid_batch", weighing_batch_size=1.5)
 
 
 @pytest.mark.usefixtures("pxt_unit_test_dir")
@@ -635,10 +637,13 @@ class TestGoldDensityWeigher:
 
     @pytest.mark.parametrize(
         "values",
-        [[1.0], [float("nan"), 1.0], [-1.0, 1.0]],
+        [[1.0, 2.0, 3.0], [float("nan"), 1.0], [-1.0, 1.0]],
         ids=["wrong-score-count", "nonfinite-score", "negative-score"],
     )
-    def test_weigher_rejects_malformed_custom_tool_outputs(self, values):
+    @pytest.mark.parametrize("weighing_batch_size", [None, 1])
+    def test_weigher_rejects_malformed_custom_tool_outputs(
+        self, values, weighing_batch_size
+    ):
         dataset = VectorDataset(
             [
                 {"idx": 0, "vectorized": torch.tensor([0.0])},
@@ -648,6 +653,7 @@ class TestGoldDensityWeigher:
         weigher = GoldDensityWeigher(
             "unit_test.bad_tool",
             weigher=FixedScoreWeigher(values),
+            weighing_batch_size=weighing_batch_size,
             chunk=None,
             batch_size=2,
         )

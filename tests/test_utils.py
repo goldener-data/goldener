@@ -21,7 +21,7 @@ from goldener.utils import (
 )
 
 
-@pytest.mark.parametrize("value", [0, 1, 5, None])
+@pytest.mark.parametrize("value", [0, 1, 5, 10**1000, None])
 @pytest.mark.parametrize("allow_none", [False, True])
 @pytest.mark.parametrize("allow_zero", [False, True])
 def test_validate_positive_integer_valid_values(value, allow_none, allow_zero):

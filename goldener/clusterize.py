@@ -160,7 +160,7 @@ def get_random_chunk_assignment(
     random_assignment = (
         GoldRandomClusteringTool(random_state=random_state)
         .fit(
-            torch.empty(to_chunk_size, 1),  # dummy input for random clustering
+            torch.zeros(to_chunk_size, 1),  # dummy input for random clustering
             chunk_count,
         )
         .tolist()

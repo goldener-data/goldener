@@ -317,7 +317,7 @@ class GoldDensityWeigher(GoldDoerWithTable):
         """
         self.weigher = weigher
         if weighing_batch_size is not None:
-            validate_positive_number(
+            validate_positive_integer(
                 weighing_batch_size, "weighing_batch_size", allow_zero=False
             )
         self.weighing_batch_size = weighing_batch_size
@@ -337,6 +337,7 @@ class GoldDensityWeigher(GoldDoerWithTable):
 
         super().__init__(
             table_path=table_path,
+            label_key=label_key,
             allow_existing=allow_existing,
             drop_table=drop_table,
             max_batches=max_batches,
@@ -707,7 +708,7 @@ class GoldDensityWeigher(GoldDoerWithTable):
 
         for batch_idx, batch in tqdm(
             enumerate(dataloader),
-            desc="Initializing rows for the selection table",
+            desc="Initializing rows for the weighing table",
             total=(
                 None if hasattr(weigh_from, "__len__") is False else len(dataloader)
             ),
@@ -755,6 +756,9 @@ class GoldDensityWeigher(GoldDoerWithTable):
                 to_insert_keys.append(self.label_key)
             if include_vectorized:
                 to_insert_keys.append(self.vectorized_key)
+                batch[self.vectorized_key] = (
+                    batch[self.vectorized_key].detach().cpu().numpy()
+                )
 
             batch_as_list = make_batch_ready_for_table(
                 batch,
@@ -843,6 +847,10 @@ class GoldDensityWeigher(GoldDoerWithTable):
             max_chunk_size=self.chunk,
             random_state=self.random_state,
         )
+        if isinstance(self.weigher, GoldKnnDensityWeighingTool) and any(
+            len(indices) < self.weigher.k + 2 for indices in chunk_assignment
+        ):
+            raise ValueError("Each weighing chunk must contain at least k + 2 vectors.")
         for chunk_id, chunk_vector_indices in enumerate(chunk_assignment):
             logger.info(
                 f"Weighing {len(chunk_vector_indices)} vectors for label '{label_value}' "
@@ -891,9 +899,10 @@ class GoldDensityWeigher(GoldDoerWithTable):
 
         Raises:
             ValueError: If the reducer does not return a two-dimensional tensor with the
-                same number of rows
+                same number of rows, or the weighing tool does not return one finite
+                nonnegative score per input vector.
         """
-        vectors = vectors
+        expected_rows = len(vectors)
 
         if self.reducer is not None:
             vectors = (
@@ -902,15 +911,37 @@ class GoldDensityWeigher(GoldDoerWithTable):
                 else self.reducer.transform(vectors)
             )
 
-        if self.weighing_batch_size is None:
-            return self.weigher.weigh(vectors)
-
-        # batch the weighing computation
-        batches = []
-        for batch in vectors.split(self.weighing_batch_size, dim=0):
-            scores = self.weigher.weigh_batch(vectors, batch)
-            batches.append(scores)
-        return torch.cat(batches)
+        if (
+            not isinstance(vectors, torch.Tensor)
+            or vectors.ndim != 2
+            or len(vectors) != expected_rows
+        ):
+            raise ValueError(
+                "Reducer output must be 2D and preserve the number of rows."
+            )
+        batches = (
+            [vectors]
+            if self.weighing_batch_size is None
+            else vectors.split(self.weighing_batch_size)
+        )
+        results = []
+        for batch in batches:
+            scores = (
+                self.weigher.weigh(vectors)
+                if self.weighing_batch_size is None
+                else self.weigher.weigh_batch(vectors, batch)
+            )
+            if (
+                not isinstance(scores, torch.Tensor)
+                or scores.shape != (len(batch),)
+                or not torch.isfinite(scores).all()
+                or (scores < 0).any()
+            ):
+                raise ValueError(
+                    "Weigher output must contain one finite nonnegative score per vector."
+                )
+            results.append(scores)
+        return torch.cat(results)
 
     @staticmethod
     def get_weights_per_idx(
@@ -952,8 +983,8 @@ class GoldDensityWeigher(GoldDoerWithTable):
         weight_col = get_expr_from_column_name(table, weight_key)
         if table.where(weight_col == None).count() > 0:  # noqa: E711
             raise RuntimeError(
-                f"Not all vectors have scores in the table at {table.path}. "
-                f"Cannot compute weights per sample index."
+                "Not all vectors have scores in the table. "
+                "Cannot compute weights per sample index."
             )
 
         idx_vector_col = get_expr_from_column_name(table, "idx_vector")

@@ -37,10 +37,8 @@ def validate_positive_integer(
     message = f"{name} must be a {requirement} integer{suffix}."
     if isinstance(value, bool) or not isinstance(value, int):
         raise ValueError(message)
-    try:
-        validate_positive_number(value, name, allow_zero=allow_zero)
-    except ValueError:
-        raise ValueError(message) from None
+    if value < 0 if allow_zero else value <= 0:
+        raise ValueError(message)
 
 
 def validate_positive_number(
