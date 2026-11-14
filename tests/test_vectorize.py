@@ -1,4 +1,5 @@
 from collections import defaultdict
+from types import SimpleNamespace
 
 import pixeltable as pxt
 import pytest
@@ -1317,19 +1318,6 @@ class TestEstimateComputationTime:
     def teardown_method(self):
         pxt.drop_dir("unit_test", force=True)
 
-    def test_returns_estimate_when_dataset_size_known(self):
-        gv = GoldVectorizer(
-            table_path="unit_test.vectorize_estimate",
-            vectorizer=GoldTensorVectorizationTool(),
-            batch_size=2,
-        )
-        dataset = DummyDataset(dataset_len=10)
-
-        estimate = gv.estimate_computation_time(dataset)
-
-        assert estimate is not None
-        assert estimate > 0
-
     def test_returns_none_when_dataset_size_unknown(self):
         from torch.utils.data import IterableDataset
 
@@ -1365,6 +1353,34 @@ class TestEstimateComputationTime:
 
         assert estimate is None
 
+    @pytest.mark.parametrize(
+        ("max_batches", "remaining_batches"),
+        [(None, 5), (2, 3)],
+        ids=["no_table_yet", "partly_vectorized"],
+    )
+    def test_returns_estimate_when_dataset_size_known(
+        self, monkeypatch, max_batches, remaining_batches
+    ):
+        gv = GoldVectorizer(
+            table_path="unit_test.vectorize_estimate_already_computed",
+            vectorizer=GoldTensorVectorizationTool(),
+            batch_size=2,
+            max_batches=max_batches,
+        )
+        if max_batches is not None:
+            gv.vectorize_in_dataset(DummyDataset(dataset_len=10))
+
+        ticks = iter([0.0, 1.0])
+        monkeypatch.setattr(
+            "goldener.vectorize.time",
+            SimpleNamespace(perf_counter=lambda: next(ticks)),
+        )
+        estimate = gv.estimate_computation_time(DummyDataset(dataset_len=10))
+
+        assert estimate == pytest.approx(
+            remaining_batches / gv.estimation_time_batch_count
+        )
+ 
     def test_estimate_preserves_random_filter_selection(self):
         def make_tool() -> GoldTensorVectorizationTool:
             return GoldTensorVectorizationTool(

@@ -25,6 +25,7 @@ from goldener.do import GoldDoerWithTable
 from goldener.embed import GoldEmbeddingTool
 from goldener.pxt_utils import (
     GoldPxtTorchDataset,
+    count_computed_elements,
     get_expr_from_column_name,
     get_sample_row_from_idx,
     get_valid_table,
@@ -714,14 +715,16 @@ class GoldDescriptor(GoldDoerWithTable):
         return description_table
 
     def estimate_computation_time(self, dataset: Dataset | Table) -> float | None:
-        """Estimate the total computation time for describing a dataset.
+        """Estimate the remaining computation time for describing a dataset.
 
         Times `self.estimation_time_batch_count` initial batches — including data loading,
         preprocessing, embedding and optional vectorization — running the exact same steps as
         `_sequential_describe` (via `_compute_batch`), then extrapolates if the dataset's
-        size is known. The estimate is extrapolated from the first batches only, so later
-        batches can make the real description slower than estimated; and with `restrict_to`
-        or an already partly filled description table, the real description can be faster.
+        size is known. Samples already stored in the description table at `self.table_path`
+        are not counted, as `_sequential_describe` skips them when resuming. The estimate is
+        extrapolated from the first batches only, so later batches can make the real
+        description slower than estimated; and with `restrict_to` the real description can be
+        faster.
 
         Args:
             dataset: The Dataset or PixelTable Table to estimate the description time
@@ -729,9 +732,9 @@ class GoldDescriptor(GoldDoerWithTable):
                 as in `describe_in_table`.
 
         Returns:
-            The estimated total computation time in seconds, or None when no estimate
-                is possible: an empty dataset returns None, and a dataset of unknown
-                size returns None after logging its average time per batch.
+            The estimated remaining computation time in seconds, or None when no
+                estimate is possible: an empty dataset returns None, and a dataset of
+                unknown size returns None after logging its average time per batch.
         """
         if isinstance(dataset, Table):
             dataset = GoldPxtTorchDataset(dataset)
@@ -760,7 +763,16 @@ class GoldDescriptor(GoldDoerWithTable):
         avg_time_per_batch = elapsed / batches_measured
 
         if hasattr(dataset, "__len__"):
-            total_batches = math.ceil(len(dataset) / self.batch_size)
+            table = pxt.get_table(self.table_path, if_not_exists="ignore")
+            already_computed = 0
+            if table is not None and self.description_key in table.columns():
+                already_computed = count_computed_elements(
+                    table,
+                    get_expr_from_column_name(table, self.description_key),
+                    table.idx,
+                )
+            remaining = max(len(dataset) - already_computed, 0)
+            total_batches = math.ceil(remaining / self.batch_size)
             return avg_time_per_batch * total_batches
 
         logger.info(
