@@ -21,7 +21,7 @@ from goldener.pxt_utils import (
     get_pxt_table_primary_keys,
     check_pxt_table_has_primary_key,
     get_max_value_in_column,
-    count_computed_samples,
+    count_computed_elements,
 )
 
 
@@ -465,7 +465,7 @@ class TestGetMaxValueInColumn:
         pxt.drop_dir("test_max_value", force=True)
 
 
-class TestCountComputedSamples:
+class TestCountComputedElements:
     def setup_method(self):
         pxt.drop_dir("unit_test", force=True)
         pxt.create_dir("unit_test", if_exists="ignore")
@@ -473,16 +473,8 @@ class TestCountComputedSamples:
     def teardown_method(self):
         pxt.drop_dir("unit_test", force=True)
 
-    def test_missing_table_counts_zero(self):
-        assert count_computed_samples("unit_test.missing", "value") == 0
-
-    def test_missing_column_counts_zero(self):
-        pxt.create_table("unit_test.table", source=[{"idx": 0, "other": 1}])
-
-        assert count_computed_samples("unit_test.table", "value") == 0
-
     def test_counts_distinct_samples_with_a_value(self):
-        pxt.create_table(
+        table = pxt.create_table(
             "unit_test.table",
             source=[
                 {"idx": 0, "value": 1.0},
@@ -492,4 +484,4 @@ class TestCountComputedSamples:
             ],
         )
 
-        assert count_computed_samples("unit_test.table", "value") == 2
+        assert count_computed_elements(table, table.value, table.idx) == 2

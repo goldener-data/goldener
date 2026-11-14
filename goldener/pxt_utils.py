@@ -328,30 +328,28 @@ def get_sample_row_from_idx(
     return sample
 
 
-def count_computed_samples(table_path: str, column_name: str) -> int:
-    """Count the samples already stored in a results table.
+def count_computed_elements(table: Table, col_expr: Expr, idx_col: Expr) -> int:
+    """Count the distinct samples that already have a computed element in a table.
 
-    A sample counts as computed when its `column_name` value is set, the same rule the
-    sequential describe and vectorize steps use to skip samples when resuming.
+    A sample counts as computed when its `col_expr` value is set, the same rule the
+    sequential describe and vectorize steps use to skip samples when resuming. Distinct
+    `idx_col` values are counted, so a sample stored as several rows (e.g. one per vector)
+    is counted once.
 
     Args:
-        table_path: Path of the PixelTable table holding the results.
-        column_name: Name of the column holding the computed value.
+        table: The PixelTable table holding the results.
+        col_expr: Expression of the column holding the computed element.
+        idx_col: Expression of the column holding the sample index.
 
     Returns:
-        The number of distinct computed samples, 0 if the table or the column does not exist.
+        The number of distinct samples with a computed element.
     """
-    try:
-        table = pxt.get_table(table_path, if_not_exists="ignore")
-    except pxt.Error:
-        return 0
-
-    if table is None or column_name not in table.columns():
-        return 0
-
-    column = get_expr_from_column_name(table, column_name)
-    rows = table.where(column != None).select(table.idx).collect()  # noqa: E711
-    return len({row["idx"] for row in rows})
+    return (
+        table.where(col_expr != None)  # noqa: E711
+        .select(idx_col)
+        .distinct()
+        .count()
+    )
 
 
 def get_valid_table(

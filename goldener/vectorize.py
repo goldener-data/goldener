@@ -37,7 +37,7 @@ from goldener.embed import EmbeddingFusionStrategy, GoldEmbeddingFusionTool
 from goldener.select import GoldSelectionTool
 from goldener.pxt_utils import (
     GoldPxtTorchDataset,
-    count_computed_samples,
+    count_computed_elements,
     get_valid_table,
     get_sample_row_from_idx,
     get_expr_from_column_name,
@@ -1094,9 +1094,14 @@ class GoldVectorizer(GoldDoerWithTable):
         avg_time_per_batch = elapsed / batches_measured
 
         if hasattr(dataset, "__len__"):
-            already_computed = count_computed_samples(
-                self.table_path, self.vectorized_key
-            )
+            table = pxt.get_table(self.table_path, if_not_exists="ignore")
+            already_computed = 0
+            if table is not None and self.vectorized_key in table.columns():
+                already_computed = count_computed_elements(
+                    table,
+                    get_expr_from_column_name(table, self.vectorized_key),
+                    table.idx,
+                )
             remaining = max(len(dataset) - already_computed, 0)
             total_batches = math.ceil(remaining / self.batch_size)
             return avg_time_per_batch * total_batches

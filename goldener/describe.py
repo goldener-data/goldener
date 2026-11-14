@@ -25,7 +25,7 @@ from goldener.do import GoldDoerWithTable
 from goldener.embed import GoldEmbeddingTool
 from goldener.pxt_utils import (
     GoldPxtTorchDataset,
-    count_computed_samples,
+    count_computed_elements,
     get_expr_from_column_name,
     get_sample_row_from_idx,
     get_valid_table,
@@ -765,9 +765,14 @@ class GoldDescriptor(GoldDoerWithTable):
         avg_time_per_batch = elapsed / batches_measured
 
         if hasattr(dataset, "__len__"):
-            already_computed = count_computed_samples(
-                self.table_path, self.description_key
-            )
+            table = pxt.get_table(self.table_path, if_not_exists="ignore")
+            already_computed = 0
+            if table is not None and self.description_key in table.columns():
+                already_computed = count_computed_elements(
+                    table,
+                    get_expr_from_column_name(table, self.description_key),
+                    table.idx,
+                )
             remaining = max(len(dataset) - already_computed, 0)
             total_batches = math.ceil(remaining / self.batch_size)
             return avg_time_per_batch * total_batches
