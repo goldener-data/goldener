@@ -328,6 +328,30 @@ def get_sample_row_from_idx(
     return sample
 
 
+def count_computed_elements(table: Table, col_expr: Expr, idx_col: Expr) -> int:
+    """Count the distinct samples that already have a computed element in a table.
+
+    A sample counts as computed when its `col_expr` value is set, the same rule the
+    sequential describe and vectorize steps use to skip samples when resuming. Distinct
+    `idx_col` values are counted, so a sample stored as several rows (e.g. one per vector)
+    is counted once.
+
+    Args:
+        table: The PixelTable table holding the results.
+        col_expr: Expression of the column holding the computed element.
+        idx_col: Expression of the column holding the sample index.
+
+    Returns:
+        The number of distinct samples with a computed element.
+    """
+    return (
+        table.where(col_expr != None)  # noqa: E711
+        .select(idx_col)
+        .distinct()
+        .count()
+    )
+
+
 def get_valid_table(
     table: Table | str,
     minimal_schema: dict[str, type],
