@@ -1380,7 +1380,7 @@ class TestEstimateComputationTime:
         assert estimate == pytest.approx(
             remaining_batches / gv.estimation_time_batch_count
         )
- 
+
     def test_estimate_preserves_random_filter_selection(self):
         def make_tool() -> GoldTensorVectorizationTool:
             return GoldTensorVectorizationTool(
