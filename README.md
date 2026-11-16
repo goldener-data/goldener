@@ -220,12 +220,14 @@ batch_sampler = GoldClusterizedBatchSampler(
 
 ## Weighting samples by embedding density
 
-`GoldDensityWeigher` helps balance training data by giving more weight to rare
-situations and less weight to repetitive ones. It uses similarities between
-samples to reveal imbalances that class labels alone may miss. The resulting
-weights can guide sampling or loss weighting in your training loop, reducing
-the influence of repetitive examples so the model can learn underrepresented
-situations and generalize better to diverse data.
+`GoldDensityWeigher` scores the local density around samples. The score describes how much a sample is
+looking like its neighborhoods. It can be used for multiple purposes:
+- reduce the influence of repetitive examples and increase the influence of rare ones:
+for instance to drive training under or over-sampling, or weight the training loss function.
+- influence the samples selected during the early training epochs when applying curriculum learning
+
+This is particularly useful when the dataset is imbalanced (inter or intra classes), as it allows the model to achieve
+better generalization by driving the training process from the data itself.
 
 ```python
 from goldener import GoldDensityWeigher, GoldDescriptor, GoldVectorizer
@@ -236,13 +238,6 @@ weigher = GoldDensityWeigher("weights")
 weighted = weigher.weigh_in_table(vectors)
 sample_weights = weigher.get_weights_per_idx(weighted)
 ```
-
-The result maps each sample's `idx` to the mean of its vector scores, divided
-by the largest sample score by default. The largest positive weight is therefore
-1; all-zero scores remain zero. Retrieval leaves the stored scores unchanged.
-Use `normalize=False` for raw scores, or `idx_key="idx_vector"` for one weight
-per vector. Retrieval requires every vector in the table to have a score and
-raises an error when no scores are found.
 
 # Installation
 
