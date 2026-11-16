@@ -60,10 +60,6 @@ class GoldDensityWeighingTool(ABC):
         """
         self.device = torch.device(device)
 
-    def _validate_input(self, x: torch.Tensor) -> None:
-        """Validate the finite floating matrix accepted by density tools."""
-        validate_vectorized_input(x, "GoldDensityWeighingTool")
-
     @abstractmethod
     def weigh(self, x: torch.Tensor) -> torch.Tensor:
         """Return the density scores for the full dataset
@@ -93,8 +89,8 @@ class GoldKnnDensityWeighingTool(GoldDensityWeighingTool):
     """Estimate density from mean distance to the nearest neighbors.
 
     Each score is the mean k-neighbor distance raised to `power`, in the
-    distance function's original units. `eps` is an absolute floor on the
-    mean distance; it gives duplicates a small positive score.
+    distance function's original units.
+    `eps` is an absolute floor on the mean distance; it gives duplicates a small positive score.
     Inputs must contain at least `k + 2` vectors.
 
     Attributes:
@@ -148,16 +144,8 @@ class GoldKnnDensityWeighingTool(GoldDensityWeighingTool):
         self.distance_batch_size = distance_batch_size
         self.eps = float(eps)
 
-    def _validate_input(self, x: torch.Tensor) -> None:
-        """Validate vectors and require at least `k + 2` input rows."""
-        super()._validate_input(x)
-        if len(x) < self.k + 2:
-            raise ValueError(
-                f"x must contain at least k + 2 ({self.k + 2}) vectors; got {len(x)}."
-            )
-
     def weigh(self, x: torch.Tensor) -> torch.Tensor:
-        """Return raw kNN distance scores, preserving input dtype and device.
+        """Mean kNN distance over the neighbors of each row in the input tensor.
 
         Distances are computed in `torch.float64` on the configured device.
 
@@ -165,8 +153,7 @@ class GoldKnnDensityWeighingTool(GoldDensityWeighingTool):
             x: Finite floating tensor shaped `(num_vectors, feature_dim)`,
                 with at least `k + 2` rows. All rows remain potential neighbors.
 
-        Returns:
-            Nonnegative scores shaped `(num_vectors,)` with the input dtype and device.
+        Returns: Mean knn distances shaped `(num_vectors,)`.
 
         Raises:
             ValueError: If the input is invalid, has fewer than `k + 2` rows.
@@ -174,7 +161,7 @@ class GoldKnnDensityWeighingTool(GoldDensityWeighingTool):
         return self.weigh_batch(x, x)
 
     def weigh_batch(self, x: torch.Tensor, batch: torch.Tensor) -> torch.Tensor:
-        """Score batch rows using all reference rows as potential neighbors.
+        """Mean kNN distance over the neighbors of each row in the batch using all reference rows as potential neighbors.
 
         Args:
             x: Finite floating reference matrix with at least `k + 2` rows.
@@ -182,14 +169,17 @@ class GoldKnnDensityWeighingTool(GoldDensityWeighingTool):
                 feature width. Order and duplicates are preserved.
 
         Returns:
-            Scores shaped `(batch_size,)`, with the batch device and dtype.
-            Empty batches return no scores. One nearest entry is discarded per
-            query to exclude itself, retaining other identical neighbors.
+            Mean knn distances shaped `(batch_size,)`.
+            One nearest entry is discarded per query to exclude itself, retaining other identical neighbors.
 
         Raises:
             ValueError: If shapes, values, or population size are invalid.
         """
-        self._validate_input(x)
+        validate_vectorized_input(x, "GoldDensityWeighingTool")
+        if len(x) < self.k + 2:
+            raise ValueError(
+                f"x must contain at least k + 2 ({self.k + 2}) vectors; got {len(x)}."
+            )
         validate_vectorized_input(batch, "GoldDensityWeighingTool batch")
 
         if batch.shape[1] != x.shape[1]:
@@ -317,10 +307,12 @@ class GoldDensityWeigher(GoldDoerWithTable):
             NotImplementedError: If `distribute` is True.
         """
         self.weigher = weigher
-        if weighing_batch_size is not None:
-            validate_positive_integer(
-                weighing_batch_size, "weighing_batch_size", allow_zero=False
-            )
+        validate_positive_integer(
+            weighing_batch_size,
+            "weighing_batch_size",
+            allow_zero=False,
+            allow_none=True,
+        )
         self.weighing_batch_size = weighing_batch_size
         self.reducer = reducer
         validate_positive_integer(chunk, "chunk", allow_none=True)
@@ -399,10 +391,17 @@ class GoldDensityWeigher(GoldDoerWithTable):
                 invalid, or if a resumed table is incompatible.
         """
         weighing_table = self.setup_weighing_table(to_weigh)
-        self._sequential_weigh(
-            weighing_table,
-            to_weigh=to_weigh if isinstance(to_weigh, Table) else weighing_table,
-        )
+
+        if self.distribute:
+            self._distributed_weigh(
+                weighing_table,
+                to_weigh=to_weigh if isinstance(to_weigh, Table) else weighing_table,
+            )
+        else:
+            self._sequential_weigh(
+                weighing_table,
+                to_weigh=to_weigh if isinstance(to_weigh, Table) else weighing_table,
+            )
         return weighing_table
 
     def weigh_in_dataset(self, to_weigh: Dataset | Table) -> GoldPxtTorchDataset:
@@ -775,29 +774,43 @@ class GoldDensityWeigher(GoldDoerWithTable):
         if ready_to_insert:
             weighing_table.insert(ready_to_insert)
 
-    def _sequential_weigh(self, table: Table, to_weigh: Table) -> None:
-        """Weigh each label independently, or all vectors when no label is configured.
+    def _distributed_weigh(self, weighing_table: Table, to_weigh: Table) -> None:
+        """Weigh each label independently, or all vectors when no label is configured with distributed computation.
 
         Args:
-            table: The table in which to store weighing results.
+            weighing_table: The table in which to store weighing results.
+            to_weigh: The source table containing vectorized data.
+
+        Raises:
+            NotImplementedError: Always raised as distributed mode is not yet implemented.
+        """
+        raise NotImplementedError("Distributed weighing is not implemented yet.")
+
+    def _sequential_weigh(self, weighing_table: Table, to_weigh: Table) -> None:
+        """Sequentially weigh each label independently, or all vectors when no label is configured.
+
+        Args:
+            weighing_table: The table in which to store weighing results.
             to_weigh: The source table containing vectorized data.
         """
         if self.label_key is not None:
-            label_col = get_expr_from_column_name(table, self.label_key)
+            label_col = get_expr_from_column_name(weighing_table, self.label_key)
             labels = sorted(
                 {
                     row[self.label_key]
-                    for row in table.select(label_col).distinct().collect()
+                    for row in weighing_table.select(label_col).distinct().collect()
                 }
             )
             for label_value in labels:
                 logger.info(f"Weighing vectors for label '{label_value}'")
                 self._weigh_label(
-                    weigh_from=to_weigh, weighing_table=table, label_value=label_value
+                    weigh_from=to_weigh,
+                    weighing_table=weighing_table,
+                    label_value=label_value,
                 )
         else:
             logger.info("Weighing all vectors")
-            self._weigh_label(weigh_from=to_weigh, weighing_table=table)
+            self._weigh_label(weigh_from=to_weigh, weighing_table=weighing_table)
 
     def _weigh_label(
         self,
