@@ -1,9 +1,8 @@
 name: Contribute List
 
 on:
-  pull_request_target:
+  push:
     branches: [main]
-    types: [closed]
   schedule:
     - cron: "17 4 * * *"
 
@@ -13,9 +12,6 @@ permissions:
 
 jobs:
   contrib-readme-job:
-    if: >-
-      github.event_name == 'schedule' ||
-      (github.event.pull_request.merged == true && github.event.pull_request.user.type != 'Bot')
     runs-on: ubuntu-latest
     name: Automate contributors in README
 
@@ -24,6 +20,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: main
+          persist-credentials: false
 
       - name: Check whether the contributor set changed
         id: contributor
