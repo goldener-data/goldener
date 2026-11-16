@@ -188,7 +188,7 @@ class GoldSKLearnReductionTool(GoldReductionToolWithFit):
         Raises:
             ValueError: If input is not a finite floating 2D tensor with positive feature width.
         """
-        validate_vectorized_input(x, "GoldTorchModuleReductionTool")
+        validate_vectorized_input(x, "GoldSKLearnReductionTool")
         x_np = x.detach().cpu().numpy()
         self._reducer.fit(x_np)
 
@@ -206,7 +206,7 @@ class GoldSKLearnReductionTool(GoldReductionToolWithFit):
         Raises:
             ValueError: If input is not a finite floating 2D tensor with positive feature width.
         """
-        validate_vectorized_input(x, "GoldTorchModuleReductionTool")
+        validate_vectorized_input(x, "GoldSKLearnReductionTool")
         x_np = x.detach().cpu().numpy()
         transformed = self._reducer.fit_transform(x_np)
         return torch.from_numpy(transformed).to(device=x.device, dtype=x.dtype)
@@ -235,7 +235,7 @@ class GoldSKLearnReductionTool(GoldReductionToolWithFit):
             )
             return self.fit_transform(x)
 
-        validate_vectorized_input(x, "GoldTorchModuleReductionTool")
+        validate_vectorized_input(x, "GoldSKLearnReductionTool")
         x_np = x.detach().cpu().numpy()
         transformed = self._reducer.transform(x_np)
         return torch.from_numpy(transformed).to(device=x.device, dtype=x.dtype)

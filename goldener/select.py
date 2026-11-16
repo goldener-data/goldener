@@ -578,7 +578,7 @@ class GoldZCoreSelectionTool(GoldSelectionTool):
                 If `k` is greater than the number of data points in `x`.
                 if `n_dim_for_score` is greater than the number of dimensions in `x`.
         """
-        validate_vectorized_input(x, "GoldGreedyFarthestPointSelectionTool")
+        validate_vectorized_input(x, "GoldZCoreSelectionTool")
         x_len = len(x)
         if k > x_len:
             raise ValueError("k cannot be greater than the number of data points in x.")

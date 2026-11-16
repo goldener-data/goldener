@@ -14,7 +14,11 @@ class TestGoldSKLearnReductionTool:
     @pytest.mark.parametrize(
         ("data", "message"),
         [
-            pytest.param(torch.ones(10), "only accepts 2D tensors", id="1d"),
+            pytest.param(
+                torch.ones(10),
+                "GoldSKLearnReductionTool only accepts 2D tensors",
+                id="1d",
+            ),
             pytest.param(torch.empty(2, 0), "positive feature width", id="zero-width"),
             pytest.param(
                 torch.ones(2, 5, dtype=torch.int64), "finite floating", id="integer"
@@ -146,7 +150,7 @@ class TestGoldTorchModuleReductionTool:
         dr = GoldTorchModuleReductionTool(reducer)
 
         with pytest.raises(
-            ValueError, match="GoldReductionTool only accepts 2D tensors"
+            ValueError, match="GoldTorchModuleReductionTool only accepts 2D tensors"
         ):
             dr.transform(data_1d)
 
