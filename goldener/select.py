@@ -13,6 +13,7 @@ used to choose the data to annotate and, by the `goldener.split.GoldSplitter`, t
 import math
 from abc import ABC, abstractmethod
 from enum import Enum
+from functools import partial
 from logging import getLogger
 from typing import Callable, Any
 from typing_extensions import assert_never
@@ -47,6 +48,8 @@ from goldener.pxt_utils import (
 from goldener.reduce import GoldReductionTool, GoldReductionToolWithFit
 from goldener.torch_utils import get_dataset_sample_dict
 from goldener.utils import (
+    validate_positive_integer,
+    validate_vectorized_input,
     filter_batch_from_indices,
     get_indices_with_labels,
     split_sampling_among_chunks,
@@ -59,13 +62,27 @@ logger = getLogger(__name__)
 
 
 class DistanceType(Enum):
+    """Supported pairwise distance metrics for tensor tools."""
+
     EUCLIDEAN = "euclidean"
     COSINE = "cosine"
 
     @property
     def distance_function(self) -> Callable[[torch.Tensor, torch.Tensor], torch.Tensor]:
+        """Return the pairwise distance callable for this metric.
+
+        Returns:
+            A callable accepting tensors shaped `(num_queries, feature_dim)` and
+            `(num_references, feature_dim)`, returning distances shaped
+            `(num_queries, num_references)`. Euclidean distance uses `torch.cdist`
+            without its matrix-multiplication shortcut; cosine distance uses
+            `goldener.distance.cosine_distance`.
+        """
         if self is DistanceType.EUCLIDEAN:
-            return torch.cdist
+            return partial(
+                torch.cdist,
+                compute_mode="donot_use_mm_for_euclid_dist",
+            )
         elif self is DistanceType.COSINE:
             return cosine_distance
         else:
@@ -83,21 +100,6 @@ class GoldSelectionTool(ABC):
     def __init__(self, distance: DistanceType = DistanceType.EUCLIDEAN) -> None:
         self.distance_func = distance.distance_function
 
-    def _validate_input(self, x: torch.Tensor) -> None:
-        """Validate that input is already vectorized (2D torch.Tensor).
-
-        Args:
-            x: Input tensor to validate.
-
-        Raises:
-            ValueError: If input is not a 2D tensor.
-        """
-        if x.ndim != 2:
-            raise ValueError(
-                f"GoldSelectionTool only accepts 2D tensors (num_vectors, feature_dim). "
-                f"Got shape {x.shape}. Please ensure your input is already vectorized."
-            )
-
     @abstractmethod
     def select(
         self,
@@ -108,14 +110,15 @@ class GoldSelectionTool(ABC):
         """Select a subset of data points from the input data.
 
         Args:
-            x: A 2D torch.Tensor where each row represents a data point.
+            x: Finite floating tensor shaped `(num_vectors, feature_dim)` with
+                positive feature width. Each row represents one vector.
             k: The number of data points to select.
             anchors: Optional 2D torch.Tensor of anchor points to consider during selection.
                 The shape should be (num_anchors, feature_dim). If provided, the selection will be performed
                 with respect to these anchor points and it will affect the selection process.
 
         Returns:
-            A list of indices corresponding to the selected data points.
+            A list of row positions in `x`, not original dataset IDs.
         """
 
 
@@ -161,17 +164,17 @@ class GoldGreedyKernelPointsSelectionTool(GoldSelectionTool):
         With this method, the anchors are not used for the selection process.
 
         Args:
-            x: A 2D torch.Tensor where each row represents a data point.
+            x: Finite floating tensor shaped `(num_vectors, feature_dim)` with
+                positive feature width. Each row represents one vector.
             k: The number of data points to select.
             anchors: Not used in this selection tool, included for compatibility with the base class.
 
         Returns:
-            A list of indices corresponding to the selected data points.
+            A list of row positions in `x`, not original dataset IDs.
 
         Raises:
-            ValueError: If x is not a 2D tensor.
+            ValueError: If `x` is not a finite floating 2D tensor with positive feature width.
                 If `k` is greater than the number of data points in `x`.
-
         """
         if anchors is not None:
             logger.info(
@@ -179,7 +182,7 @@ class GoldGreedyKernelPointsSelectionTool(GoldSelectionTool):
                 "The selection will be performed without considering the anchors."
             )
 
-        self._validate_input(x)
+        validate_vectorized_input(x, "GoldGreedyKernelPointsSelectionTool")
         x_len = len(x)
         if k > x_len:
             raise ValueError("k cannot be greater than the number of data points in x.")
@@ -235,21 +238,22 @@ class GoldGreedyKCenterSelectionTool(GoldSelectionTool):
         with the farthest nearest neighbors among the not selected points.
 
         Args:
-            x: A 2D torch.Tensor where each row represents a data point.
+            x: Finite floating tensor shaped `(num_vectors, feature_dim)` with
+                positive feature width. Each row represents one vector.
             k: The number of data points to select.
             anchors: Optional 2D torch.Tensor of anchor points to consider during selection.
                 The shape should be (num_anchors, feature_dim). If provided, the selection
                 will be performed with respect to these anchor points and it will affect the selection process.
 
         Returns:
-            A list of indices corresponding to the selected data points.
+            A list of row positions in `x`, not original dataset IDs.
 
         Raises:
             ValueError:
-                If x is not a 2D tensor.
+                If `x` is not a finite floating 2D tensor with positive feature width.
                 If `k` is greater than the number of data points in `x`.
         """
-        self._validate_input(x)
+        validate_vectorized_input(x, "GoldGreedyKCenterSelectionTool")
         x_len = len(x)
         if k > x_len:
             raise ValueError("k cannot be greater than the number of data points in x.")
@@ -346,16 +350,17 @@ class GoldGreedyClosestPointSelectionTool(GoldSelectionTool):
         with the closest nearest neighbors among the not selected points.
 
         Args:
-            x: A 2D torch.Tensor where each row represents a data point.
+            x: Finite floating tensor shaped `(num_vectors, feature_dim)` with
+                positive feature width. Each row represents one vector.
             k: The number of data points to select.
             anchors: Not used in this selection tool, included for compatibility with the base class.
 
         Returns:
-            A list of indices corresponding to the selected data points.
+            A list of row positions in `x`, not original dataset IDs.
 
         Raises:
             ValueError:
-                If x is not a 2D tensor.
+                If `x` is not a finite floating 2D tensor with positive feature width.
                 If `k` is greater than the number of data points in `x`.
         """
         if anchors is not None:
@@ -364,7 +369,7 @@ class GoldGreedyClosestPointSelectionTool(GoldSelectionTool):
                 "The selection will be performed without considering the anchors."
             )
 
-        self._validate_input(x)
+        validate_vectorized_input(x, "GoldGreedyClosestPointSelectionTool")
         x_len = len(x)
         if k > x_len:
             raise ValueError("k cannot be greater than the number of data points in x.")
@@ -436,16 +441,17 @@ class GoldGreedyFarthestPointSelectionTool(GoldSelectionTool):
         with the farthest nearest neighbors among the not selected points.
 
         Args:
-            x: A 2D torch.Tensor where each row represents a data point.
+            x: Finite floating tensor shaped `(num_vectors, feature_dim)` with
+                positive feature width. Each row represents one vector.
             k: The number of data points to select.
             anchors: Not used in this selection tool, included for compatibility with the base class.
 
         Returns:
-            A list of indices corresponding to the selected data points.
+            A list of row positions in `x`, not original dataset IDs.
 
         Raises:
             ValueError:
-                If x is not a 2D tensor.
+                If `x` is not a finite floating 2D tensor with positive feature width.
                 If `k` is greater than the number of data points in `x`.
         """
         if anchors is not None:
@@ -454,7 +460,7 @@ class GoldGreedyFarthestPointSelectionTool(GoldSelectionTool):
                 "The selection will be performed without considering the anchors."
             )
 
-        self._validate_input(x)
+        validate_vectorized_input(x, "GoldGreedyFarthestPointSelectionTool")
         x_len = len(x)
         if k > x_len:
             raise ValueError("k cannot be greater than the number of data points in x.")
@@ -536,12 +542,10 @@ class GoldZCoreSelectionTool(GoldSelectionTool):
         super().__init__(distance=distance)
 
         self.device = device
-        if n_dim_for_score <= 0:
-            raise ValueError("n_dim_for_score must be a positive integer.")
+        validate_positive_integer(n_dim_for_score, "n_dim_for_score")
         self.n_dim_for_score = n_dim_for_score
 
-        if n_random_anchors <= 0:
-            raise ValueError("n_random_anchors must be a positive integer.")
+        validate_positive_integer(n_random_anchors, "n_random_anchors")
         self.n_random_anchors = n_random_anchors
         self.n_redundancy = n_redundancy
         self.redundancy_scale = redundancy_scale
@@ -560,20 +564,21 @@ class GoldZCoreSelectionTool(GoldSelectionTool):
         """Select a subset of data points from the ZCore algorithm.
 
         Args:
-            x: A 2D torch.Tensor where each row represents a data point.
+            x: Finite floating tensor shaped `(num_vectors, feature_dim)` with
+                positive feature width. Each row represents one vector.
             k: The number of data points to select.
             anchors: This selection tool does not use anchors, included for compatibility with the base class.
 
         Returns:
-            A list of indices corresponding to the selected data points.
+            A list of row positions in `x`, not original dataset IDs.
 
         Raises:
             ValueError:
-                If x is not a 2D tensor.
+                If `x` is not a finite floating 2D tensor with positive feature width.
                 If `k` is greater than the number of data points in `x`.
                 if `n_dim_for_score` is greater than the number of dimensions in `x`.
         """
-        self._validate_input(x)
+        validate_vectorized_input(x, "GoldGreedyFarthestPointSelectionTool")
         x_len = len(x)
         if k > x_len:
             raise ValueError("k cannot be greater than the number of data points in x.")
@@ -819,14 +824,14 @@ class GoldSelector(GoldDoerWithTable):
             logger.info(f"No existing selection table from {self.table_path}")
             old_selection_table = None
 
-        # selection table are expected to have a primary key allowing to idempotent updates
+        # selection table is expected to have a primary key allowing to idempotent updates
         if old_selection_table is not None:
-            check_pxt_table_has_primary_key(old_selection_table, set(["idx_vector"]))
+            check_pxt_table_has_primary_key(old_selection_table, {"idx_vector"})
 
         if not self.allow_existing and old_selection_table is not None:
             raise ValueError(
-                f"Table at path {self.table_path} already exists and "
-                "allow_existing is set to False."
+                f"Table at path {self.table_path} already exists while "
+                "allow_existing is False."
             )
 
         if isinstance(select_from, Table):
@@ -914,7 +919,8 @@ class GoldSelector(GoldDoerWithTable):
             select_from: Dataset or Table to select from. If a Dataset is provided, each item should be a
                 dictionary with at least the `vectorized_key` and `idx` keys after applying the collate_fn.
                 If a Table is provided, it should contain at least the `vectorized_key`, `idx` and `idx_vector` columns.
-            select_size: Number or ratio (between 0 and 1) of data points to select.
+            select_size: Positive integer count or floating ratio in `(0, 1]` of
+                data points to select. Booleans are not accepted.
             value: Value to set in the `selection_key` column for selected samples.
             restrict_to: Optional set of indices to restrict the search to.
                 If provided, only the selected indices in `restriction_idx_key` will be used for the selection.
@@ -926,7 +932,7 @@ class GoldSelector(GoldDoerWithTable):
 
         Raises:
             ValueError: If `restriction_idx_key` is not `"idx"` or `"idx_vector"`,
-                or if select_size is a float not in the range ]0.0, 1.0].
+                or `select_size` is neither a positive integer nor a float in `(0, 1]`.
         """
         if restriction_idx_key not in ("idx", "idx_vector"):
             raise ValueError(
@@ -939,8 +945,7 @@ class GoldSelector(GoldDoerWithTable):
                     "When select_size is a float, it must be in the range ]0.0, 1.0]."
                 )
         else:
-            if select_size <= 0:
-                raise ValueError("select_size must be a positive integer.")
+            validate_positive_integer(select_size, "select_size")
 
         selection_table = self.setup_selection_table(select_from)
         if isinstance(select_from, Dataset):

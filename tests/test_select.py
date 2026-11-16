@@ -623,7 +623,7 @@ class TestGoldSelector:
 
         # calling select_in_table when a table exists and allow_existing is False should raise
         with pytest.raises(
-            ValueError, match="already exists and allow_existing is set to"
+            ValueError, match="already exists while allow_existing is False"
         ):
             selector.select_in_table(dataset, select_size=20, value="train")
 

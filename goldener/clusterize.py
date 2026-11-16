@@ -39,6 +39,8 @@ from goldener.pxt_utils import (
 from goldener.reduce import GoldReductionTool, GoldReductionToolWithFit
 from goldener.torch_utils import get_dataset_sample_dict
 from goldener.utils import (
+    validate_positive_integer,
+    validate_vectorized_input,
     filter_batch_from_indices,
 )
 
@@ -49,30 +51,17 @@ logger = getLogger(__name__)
 class GoldClusteringTool(ABC):
     """Run clustering on input vectors."""
 
-    def _validate_input(self, x: torch.Tensor) -> None:
-        """Validate that input is already vectorized (2D torch.Tensor).
-
-        Args:
-            x: Input tensor to validate.
-
-        Raises:
-            ValueError: If input is not a 2D tensor.
-        """
-        if x.ndim != 2:
-            raise ValueError(
-                f"GoldClusteringTool only accepts 2D tensors (num_vectors, feature_dim). "
-                f"Got shape {x.shape}. Please ensure your input is already vectorized."
-            )
-
     @abstractmethod
     def fit(self, x: torch.Tensor, n_clusters: int) -> torch.Tensor:
         """Fit the clustering tool from a given set of vectors into n clusters.
 
         Args:
-            x: Input vectors to select from. Must be a 2D tensor of shape (num_vectors, feature_dim).
+            x: Finite floating tensor shaped `(num_vectors, feature_dim)` with
+                positive feature width. Each row represents one vector.
             n_clusters: Number of clusters to form.
 
-        Returns: The cluster assignments for each input vector as a 1D tensor of cluster indices.
+        Returns:
+            A 1D tensor with one cluster index per input row.
         """
         pass
 
@@ -81,9 +70,11 @@ class GoldClusteringTool(ABC):
         """Assign the input vectors to the clusters.
 
         Args:
-            x: Input vectors to transform. Must be a 2D tensor of shape (num_vectors, feature_dim).
+            x: Finite floating tensor shaped `(num_vectors, feature_dim)` with
+                positive feature width. Each row represents one vector.
 
-        Returns: The cluster assignments for each input vector as a 1D tensor of cluster indices.
+        Returns:
+            A 1D tensor with one cluster index per input row.
         """
         pass
 
@@ -98,15 +89,18 @@ class GoldRandomClusteringTool(GoldClusteringTool):
         """Randomly assign each input vector to clusters of roughly the same size.
 
         Args:
-            x: Input vectors to select from. Must be a 2D tensor of shape (num_vectors, feature_dim).
+            x: Finite floating tensor shaped `(num_vectors, feature_dim)` with
+                positive feature width. Each row represents one vector.
             n_clusters: Number of clusters to form.
 
-        Returns: The cluster assignments for each input vector as a 1D tensor of cluster indices.
+        Returns:
+            A 1D tensor with one cluster index per input row.
 
         Raises:
-            ValueError: If `n_clusters` is greater than the number of samples in `x`.
+            ValueError: If `x` is not a finite floating 2D tensor with positive
+                feature width, or `n_clusters` exceeds the number of rows in `x`.
         """
-        self._validate_input(x)
+        validate_vectorized_input(x, "GoldRandomClusteringTool")
         total = len(x)
 
         if n_clusters > total:
@@ -149,8 +143,7 @@ def get_random_chunk_assignment(
     if not to_chunk:
         raise ValueError("to_chunk must be a non-empty list of indices.")
 
-    if max_chunk_size is not None and max_chunk_size <= 0:
-        raise ValueError("max_chunk_size must be a positive integer or None.")
+    validate_positive_integer(max_chunk_size, "max_chunk_size", allow_none=True)
 
     to_chunk_size = len(to_chunk)
     if max_chunk_size is None or max_chunk_size >= to_chunk_size:
@@ -162,7 +155,7 @@ def get_random_chunk_assignment(
     random_assignment = (
         GoldRandomClusteringTool(random_state=random_state)
         .fit(
-            torch.empty(to_chunk_size, 1),  # dummy input for random clustering
+            torch.zeros(to_chunk_size, 1),  # dummy input for random clustering
             chunk_count,
         )
         .tolist()
@@ -198,12 +191,18 @@ class GoldSKLearnClusteringTool(GoldClusteringTool):
         """Fit the scikit-learn clustering tool on the input vectors and return cluster assignments.
 
         Args:
-            x: Input vectors to select from. Must be a 2D tensor of shape (num_vectors, feature_dim).
+            x: Finite floating tensor shaped `(num_vectors, feature_dim)` with
+                positive feature width. Each row represents one vector.
             n_clusters: Number of clusters to form.
 
-        Returns: The cluster assignments for each input vector as a 1D tensor of cluster indices.
+        Returns:
+            A 1D tensor with one cluster index per input row.
+
+        Raises:
+            ValueError: If `x` is not a finite floating 2D tensor with positive
+                feature width.
         """
-        self._validate_input(x)
+        validate_vectorized_input(x, "GoldSKLearnClusteringTool")
         self.tool.n_clusters = n_clusters
         x_np = x.detach().cpu().numpy()
         labels = self.tool.fit(x_np).labels_
@@ -213,12 +212,17 @@ class GoldSKLearnClusteringTool(GoldClusteringTool):
         """Assign the input vectors to clusters using the fitted scikit-learn clustering tool.
 
         Args:
-            x: Input vectors to assign to clusters. Must be a 2D tensor of shape (num_vectors, feature_dim).
+            x: Finite floating tensor shaped `(num_vectors, feature_dim)` with
+                positive feature width. Each row represents one vector.
 
         Returns:
             A 1D tensor of cluster indices predicted for each input vector.
+
+        Raises:
+            ValueError: If `x` is not a finite floating 2D tensor with positive
+                feature width.
         """
-        self._validate_input(x)
+        validate_vectorized_input(x, "GoldSKLearnClusteringTool")
         x_np = x.detach().cpu().numpy()
         return torch.from_numpy(self.tool.predict(x_np))
 
@@ -300,7 +304,7 @@ class GoldClusterizer(GoldDoerWithTable):
     ) -> None:
         """Initialize the GoldClusterizer with configuration parameters.
 
-        Attributes:
+        Args:
             table_path: Path to the PixelTable table where clustering results will be stored locally.
             clustering_tool: The GoldClusteringTool implementing the clustering algorithm.
             reducer: Optional GoldReductionTool instance for dimensionality reduction before clustering.
@@ -337,8 +341,7 @@ class GoldClusterizer(GoldDoerWithTable):
         """
         self.clustering_tool = clustering_tool
         self.reducer = reducer
-        if chunk is not None and chunk <= 0:
-            raise ValueError("chunk must be a positive integer or None.")
+        validate_positive_integer(chunk, "chunk", allow_none=True)
         self.chunk = chunk
         self.vectorized_key = vectorized_key
         self.include_vectorized_in_table = include_vectorized_in_table

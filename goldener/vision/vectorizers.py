@@ -8,6 +8,8 @@ from typing import Callable
 
 import torch
 
+from goldener.utils import validate_positive_integer
+
 from goldener.vectorize import (
     GoldTensorVectorizationTool,
     Filter2DWithCount,
@@ -31,10 +33,17 @@ def get_vit_prefix_tokens_vectorizer(
     """Get a GoldTensorVectorizationTool that keeps the first n_prefixes tokens from a ViT model.
 
     Args:
-        n_prefixes: The number of prefix tokens to keep (default is 5).
+        n_prefixes: Positive integer number of leading tokens to keep, including
+            the class token. Defaults to 5; booleans are not accepted.
+
+    Returns:
+        A vectorization tool configured for `(batch_size, num_tokens, feature_dim)`
+        tensors with `channel_pos=2`, retaining the first `n_prefixes` tokens.
+
+    Raises:
+        ValueError: If `n_prefixes` is not a positive integer.
     """
-    if n_prefixes <= 0:
-        raise ValueError("n_prefixes must be a positive integer")
+    validate_positive_integer(n_prefixes, "n_prefixes")
 
     return GoldTensorVectorizationTool(
         keep=Filter2DWithCount(
@@ -55,17 +64,25 @@ def get_vit_patch_tokens_vectorizer(
     It optionally removes the first n_prefixes tokens and keeps n_random random tokens.
 
     Args:
-        n_prefixes: The number of prefix tokens to remove from the start (default is 5).
-           If None, no prefixes are removed.
-        n_random: The number of random tokens to keep after removing prefixes.
+        n_prefixes: Positive integer number of leading tokens to remove. Defaults
+            to 5. If `None`, no prefixes are removed.
+        n_random: Positive integer number of random tokens to keep after prefix
+            removal and any target filtering.
             If None (default), no random filtering is applied.
         transform_y: An optional callable to transform the target variable y.
         generator: An optional torch.Generator for reproducibility when n_random is set.
+
+    Returns:
+        A vectorization tool configured for `(batch_size, num_tokens, feature_dim)`
+        tensors with `channel_pos=2`. It removes prefixes, applies target filtering
+        when relevant, then optionally samples tokens using the supplied generator.
+
+    Raises:
+        ValueError: If `n_prefixes` or `n_random` is neither a positive integer
+            nor `None`. Booleans are not accepted.
     """
-    if n_prefixes is not None and n_prefixes <= 0:
-        raise ValueError("n_prefixes must be a positive integer or None")
-    if n_random is not None and n_random <= 0:
-        raise ValueError("n_random must be a positive integer or None")
+    validate_positive_integer(n_prefixes, "n_prefixes", allow_none=True)
+    validate_positive_integer(n_random, "n_random", allow_none=True)
 
     return GoldTensorVectorizationTool(
         remove=(

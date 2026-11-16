@@ -218,6 +218,27 @@ batch_sampler = GoldClusterizedBatchSampler(
 )
 ```
 
+## Weighting samples by embedding density
+
+`GoldDensityWeigher` scores the local density around samples. The score describes how much a sample is
+looking like its neighborhoods. It can be used for multiple purposes:
+- reduce the influence of repetitive examples and increase the influence of rare ones:
+for instance to drive training under or over-sampling, or weight the training loss function.
+- influence the samples selected during the early training epochs when applying curriculum learning
+
+This is particularly useful when the dataset is imbalanced (inter or intra classes), as it allows the model to achieve
+better generalization by driving the training process from the data itself.
+
+```python
+from goldener import GoldDensityWeigher, GoldDescriptor, GoldVectorizer
+
+described = GoldDescriptor(...).describe_in_table(dataset)
+vectors = GoldVectorizer(...).vectorize_in_table(described)
+weigher = GoldDensityWeigher("weights")
+weighted = weigher.weigh_in_table(vectors)
+sample_weights = weigher.get_weights_per_idx(weighted)
+```
+
 # Installation
 
 Installing Goldener is as simple as running the following command:
