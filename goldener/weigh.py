@@ -7,6 +7,7 @@
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from logging import getLogger
+from statistics import mean
 from typing import Any, Callable, Literal
 
 import numpy as np
@@ -950,14 +951,15 @@ class GoldDensityWeigher(GoldDoerWithTable):
         idx_key: Literal["idx", "idx_vector"] = "idx",
         label_key: str | None = None,
         label_value: str | None = None,
-        aggregation: Callable[[list[float]], float] = np.mean,
+        aggregation: Callable[[list[float]], float] = mean,
         normalize: bool = True,
     ) -> dict[int, float]:
         """Retrieve weights by sample or vector index without changing stored scores.
 
         Sample scores are aggregated before normalization. By default, each
         returned score is divided by the largest returned score when it is
-        positive; all-zero scores remain zero.
+        positive; all-zero scores remain zero. The default `statistics.mean`
+        avoids overflow when aggregating large finite scores.
 
         Args:
             table: PixelTable table in which every vector has a score.

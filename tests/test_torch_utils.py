@@ -44,13 +44,31 @@ class TestCollateKeepingSequencesAsSequences:
         assert result["labels"] == [sample["labels"] for sample in batch]
         assert result["metadata"] == [sample["metadata"] for sample in batch]
 
-    def test_raises_when_sample_is_missing_key(self):
-        batch = [
-            {"value": 1, "label": "first"},
-            {"value": 2},
-        ]
-
-        with pytest.raises(KeyError, match="label"):
+    @pytest.mark.parametrize(
+        "batch,error,match",
+        [
+            pytest.param(
+                [{"value": 1, "label": "first"}, {"value": 2}],
+                KeyError,
+                "label",
+                id="missing-key",
+            ),
+            pytest.param(
+                [torch.tensor([1.0])],
+                ValueError,
+                "Sample must be a dictionary",
+                id="non-dict-first-sample",
+            ),
+            pytest.param(
+                [{"value": 1}, torch.tensor([2.0])],
+                ValueError,
+                "Sample must be a dictionary",
+                id="non-dict-later-sample",
+            ),
+        ],
+    )
+    def test_rejects_invalid_samples(self, batch, error, match):
+        with pytest.raises(error, match=match):
             collate_keeping_sequences_as_sequences(batch)
 
     def test_warns_and_ignores_extra_keys(self, caplog):
