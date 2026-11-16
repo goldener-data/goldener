@@ -1038,14 +1038,16 @@ class TestGoldGreedyClosestPointSelectionTool:
     def test_rejects_1d_tensor(self) -> None:
         tool = GoldGreedyClosestPointSelectionTool(device="cpu")
         with pytest.raises(
-            ValueError, match="GoldSelectionTool only accepts 2D tensors"
+            ValueError,
+            match="GoldGreedyClosestPointSelectionTool only accepts 2D tensors",
         ):
             tool.select(torch.randn(10), k=2)
 
     def test_rejects_3d_tensor(self) -> None:
         tool = GoldGreedyClosestPointSelectionTool(device="cpu")
         with pytest.raises(
-            ValueError, match="GoldSelectionTool only accepts 2D tensors"
+            ValueError,
+            match="GoldGreedyClosestPointSelectionTool only accepts 2D tensors",
         ):
             tool.select(torch.randn(10, 5, 3), k=2)
 
@@ -1098,14 +1100,16 @@ class TestGoldGreedyFarthestPointSelectionTool:
     def test_rejects_1d_tensor(self) -> None:
         tool = GoldGreedyFarthestPointSelectionTool(device="cpu")
         with pytest.raises(
-            ValueError, match="GoldSelectionTool only accepts 2D tensors"
+            ValueError,
+            match="GoldGreedyFarthestPointSelectionTool only accepts 2D tensors",
         ):
             tool.select(torch.randn(10), k=2)
 
     def test_rejects_3d_tensor(self) -> None:
         tool = GoldGreedyFarthestPointSelectionTool(device="cpu")
         with pytest.raises(
-            ValueError, match="GoldSelectionTool only accepts 2D tensors"
+            ValueError,
+            match="GoldGreedyFarthestPointSelectionTool only accepts 2D tensors",
         ):
             tool.select(torch.randn(10, 5, 3), k=2)
 
@@ -1158,14 +1162,14 @@ class TestGoldGreedyKCenterSelectionTool:
     def test_rejects_1d_tensor(self) -> None:
         tool = GoldGreedyKCenterSelectionTool(device="cpu")
         with pytest.raises(
-            ValueError, match="GoldSelectionTool only accepts 2D tensors"
+            ValueError, match="GoldGreedyKCenterSelectionTool only accepts 2D tensors"
         ):
             tool.select(torch.randn(10), k=2)
 
     def test_rejects_3d_tensor(self) -> None:
         tool = GoldGreedyKCenterSelectionTool(device="cpu")
         with pytest.raises(
-            ValueError, match="GoldSelectionTool only accepts 2D tensors"
+            ValueError, match="GoldGreedyKCenterSelectionTool only accepts 2D tensors"
         ):
             tool.select(torch.randn(10, 5, 3), k=2)
 
@@ -1246,7 +1250,8 @@ class TestGoldGreedyKernelPointsSelectionTool:
             feature_kernel=LinearKernel(output_scale=1, constant=0)
         )
         with pytest.raises(
-            ValueError, match="GoldSelectionTool only accepts 2D tensors"
+            ValueError,
+            match="GoldGreedyKernelPointsSelectionTool only accepts 2D tensors",
         ):
             tool.select(torch.randn(10), k=2)
 
@@ -1255,7 +1260,8 @@ class TestGoldGreedyKernelPointsSelectionTool:
             feature_kernel=LinearKernel(output_scale=1, constant=0)
         )
         with pytest.raises(
-            ValueError, match="GoldSelectionTool only accepts 2D tensors"
+            ValueError,
+            match="GoldGreedyKernelPointsSelectionTool only accepts 2D tensors",
         ):
             tool.select(torch.randn(10, 5, 3), k=2)
 
