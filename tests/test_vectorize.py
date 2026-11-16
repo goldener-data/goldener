@@ -5,12 +5,12 @@ import pixeltable as pxt
 import pytest
 import torch
 
+from goldener import GoldVectorizer
 from goldener.torch_utils import collate_keeping_sequences_as_sequences
 from goldener.vectorize import (
     Filter2DWithCount,
     FilterLocation,
     GoldTensorVectorizationTool,
-    GoldVectorizer,
     Vectorized,
     unwrap_vectors_in_batch,
     vectorize_and_unwrap_in_batch,
