@@ -56,10 +56,12 @@ class GoldClusteringTool(ABC):
         """Fit the clustering tool from a given set of vectors into n clusters.
 
         Args:
-            x: Input vectors to select from. Must be a 2D tensor of shape (num_vectors, feature_dim).
+            x: Finite floating tensor shaped `(num_vectors, feature_dim)` with
+                positive feature width. Each row represents one vector.
             n_clusters: Number of clusters to form.
 
-        Returns: The cluster assignments for each input vector as a 1D tensor of cluster indices.
+        Returns:
+            A 1D tensor with one cluster index per input row.
         """
         pass
 
@@ -68,9 +70,11 @@ class GoldClusteringTool(ABC):
         """Assign the input vectors to the clusters.
 
         Args:
-            x: Input vectors to transform. Must be a 2D tensor of shape (num_vectors, feature_dim).
+            x: Finite floating tensor shaped `(num_vectors, feature_dim)` with
+                positive feature width. Each row represents one vector.
 
-        Returns: The cluster assignments for each input vector as a 1D tensor of cluster indices.
+        Returns:
+            A 1D tensor with one cluster index per input row.
         """
         pass
 
@@ -85,13 +89,16 @@ class GoldRandomClusteringTool(GoldClusteringTool):
         """Randomly assign each input vector to clusters of roughly the same size.
 
         Args:
-            x: Input vectors to select from. Must be a 2D tensor of shape (num_vectors, feature_dim).
+            x: Finite floating tensor shaped `(num_vectors, feature_dim)` with
+                positive feature width. Each row represents one vector.
             n_clusters: Number of clusters to form.
 
-        Returns: The cluster assignments for each input vector as a 1D tensor of cluster indices.
+        Returns:
+            A 1D tensor with one cluster index per input row.
 
         Raises:
-            ValueError: If `n_clusters` is greater than the number of samples in `x`.
+            ValueError: If `x` is not a finite floating 2D tensor with positive
+                feature width, or `n_clusters` exceeds the number of rows in `x`.
         """
         validate_vectorized_input(x, "GoldRandomClusteringTool")
         total = len(x)
@@ -184,10 +191,16 @@ class GoldSKLearnClusteringTool(GoldClusteringTool):
         """Fit the scikit-learn clustering tool on the input vectors and return cluster assignments.
 
         Args:
-            x: Input vectors to select from. Must be a 2D tensor of shape (num_vectors, feature_dim).
+            x: Finite floating tensor shaped `(num_vectors, feature_dim)` with
+                positive feature width. Each row represents one vector.
             n_clusters: Number of clusters to form.
 
-        Returns: The cluster assignments for each input vector as a 1D tensor of cluster indices.
+        Returns:
+            A 1D tensor with one cluster index per input row.
+
+        Raises:
+            ValueError: If `x` is not a finite floating 2D tensor with positive
+                feature width.
         """
         validate_vectorized_input(x, "GoldSKLearnClusteringTool")
         self.tool.n_clusters = n_clusters
@@ -199,10 +212,15 @@ class GoldSKLearnClusteringTool(GoldClusteringTool):
         """Assign the input vectors to clusters using the fitted scikit-learn clustering tool.
 
         Args:
-            x: Input vectors to assign to clusters. Must be a 2D tensor of shape (num_vectors, feature_dim).
+            x: Finite floating tensor shaped `(num_vectors, feature_dim)` with
+                positive feature width. Each row represents one vector.
 
         Returns:
             A 1D tensor of cluster indices predicted for each input vector.
+
+        Raises:
+            ValueError: If `x` is not a finite floating 2D tensor with positive
+                feature width.
         """
         validate_vectorized_input(x, "GoldSKLearnClusteringTool")
         x_np = x.detach().cpu().numpy()
@@ -286,7 +304,7 @@ class GoldClusterizer(GoldDoerWithTable):
     ) -> None:
         """Initialize the GoldClusterizer with configuration parameters.
 
-        Attributes:
+        Args:
             table_path: Path to the PixelTable table where clustering results will be stored locally.
             clustering_tool: The GoldClusteringTool implementing the clustering algorithm.
             reducer: Optional GoldReductionTool instance for dimensionality reduction before clustering.

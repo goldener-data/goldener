@@ -40,7 +40,8 @@ class GoldReductionTool(ABC):
         """Transform the 2D vectors using the dimensionality reduction tool.
 
         Args:
-            x: Already vectorized 2D input tensor of shape (num_vectors, feature_dim) to transform.
+            x: Finite floating tensor shaped `(num_vectors, feature_dim)` with
+                positive feature width. Each row represents one vector.
 
         Returns:
             Transformed tensor with reduced dimensionality.
@@ -58,7 +59,8 @@ class GoldReductionToolWithFit(GoldReductionTool):
         """Fit the dimensionality reduction tool to the data.
 
         Args:
-            x: Already vectorized 2D input tensor of shape (num_vectors, feature_dim) to fit the model on.
+            x: Finite floating tensor shaped `(num_vectors, feature_dim)` with
+                positive feature width. Each row represents one vector.
         """
 
     @abstractmethod
@@ -66,7 +68,8 @@ class GoldReductionToolWithFit(GoldReductionTool):
         """Fit the dimensionality reduction tool to the 2D vectors and transform it.
 
         Args:
-            x: Already vectorized 2D input tensor of shape (num_vectors, feature_dim) to fit and transform.
+            x: Finite floating tensor shaped `(num_vectors, feature_dim)` with
+                positive feature width. Each row represents one vector.
 
         Returns:
             Transformed tensor with reduced dimensionality.
@@ -92,10 +95,15 @@ class GoldTorchModuleReductionTool(GoldReductionTool):
         """Transform the 2D vectors using the fitted dimensionality reduction model.
 
         Args:
-            x: Already vectorized 2D input tensor of shape (num_vectors, feature_dim) to transform.
+            x: Finite floating tensor shaped `(num_vectors, feature_dim)` with
+                positive feature width. Each row represents one vector.
 
         Returns:
             Transformed tensor with reduced dimensionality.
+
+        Raises:
+            ValueError: If `x` is not a finite floating 2D tensor with positive
+                feature width.
         """
         validate_vectorized_input(x, "GoldTorchModuleReductionTool")
         return self.reducer(x)
@@ -174,10 +182,11 @@ class GoldSKLearnReductionTool(GoldReductionToolWithFit):
         """Fit the dimensionality reduction model to the 2D vectors.
 
         Args:
-            x: Already vectorized 2D input tensor of shape (num_vectors, feature_dim) to fit the model on.
+            x: Finite floating tensor shaped `(num_vectors, feature_dim)` with
+                positive feature width. Each row represents one vector.
 
         Raises:
-            ValueError: If input is not a 2D tensor.
+            ValueError: If input is not a finite floating 2D tensor with positive feature width.
         """
         validate_vectorized_input(x, "GoldTorchModuleReductionTool")
         x_np = x.detach().cpu().numpy()
@@ -187,13 +196,15 @@ class GoldSKLearnReductionTool(GoldReductionToolWithFit):
         """Fit the dimensionality reduction model to the 2D vectors and transform it.
 
         Args:
-            x: Already vectorized 2D input tensor of shape (num_vectors, feature_dim) to fit and transform.
+            x: Finite floating tensor shaped `(num_vectors, feature_dim)` with
+                positive feature width. Each row represents one vector.
 
         Returns:
-            Transformed tensor with reduced dimensionality.
+            Transformed tensor shaped `(num_vectors, reduced_dim)`, preserving input
+            row correspondence, dtype, and device.
 
         Raises:
-            ValueError: If input is not a 2D tensor.
+            ValueError: If input is not a finite floating 2D tensor with positive feature width.
         """
         validate_vectorized_input(x, "GoldTorchModuleReductionTool")
         x_np = x.detach().cpu().numpy()
@@ -207,13 +218,15 @@ class GoldSKLearnReductionTool(GoldReductionToolWithFit):
         using fit_transform.
 
         Args:
-            x: Already vectorized 2D input tensor of shape (num_vectors, feature_dim) to transform.
+            x: Finite floating tensor shaped `(num_vectors, feature_dim)` with
+                positive feature width. Each row represents one vector.
 
         Returns:
-            Transformed tensor with reduced dimensionality.
+            Transformed tensor shaped `(num_vectors, reduced_dim)`, preserving input
+            row correspondence, dtype, and device.
 
         Raises:
-            ValueError: If input is not a 2D tensor.
+            ValueError: If input is not a finite floating 2D tensor with positive feature width.
         """
         if not self._has_transform:
             logger.warning(

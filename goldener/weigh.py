@@ -1,7 +1,16 @@
-"""Compute and persist per-sample weights from local embedding density.
+"""Compute density-based vector scores and retrieve per-sample weights.
 
-`GoldDensityWeighingTool` defines tensor-based density scoring.
-`GoldDensityWeigher` stages vectors in PixelTable and stores resumable scores.
+Use this stage to give larger weights to vectors in sparse neighborhoods.
+Tensor tools compute raw scores; dataset and table orchestration persist
+those scores for later retrieval.
+
+- `GoldDensityWeighingTool` defines the tensor interface for scoring a full
+  population or query batches against that population.
+- `GoldKnnDensityWeighingTool` implements the interface using mean nearest-neighbor
+  distance, an absolute distance floor, and a configurable exponent.
+- `GoldDensityWeigher` orchestrates scoring of Dataset or PixelTable inputs and
+  persists raw scores per vector. Its `get_weights_per_idx` method retrieves
+  vector scores or aggregates them into sample weights, optionally normalizing them.
 """
 
 from abc import ABC, abstractmethod
@@ -44,12 +53,12 @@ logger = getLogger(__name__)
 class GoldDensityWeighingTool(ABC):
     """Compute one nonnegative density score for each vector in a 2D tensor.
 
-    Attributes:
-        device: Device used for tensor computation. Defaults to ``"cpu"``.
-
     The input matrix has shape `(num_vectors, feature_dim)` and implementations
-    return a one-dimensional vector with one score per queried row.
+    return a one-dimensional tensor with one score per queried row.
     `weigh_batch` scores query rows against the full input population.
+
+    Attributes:
+        device: Device used for tensor computation. Defaults to `"cpu"`.
     """
 
     def __init__(self, device: torch.device | str = "cpu") -> None:
@@ -62,12 +71,14 @@ class GoldDensityWeighingTool(ABC):
 
     @abstractmethod
     def weigh(self, x: torch.Tensor) -> torch.Tensor:
-        """Return the density scores for the full dataset
+        """Return one density score per row of the reference population.
 
         Args:
-            x: Full dataset population with shape `(num_vectors, feature_dim)`.
+            x: Reference tensor with shape `(num_vectors, feature_dim)`.
 
-        Returns: Density score per input vector with shape `(num_vectors,)`
+        Returns:
+            A tensor of finite nonnegative scores with shape `(num_vectors,)`, in
+            input row order.
         """
 
     @abstractmethod
@@ -86,12 +97,13 @@ class GoldDensityWeighingTool(ABC):
 
 
 class GoldKnnDensityWeighingTool(GoldDensityWeighingTool):
-    """Estimate density from mean distance to the nearest neighbors.
+    """Score vectors by their mean distance to the nearest neighbors.
 
-    Each score is the mean k-neighbor distance raised to `power`, in the
-    distance function's original units.
-    `eps` is an absolute floor on the mean distance; it gives duplicates a small positive score.
-    Inputs must contain at least `k + 2` vectors.
+    Each score is `max(mean_neighbor_distance, eps) ** power`. Distances before
+    exponentiation use the selected metric's original units; larger scores
+    indicate sparser neighborhoods when `power` is positive. `eps` floors the
+    mean distance, including for identical vectors. Inputs must contain at least
+    `k + 2` vectors. The tool is deterministic and has no random state.
 
     Attributes:
         k: Positive number of neighbors per row when computing scores. The search retrieves
@@ -106,7 +118,7 @@ class GoldKnnDensityWeighingTool(GoldDensityWeighingTool):
         eps: Finite positive floor on the mean neighbor distance before
             exponentiation. Defaults to `1e-12`.
         device: Torch device used for computation. Defaults to CPU; returned
-            scores retain the input tensor's device.
+            scores retain the query tensor's device and dtype.
     """
 
     def __init__(
@@ -121,17 +133,24 @@ class GoldKnnDensityWeighingTool(GoldDensityWeighingTool):
         """Configure deterministic k-nearest-neighbor density scores.
 
         Args:
-            k: Number of neighbors used to compute each row's score. The search retrieves
-                `k + 1` entries and discards the query row itself. Inputs require
-                at least `k + 2` vectors. Defaults to `5`.
-            power: Exponent applied to the mean neighbor distance in original
-                metric units. Defaults to `0.5`.
-            distance: Pairwise distance function. Defaults to Euclidean.
-            distance_batch_size: Number of query rows compared per distance
-                batch. The full input remains the reference population.
-            eps: Absolute lower bound for the mean neighbor distance before
-                exponentiation.
+            k: Positive integer number of neighbors per query. The search retrieves
+                `k + 1` entries and discards one nearest entry to exclude the query
+                itself. Reference populations require at least `k + 2` vectors.
+                Defaults to `5`.
+            power: Finite nonnegative exponent applied after flooring the mean
+                neighbor distance. Defaults to `0.5`.
+            distance: Distance metric used to compare vectors. Defaults to Euclidean.
+            distance_batch_size: Positive integer number of query rows compared per
+                distance batch. Every batch uses the full reference population.
+                Defaults to `1024`.
+            eps: Finite positive floor on the mean neighbor distance before
+                exponentiation. Defaults to `1e-12`.
             device: Computation device. Defaults to CPU.
+
+        Raises:
+            ValueError: If `k` or `distance_batch_size` is not a positive integer,
+                `power` is not finite and nonnegative, or `eps` is not finite and
+                positive. Booleans are not accepted for these numeric parameters.
         """
         super().__init__(device)
         validate_positive_integer(k, "k")
@@ -145,35 +164,48 @@ class GoldKnnDensityWeighingTool(GoldDensityWeighingTool):
         self.eps = float(eps)
 
     def weigh(self, x: torch.Tensor) -> torch.Tensor:
-        """Mean kNN distance over the neighbors of each row in the input tensor.
+        """Return powered kNN distance scores for every input vector.
 
-        Distances are computed in `torch.float64` on the configured device.
+        Each score is `max(mean_neighbor_distance, eps) ** power`, with one nearest
+        entry excluded per query. Distances are computed in `torch.float64` on the
+        configured device.
 
         Args:
-            x: Finite floating tensor shaped `(num_vectors, feature_dim)`,
-                with at least `k + 2` rows. All rows remain potential neighbors.
+            x: Finite floating tensor shaped `(num_vectors, feature_dim)`, with
+                positive feature width and at least `k + 2` rows.
 
-        Returns: Mean knn distances shaped `(num_vectors,)`.
+        Returns:
+            Scores shaped `(num_vectors,)`, in input row order and with the input
+            tensor's dtype and device.
 
         Raises:
-            ValueError: If the input is invalid, has fewer than `k + 2` rows.
+            ValueError: If `x` is not a finite floating 2D tensor with positive
+                feature width, or contains fewer than `k + 2` rows.
         """
         return self.weigh_batch(x, x)
 
     def weigh_batch(self, x: torch.Tensor, batch: torch.Tensor) -> torch.Tensor:
-        """Mean kNN distance over the neighbors of each row in the batch using all reference rows as potential neighbors.
+        """Score query rows using all reference rows as potential neighbors.
+
+        Each score is `max(mean_neighbor_distance, eps) ** power`. One nearest entry
+        is discarded per query to exclude itself, retaining other identical
+        neighbors. Distances are computed in `torch.float64` on the configured device.
 
         Args:
-            x: Finite floating reference matrix with at least `k + 2` rows.
-            batch: Finite floating matrix containing rows from `x`, with matching
-                feature width. Order and duplicates are preserved.
+            x: Finite floating reference tensor shaped `(num_vectors, feature_dim)`,
+                with positive feature width and at least `k + 2` rows.
+            batch: Finite floating query tensor shaped `(batch_size, feature_dim)`.
+                Queries must be rows from `x`; membership is not checked. Order and
+                duplicates are preserved, and feature width must match `x`.
 
         Returns:
-            Mean knn distances shaped `(batch_size,)`.
-            One nearest entry is discarded per query to exclude itself, retaining other identical neighbors.
+            Scores shaped `(batch_size,)`, with the query tensor's dtype and device.
+            An empty query batch returns an empty tensor.
 
         Raises:
-            ValueError: If shapes, values, or population size are invalid.
+            ValueError: If either input is not a finite floating 2D tensor with
+                positive feature width, feature widths differ, or the reference
+                population contains fewer than `k + 2` rows.
         """
         validate_vectorized_input(x, "GoldDensityWeighingTool")
         if len(x) < self.k + 2:
@@ -217,11 +249,14 @@ class GoldDensityWeigher(GoldDoerWithTable):
 
     Attributes:
         table_path: Path to the PixelTable table where weighing results will be stored locally.
-        weigher: The GoldDensityWeighingTool implementing the weighing algorithm.
-        weighing_batch_size: Optional batch size for the weigher's `weigh_batch` method. If None,
-            the weighing is done all at once for each chunk.
-        reducer: Optional GoldReductionTool instance for dimensionality reduction before weighing.
-        chunk: Optional chunk size for processing data in chunks to reduce memory consumption.
+        weigher: Tensor scoring tool. Defaults to `GoldKnnDensityWeighingTool()`.
+            Supplied non-null source scores are retained without recomputation.
+        weighing_batch_size: Positive integer query batch size, or `None` (default)
+            to call `weigh` once per chunk. Every query batch uses the full chunk.
+        reducer: Optional dimensionality reduction tool. Defaults to `None`.
+            Fittable reducers are fitted independently per chunk.
+        chunk: Positive integer maximum number of pending vectors per independent
+            chunk. `None` (default) uses one pending population per label.
         collate_fn: Optional function to collate dataset samples into batches composed of
             dictionaries with at least the key specified by `vectorized_key` returning a PyTorch Tensor.
             If None, `collate_keeping_sequences_as_sequences` is used, which preserves sequence-valued
@@ -275,9 +310,9 @@ class GoldDensityWeigher(GoldDoerWithTable):
 
         Args:
             table_path: Path to store the PixelTable table.
-            weigher: The GoldDensityWeighingTool implementing the weighing algorithm.
-            weighing_batch_size: Optional batch size for the weigher's `weigh_batch` method. If None,
-                the weighing is done all at once for each chunk.
+            weigher: Tensor scoring tool. Defaults to `GoldKnnDensityWeighingTool()`.
+            weighing_batch_size: Positive integer query batch size, or `None` (default)
+                to score each chunk in one call. Each query batch uses the full chunk.
             reducer: Optional GoldReductionTool instance for dimensionality reduction before weighing. Reducers
                 supporting fitting are fitted independently on each chunk;
                 transform-only reducers are applied without fitting.
@@ -303,7 +338,9 @@ class GoldDensityWeigher(GoldDoerWithTable):
                 The seed is reused for each new chunk assignment.
 
         Raises:
-            ValueError: If `chunk` is not a positive integer or `None`.
+            ValueError: If `chunk` or `weighing_batch_size` is not a positive integer
+                or `None`, or column names collide with identity columns or each
+                other as checked by `GoldDoerWithTable`.
             NotImplementedError: If `distribute` is True.
         """
         self.weigher = weigher
@@ -387,8 +424,10 @@ class GoldDensityWeigher(GoldDoerWithTable):
             The table also contains the vector column when available and configured retained columns.
 
         Raises:
-            ValueError: If required columns, vectors, IDs, or stored schema are
-                invalid, or if a resumed table is incompatible.
+            ValueError: If `allow_existing` is False and the result table exists,
+                required result columns or its primary key are missing, the source
+                vector column is missing, reducer or scoring outputs are malformed. Other invalid
+                inputs may raise errors from collation, tensor operations, or PixelTable.
         """
         weighing_table = self.setup_weighing_table(to_weigh)
 
@@ -415,7 +454,9 @@ class GoldDensityWeigher(GoldDoerWithTable):
         This is a convenience wrapper that runs `weigh_in_table` to populate
         (or resume populating) the PixelTable table, then wraps the results into a
         `GoldPxtTorchDataset` for downstream consumption. If `drop_table` is True,
-        the table will be removed after the dataset is created.
+        the table will be removed after the dataset is created. The returned
+        cached dataset remains usable after deletion. Scores remain raw per-vector
+        values; use `get_weights_per_idx` for sample aggregation or normalization.
 
         Args:
             to_weigh: Dataset or Table to weigh. If a Dataset is provided, each item should be a
@@ -428,6 +469,9 @@ class GoldDensityWeigher(GoldDoerWithTable):
         Returns:
             A GoldPxtTorchDataset containing at least the weighing information in the `weight_key` key
             and `idx` (index of the sample) and `idx_vector` (index of the vector) keys as well.
+
+        Raises:
+            ValueError: Under the validation conditions documented by `weigh_in_table`.
         """
         weighed_table = self.weigh_in_table(to_weigh)
 
@@ -450,12 +494,14 @@ class GoldDensityWeigher(GoldDoerWithTable):
         Returns:
             A PixelTable Table with the appropriate schema for weighing,
             populated with rows corresponding to the source dataset or table up to `max_batches`.
-            Existing rows and scores are preserved; new rows have no scores.
+            Existing rows and scores are preserved. New rows retain supplied scores;
+            otherwise their scores are initialized to null. No scoring is performed.
 
         Raises:
             ValueError: If `allow_existing` is False and the table at `table_path` already exists,
                 if an existing weighing table is missing the expected primary key `idx_vector`,
-                or if required columns or the stored schema are invalid.
+                or if required result columns or the source vector column are missing.
+                This does not validate all stored column types or source values.
         """
         logger.info(f"Loading the existing weighing table from {self.table_path}")
         try:
@@ -490,7 +536,8 @@ class GoldDensityWeigher(GoldDoerWithTable):
         """Create or validate the weighing table schema from a PixelTable table.
 
         This private method sets up the table structure with necessary columns for tracking
-        weighing status and ensures all rows from the source table are represented
+        weighing status and ingests the source prefix allowed by `max_batches`.
+        Existing rows are retained, and supplied source scores are copied for new rows.
 
         Args:
             weigh_from: The source PixelTable table to weigh.
@@ -500,8 +547,10 @@ class GoldDensityWeigher(GoldDoerWithTable):
             The weighing table with proper schema and initial rows.
 
         Raises:
-            ValueError: If the source table is missing required columns, or if its
-                vectors, indices, or the stored schema are invalid.
+            ValueError: If the source vector column or required result columns are
+                missing, or an empty source cannot supply a vector shape when
+                `include_vectorized_in_table` is True. Column types and all source
+                values are not exhaustively validated here.
         """
         minimal_schema = self._MINIMAL_SCHEMA.copy()
 
@@ -620,8 +669,9 @@ class GoldDensityWeigher(GoldDoerWithTable):
             The weighing table with proper schema and initial rows.
 
         Raises:
-            ValueError: If the dataset is missing the required vectorized key, or if
-                its vectors, indices, or the stored schema are invalid.
+            ValueError: If required result columns are missing, or schema inference
+                finds a non-dictionary sample or a sample missing the vectorized key.
+                Source values and stored column types are not exhaustively validated here.
         """
         minimal_schema = self._MINIMAL_SCHEMA.copy()
         if self.to_keep_schema is not None:
@@ -775,7 +825,7 @@ class GoldDensityWeigher(GoldDoerWithTable):
             weighing_table.insert(ready_to_insert)
 
     def _distributed_weigh(self, weighing_table: Table, to_weigh: Table) -> None:
-        """Weigh each label independently, or all vectors when no label is configured with distributed computation.
+        """Reject distributed weighing, which is not implemented.
 
         Args:
             weighing_table: The table in which to store weighing results.
@@ -829,7 +879,7 @@ class GoldDensityWeigher(GoldDoerWithTable):
             label_value: Optional label value to filter vectors by.
 
         Raises:
-            ValueError: if the reducer or weighing tool returns invalid results.
+            ValueError: If the reducer or weighing tool returns invalid results.
         """
         weight_col = get_expr_from_column_name(weighing_table, self.weight_key)
 
