@@ -51,18 +51,6 @@ logger = getLogger(__name__)
 class GoldClusteringTool(ABC):
     """Run clustering on input vectors."""
 
-    def _validate_input(self, x: torch.Tensor) -> None:
-        """Validate finite floating vectors with positive feature width.
-
-        Args:
-            x: Floating tensor of shape (num_vectors, feature_dim).
-
-        Raises:
-            ValueError: If input is not a 2D tensor with positive feature
-                width, or contains non-floating or nonfinite values.
-        """
-        validate_vectorized_input(x, "GoldClusteringTool")
-
     @abstractmethod
     def fit(self, x: torch.Tensor, n_clusters: int) -> torch.Tensor:
         """Fit the clustering tool from a given set of vectors into n clusters.
@@ -105,7 +93,7 @@ class GoldRandomClusteringTool(GoldClusteringTool):
         Raises:
             ValueError: If `n_clusters` is greater than the number of samples in `x`.
         """
-        self._validate_input(x)
+        validate_vectorized_input(x, "GoldRandomClusteringTool")
         total = len(x)
 
         if n_clusters > total:
@@ -201,7 +189,7 @@ class GoldSKLearnClusteringTool(GoldClusteringTool):
 
         Returns: The cluster assignments for each input vector as a 1D tensor of cluster indices.
         """
-        self._validate_input(x)
+        validate_vectorized_input(x, "GoldSKLearnClusteringTool")
         self.tool.n_clusters = n_clusters
         x_np = x.detach().cpu().numpy()
         labels = self.tool.fit(x_np).labels_
@@ -216,7 +204,7 @@ class GoldSKLearnClusteringTool(GoldClusteringTool):
         Returns:
             A 1D tensor of cluster indices predicted for each input vector.
         """
-        self._validate_input(x)
+        validate_vectorized_input(x, "GoldSKLearnClusteringTool")
         x_np = x.detach().cpu().numpy()
         return torch.from_numpy(self.tool.predict(x_np))
 

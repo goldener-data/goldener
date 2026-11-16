@@ -35,18 +35,6 @@ class GoldReductionTool(ABC):
 
     """
 
-    def _validate_input(self, x: torch.Tensor) -> None:
-        """Validate finite floating vectors with positive feature width.
-
-        Args:
-            x: Floating tensor of shape (num_vectors, feature_dim).
-
-        Raises:
-            ValueError: If input is not a 2D tensor with positive feature
-                width, or contains non-floating or nonfinite values.
-        """
-        validate_vectorized_input(x, "GoldReductionTool")
-
     @abstractmethod
     def transform(self, x: torch.Tensor) -> torch.Tensor:
         """Transform the 2D vectors using the dimensionality reduction tool.
@@ -109,7 +97,7 @@ class GoldTorchModuleReductionTool(GoldReductionTool):
         Returns:
             Transformed tensor with reduced dimensionality.
         """
-        self._validate_input(x)
+        validate_vectorized_input(x, "GoldTorchModuleReductionTool")
         return self.reducer(x)
 
 
@@ -191,7 +179,7 @@ class GoldSKLearnReductionTool(GoldReductionToolWithFit):
         Raises:
             ValueError: If input is not a 2D tensor.
         """
-        self._validate_input(x)
+        validate_vectorized_input(x, "GoldTorchModuleReductionTool")
         x_np = x.detach().cpu().numpy()
         self._reducer.fit(x_np)
 
@@ -207,7 +195,7 @@ class GoldSKLearnReductionTool(GoldReductionToolWithFit):
         Raises:
             ValueError: If input is not a 2D tensor.
         """
-        self._validate_input(x)
+        validate_vectorized_input(x, "GoldTorchModuleReductionTool")
         x_np = x.detach().cpu().numpy()
         transformed = self._reducer.fit_transform(x_np)
         return torch.from_numpy(transformed).to(device=x.device, dtype=x.dtype)
@@ -234,7 +222,7 @@ class GoldSKLearnReductionTool(GoldReductionToolWithFit):
             )
             return self.fit_transform(x)
 
-        self._validate_input(x)
+        validate_vectorized_input(x, "GoldTorchModuleReductionTool")
         x_np = x.detach().cpu().numpy()
         transformed = self._reducer.transform(x_np)
         return torch.from_numpy(transformed).to(device=x.device, dtype=x.dtype)

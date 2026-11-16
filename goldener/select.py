@@ -89,18 +89,6 @@ class GoldSelectionTool(ABC):
     def __init__(self, distance: DistanceType = DistanceType.EUCLIDEAN) -> None:
         self.distance_func = distance.distance_function
 
-    def _validate_input(self, x: torch.Tensor) -> None:
-        """Validate finite floating vectors with positive feature width.
-
-        Args:
-            x: Floating tensor of shape (num_vectors, feature_dim).
-
-        Raises:
-            ValueError: If input is not a 2D tensor with positive feature
-                width, or contains non-floating or nonfinite values.
-        """
-        validate_vectorized_input(x, "GoldSelectionTool")
-
     @abstractmethod
     def select(
         self,
@@ -182,7 +170,7 @@ class GoldGreedyKernelPointsSelectionTool(GoldSelectionTool):
                 "The selection will be performed without considering the anchors."
             )
 
-        self._validate_input(x)
+        validate_vectorized_input(x, "GoldGreedyKernelPointsSelectionTool")
         x_len = len(x)
         if k > x_len:
             raise ValueError("k cannot be greater than the number of data points in x.")
@@ -252,7 +240,7 @@ class GoldGreedyKCenterSelectionTool(GoldSelectionTool):
                 If x is not a 2D tensor.
                 If `k` is greater than the number of data points in `x`.
         """
-        self._validate_input(x)
+        validate_vectorized_input(x, "GoldGreedyKCenterSelectionTool")
         x_len = len(x)
         if k > x_len:
             raise ValueError("k cannot be greater than the number of data points in x.")
@@ -367,7 +355,7 @@ class GoldGreedyClosestPointSelectionTool(GoldSelectionTool):
                 "The selection will be performed without considering the anchors."
             )
 
-        self._validate_input(x)
+        validate_vectorized_input(x, "GoldGreedyClosestPointSelectionTool")
         x_len = len(x)
         if k > x_len:
             raise ValueError("k cannot be greater than the number of data points in x.")
@@ -457,7 +445,7 @@ class GoldGreedyFarthestPointSelectionTool(GoldSelectionTool):
                 "The selection will be performed without considering the anchors."
             )
 
-        self._validate_input(x)
+        validate_vectorized_input(x, "GoldGreedyFarthestPointSelectionTool")
         x_len = len(x)
         if k > x_len:
             raise ValueError("k cannot be greater than the number of data points in x.")
@@ -574,7 +562,7 @@ class GoldZCoreSelectionTool(GoldSelectionTool):
                 If `k` is greater than the number of data points in `x`.
                 if `n_dim_for_score` is greater than the number of dimensions in `x`.
         """
-        self._validate_input(x)
+        validate_vectorized_input(x, "GoldGreedyFarthestPointSelectionTool")
         x_len = len(x)
         if k > x_len:
             raise ValueError("k cannot be greater than the number of data points in x.")
