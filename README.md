@@ -240,6 +240,46 @@ weighted = weigher.weigh_in_table(vectors)
 sample_weights = weigher.get_weights_per_idx(weighted)
 ```
 
+## Predicting labels from annotated examples
+
+When only a small representative subset is annotated, `GoldLabelPredictor` proposes labels for
+other samples using their embedding vectors. Its default `GoldKnnLabelPredictionTool` finds the
+nearest annotated vectors and assigns each class the fraction of neighbors with that label.
+The class with the highest fraction is the predicted label. These vote fractions can guide
+annotation review or pseudo-label selection; they are not calibrated probabilities.
+
+```python
+from goldener import GoldLabelPredictor, GoldKnnLabelPredictionTool
+
+# reference_vectors contains vectorized, label, idx, and idx_vector columns.
+# query_vectors contains vectorized, idx, and idx_vector columns.
+predictor = GoldLabelPredictor(
+    "label_predictions",
+    predictor=GoldKnnLabelPredictionTool(k=5),
+    label_key="label",
+)
+predictor.fit(reference_vectors)
+predicted = predictor.predict_in_table(query_vectors)
+confident = predictor.get_confident_indices(predicted, min_confidence=0.8)
+```
+
+Each result row stores its sample ID (`idx`), vector ID (`idx_vector`), and a `prediction`
+mapping such as `{"cat": 0.8, "dog": 0.2}`. Annotated queries keep their labels as one-hot
+confidences when their label belongs to a fitted class. `get_confident_indices` returns `(sample_id, label)` pairs, taking the maximum
+confidence over a sample's vectors for each class. Use `label="cat"` to query one class,
+or `idx_key="idx_vector"` for vector IDs. Null predictions are omitted.
+
+Both references and queries accept datasets or PixelTable tables. Dataset items contain one
+1D vector, with optional IDs; missing vector IDs use row positions and missing sample IDs use
+vector IDs. `predict_in_dataset` returns a dataset snapshot of the result table.
+`target_to_label` maps numeric target tuples to class names; `exclude_labels` ignores selected
+reference labels. `chunk` controls the query batch size without changing the reference bank.
+`max_batches` limits pending prediction batches, leaving other rows null; subsequent calls
+reuse completed predictions. Keep the inputs and fitted tools unchanged when resuming.
+Fitted references stay in memory; fit the same reference again when restoring a new predictor.
+For an already fitted custom tool, supply `classes` in its output column order.
+Distributed prediction is currently unsupported.
+
 # Installation
 
 Installing Goldener is as simple as running the following command:

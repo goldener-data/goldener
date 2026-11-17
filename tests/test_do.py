@@ -8,6 +8,7 @@ from goldener.clusterize import GoldClusterizer, GoldRandomClusteringTool
 from goldener.describe import GoldDescriptor
 from goldener.do import GoldDoer, GoldDoerWithTable
 from goldener.embed import GoldTorchEmbeddingTool, GoldTorchEmbeddingToolConfig
+from goldener.labelize import GoldLabelPredictor
 from goldener.select import GoldSelector
 from goldener.torch_utils import collate_keeping_sequences_as_sequences
 from goldener.vectorize import GoldTensorVectorizationTool, GoldVectorizer
@@ -23,6 +24,7 @@ from goldener.weigh import GoldDensityWeigher
         GoldClusterizer,
         GoldVectorizer,
         GoldDensityWeigher,
+        GoldLabelPredictor,
     ],
     ids=lambda cls: cls.__name__,
 )
