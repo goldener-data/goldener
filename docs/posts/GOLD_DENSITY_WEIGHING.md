@@ -81,6 +81,22 @@ The starting point for sample weighting is a vector representation. `GoldDescrip
 
 `idx` identifies the source sample; `idx_vector` uniquely identifies a vector. A sample can have several vectors representing different parts or aspects of its content. Supply the same `idx` on those rows and a different `idx_vector` on each. Dataset inputs without IDs receive vector IDs from item positions, and missing sample IDs default to those vector IDs; explicit IDs avoid losing an existing sample association.
 
+The following examples reuse the imports and toy embeddings from the TLDR. Here, two vectors describe each sample; retrieval produces four sample weights from eight vector scores.
+
+```python
+multi_vector_input = [
+    {"idx": sample_ids[pos // 2], "idx_vector": pos, "vectorized": vector}
+    for pos, vector in enumerate(embeddings)
+]
+multi_weigher = GoldDensityWeigher(
+    table_path=f"density_multi_{uuid4().hex}",
+    weigher=GoldKnnDensityWeighingTool(k=2),
+)
+multi_weighted = multi_weigher.weigh_in_table(multi_vector_input)
+multi_sample_weights = multi_weigher.get_weights_per_idx(multi_weighted)
+print(multi_sample_weights)
+```
+
 ### 2.2. What the kNN score measures
 
 [Goldener](https://github.com/goldener-data/goldener) provides a default weighing algorithm implemented by [GoldKnnDensityWeighingTool](https://github.com/goldener-data/goldener/blob/main/goldener/weigh.py). However, the user can provide new weighing tools following the API defined in `GoldDensityWeighingTool`.
@@ -95,7 +111,20 @@ The tool retrieves the nearest `k + 1` entries and discards one nearest entry. O
 
 For positive `power`, larger neighbor distances produce larger scores. The default square root compresses distance contrasts; increasing the exponent accentuates them. `power=0` produces uniform scores. The positive distance floor handles coincident vectors before exponentiation. This is a distance-based sparsity score, not a normalized probability density or a calibrated inverse-density estimate.
 
-Choose the neighborhood metric through the tool's `distance` argument. `DistanceType.EUCLIDEAN` (the default) measures straight-line distance and reflects differences in both vector magnitude and direction. `DistanceType.COSINE` uses one minus cosine similarity, comparing vector directions after L2 normalization. For nonzero vectors, this makes cosine distance insensitive to magnitude, which is useful when embedding direction carries the relevant semantics. Import `DistanceType` from `goldener` and pass, for example, `distance=DistanceType.COSINE` to `GoldKnnDensityWeighingTool`. The metric changes neighbor rankings and score scales, so choose it to match the representation.
+Choose the neighborhood metric through the tool's `distance` argument. `DistanceType.EUCLIDEAN` (the default) measures straight-line distance and reflects differences in both vector magnitude and direction. `DistanceType.COSINE` uses one minus cosine similarity, comparing vector directions after L2 normalization. For nonzero vectors, this makes cosine distance insensitive to magnitude, which is useful when embedding direction carries the relevant semantics. Import `DistanceType` from `goldener.select` and pass, for example, `distance=DistanceType.COSINE` to `GoldKnnDensityWeighingTool`. The metric changes neighbor rankings and score scales, so choose it to match the representation.
+
+You can also score a tensor directly to compare metrics before storing results. These calls return raw scores in input row order.
+
+```python
+from goldener.select import DistanceType
+
+# Use nonzero vectors so every row has a direction for cosine comparison.
+metric_vectors = embeddings + 1.0
+for metric in (DistanceType.EUCLIDEAN, DistanceType.COSINE):
+    tool = GoldKnnDensityWeighingTool(k=2, distance=metric, power=0.5)
+    scores = tool.weigh(metric_vectors)
+    print(metric.value, scores)
+```
 
 ### 2.3. Storage and sample aggregation
 
@@ -127,6 +156,25 @@ With `label_key=None` (the default), vectors share a population. Setting `label_
 
 Retrieval can filter a label using `label_key="label", label_value="class_a"`. Aggregation and max normalization then use only returned rows. Consequently, weights retrieved for different filters need not share a common scale.
 
+Each label below has four vectors, satisfying the `k + 2` minimum with `k=2`. Labels determine the neighbor populations during scoring; the retrieval filter then selects which results to return.
+
+```python
+labeled_input = [
+    {**row, "label": "class_a" if pos < 4 else "class_b"}
+    for pos, row in enumerate(vectorized)
+]
+label_weigher = GoldDensityWeigher(
+    table_path=f"density_labels_{uuid4().hex}",
+    weigher=GoldKnnDensityWeighingTool(k=2),
+    label_key="label",
+)
+label_weighted = label_weigher.weigh_in_table(labeled_input)
+class_a_weights = label_weigher.get_weights_per_idx(
+    label_weighted, label_key="label", label_value="class_a",
+)
+print(class_a_weights)
+```
+
 There are three distinct controls for batching and chunking:
 
 | Setting | What it controls | Neighbor population |
@@ -137,6 +185,21 @@ There are three distinct controls for batching and chunking:
 
 Without chunking, exact pairwise search has quadratic distance work in the population size. Query batching reduces the temporary distance matrix size but still requires the reference vectors in memory. Chunking reduces the reference population at the cost of changing the score's meaning. Every resulting chunk must satisfy the `k + 2` minimum; a small remainder can make a configuration invalid. `random_state` controls random chunk assignment. An optional `reducer` transforms vectors before scoring; fittable reducers fit independently per chunk, also changing the geometry.
 
+For the eight-vector example, the following configuration creates two independent four-vector chunks. Within each chunk, queries are scored two at a time against all four reference vectors. Set `chunk=None` to retain a single reference population while keeping query batching.
+
+```python
+chunk_weigher = GoldDensityWeigher(
+    table_path=f"density_chunks_{uuid4().hex}",
+    weigher=GoldKnnDensityWeighingTool(k=2, distance_batch_size=2),
+    batch_size=4,
+    weighing_batch_size=2,
+    chunk=4,
+    random_state=42,
+)
+chunk_weighted = chunk_weigher.weigh_in_table(vectorized)
+chunk_weights = chunk_weigher.get_weights_per_idx(chunk_weighted)
+```
+
 Completed raw scores are reused on repeated calls, without duplicate rows, provided IDs, inputs, and scoring settings remain unchanged. **Restart is not equivalent to recomputing a fixed full population.** Only pending vectors participate in new chunk assignments and neighbor searches; completed vectors are excluded. Chunk assignments are not persisted. After an interrupted run, remaining vectors can therefore receive different scores from an uninterrupted run, or fail the minimum population size check.
 
 ## 3. Density-aware training
@@ -144,6 +207,33 @@ Completed raw scores are reused on repeated calls, without duplicate rows, provi
 The runnable example uses a `WeightedRandomSampler` to draw dataset positions with probability proportional to their aligned sample weights. Replacement permits rare samples to appear multiple times in an epoch.
 
 An alternative is to keep uniform sampling and multiply each unreduced sample loss by its retrieved weight. For a batch of losses `loss_i`, a scale-controlled weighted average is `sum(w_i * loss_i) / sum(w_i)` when the denominator is positive. Using both weighted sampling and weighted loss compounds the emphasis, so choose that combination deliberately.
+
+This minimal training step uses uniform sampling and an unreduced cross-entropy loss. It gathers weights by the batch's sample IDs, so shuffling preserves the association between samples and weights.
+
+```python
+model = torch.nn.Linear(2, 2)
+optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
+uniform_loader = DataLoader(
+    training_dataset,
+    batch_size=4,
+    shuffle=True,
+    generator=torch.Generator().manual_seed(42),
+)
+for batch in uniform_loader:
+    logits = model(batch["data"])
+    losses = torch.nn.functional.cross_entropy(
+        logits, batch["target"], reduction="none",
+    )
+    batch_weights = losses.new_tensor(
+        [sample_weights[int(idx)] for idx in batch["idx"]]
+    )
+    loss = (batch_weights * losses).sum() / batch_weights.sum()
+    optimizer.zero_grad()
+    loss.backward()
+    optimizer.step()
+```
+
+The default kNN tool produces positive weights for this example. With a custom tool that can return all-zero weights, skip batches whose total weight is zero before dividing.
 
 Density scores can also inform a curriculum, for example by gradually increasing the exposure of sparse regions. Goldener supplies the scores; the training loop defines the schedule. [Hacohen and Weinshall (2019)](https://proceedings.mlr.press/v97/hacohen19a.html) study curriculum learning and its dependence on ordering and pacing.
 
