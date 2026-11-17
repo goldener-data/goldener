@@ -222,7 +222,7 @@ batch_sampler = GoldClusterizedBatchSampler(
 
 `GoldDensityWeigher` gives larger scores to samples in sparse embedding neighborhoods.
 Use it to explore loss weighting or sampling policies that emphasize underrepresented
-appearances, including variation within a class. Sparsity is a representation-based
+patterns, including variation within a class. Sparsity is a representation-based
 signal, not a calibrated measure of model difficulty or a guarantee of better generalization.
 
 See [Weighting training samples by embedding density](docs/posts/GOLD_DENSITY_WEIGHING.md)

@@ -65,9 +65,9 @@ The toy dataset illustrates the mechanics rather than a measured training improv
 
 Training data rarely reflects exactly how we want a model to learn. Common cases can dominate the dataset, important situations may be scarce, and repeated examples can consume much of the training budget. Sample weighting lets us adjust how much each example contributes, either by changing how often it is sampled or by scaling its contribution to the loss. This makes it possible to emphasize underrepresented cases, reduce the influence of redundant data, or adapt training priorities over time without discarding samples.
 
-Consider a visual inspection dataset with thousands of nearly identical views of a product and only a few examples under unusual lighting. Both groups can share the same class label. Class counts alone cannot reveal this imbalance: uniform sampling repeatedly presents the common appearance and rarely presents the unusual one.
+Imbalance can exist both between classes and within them. Even when class counts are equal, some groups of similar samples can be much more frequent than others. Uniform sampling follows those frequencies, giving common patterns more exposure while underrepresented patterns contribute less often.
 
-Embedding neighborhoods offer another view of the training distribution. When a representation captures relevant semantics, many nearby vectors suggest a well-represented appearance; larger distances to neighbors suggest a less represented one. Density-based weights let training put more emphasis on the latter without removing the original data.
+Embedding neighborhoods offer another view of the training distribution. When a representation captures relevant semantics, many nearby vectors suggest a well-represented pattern; larger distances to neighbors suggest a less represented one. Density-based weights let training put more emphasis on the latter without removing the original data.
 
 This complements class-level reweighting. For example, [Cui et al. (2019)](https://arxiv.org/abs/1901.05555) address imbalance using the effective number of samples per class. Goldener's density score instead depends on local geometry and can vary between samples with the same label.
 
@@ -83,7 +83,7 @@ As in Goldener's [selection](GOLD_SELECTION.md) and [batching](GOLD_BATCHER.md) 
 
 `GoldDensityWeigher` accepts either a PyTorch `Dataset` (including a list of dictionaries as above) or a PixelTable `Table`. Dataset items provide a finite floating one-dimensional tensor under `vectorized_key`, which defaults to `"vectorized"`. A table provides the vector column together with `idx` and `idx_vector`. Set `vectorized_key` explicitly when an upstream stage uses another column name.
 
-`idx` identifies the source sample; `idx_vector` uniquely identifies a vector. A sample can have several vectors, for example one per image patch or region. Supply the same `idx` on those rows and a different `idx_vector` on each. Dataset inputs without IDs receive vector IDs from item positions, and missing sample IDs default to those vector IDs; explicit IDs avoid losing an existing sample association.
+`idx` identifies the source sample; `idx_vector` uniquely identifies a vector. A sample can have several vectors representing different parts or aspects of its content. Supply the same `idx` on those rows and a different `idx_vector` on each. Dataset inputs without IDs receive vector IDs from item positions, and missing sample IDs default to those vector IDs; explicit IDs avoid losing an existing sample association.
 
 ### 2.2. What the kNN score measures
 
@@ -118,16 +118,16 @@ raw_sample_weights = weigher.get_weights_per_idx(weighted, normalize=False)
 raw_vector_scores = weigher.get_weights_per_idx(
     weighted, idx_key="idx_vector", normalize=False,
 )
-max_region_weights = weigher.get_weights_per_idx(weighted, aggregation=max)
+max_vector_weights = weigher.get_weights_per_idx(weighted, aggregation=max)
 ```
 
-The last call emphasizes each sample's sparsest region. Retrieval requires every vector in the table to have a score, even when requesting a label-filtered result.
+The last call uses each sample's highest vector score instead of its average. Retrieval requires every vector in the table to have a score, even when requesting a label-filtered result.
 
 ### 2.4. Label populations, memory, and restart behavior
 
 With `label_key=None` (the default), vectors share a population. Setting `label_key="label"` on the weigher scores each label population independently. Provide the corresponding label on input rows. This measures rarity within a class; it does not automatically equalize class influence. Multi-label samples can be represented by separate vector rows with unique vector IDs and a shared sample ID.
 
-Retrieval can filter a label using `label_key="label", label_value="defect"`. Aggregation and max normalization then use only returned rows. Consequently, weights retrieved for different filters need not share a common scale.
+Retrieval can filter a label using `label_key="label", label_value="class_a"`. Aggregation and max normalization then use only returned rows. Consequently, weights retrieved for different filters need not share a common scale.
 
 There are three distinct controls for batching and chunking:
 
