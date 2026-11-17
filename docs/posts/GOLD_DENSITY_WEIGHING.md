@@ -67,7 +67,7 @@ Training data rarely reflects exactly how we want a model to learn. Common cases
 
 Imbalance can exist both between classes and within them. Even when class counts are equal, some groups of similar samples can be much more frequent than others. Uniform sampling follows those frequencies, giving common patterns more exposure while underrepresented patterns contribute less often.
 
-Embedding neighborhoods offer another view of the training distribution. When a representation captures relevant semantics, many nearby vectors suggest a well-represented pattern; larger distances to neighbors suggest a less represented one. Density-based weights let training put more emphasis on the latter without removing the original data.
+Embedding neighborhoods offer another view of the training distribution. These embeddings can come from pretrained foundation models, providing semantic representations without training a dedicated model from scratch. When a representation captures relevant semantics, many nearby vectors suggest a well-represented pattern; larger distances to neighbors suggest a less represented one. Density-based weights let training put more emphasis on the latter without removing the original data.
 
 This complements class-level reweighting. For example, [Cui et al. (2019)](https://arxiv.org/abs/1901.05555) address imbalance using the effective number of samples per class. Goldener's density score instead depends on local geometry and can vary between samples with the same label.
 
