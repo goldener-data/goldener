@@ -185,18 +185,25 @@ There are three distinct controls for batching and chunking:
 
 Without chunking, exact pairwise search has quadratic distance work in the population size. Query batching reduces the temporary distance matrix size but still requires the reference vectors in memory. Chunking reduces the reference population at the cost of changing the score's meaning. Every resulting chunk must satisfy the `k + 2` minimum; a small remainder can make a configuration invalid. `random_state` controls random chunk assignment. An optional `reducer` transforms vectors before scoring; fittable reducers fit independently per chunk, also changing the geometry.
 
-For the eight-vector example, the following configuration creates two independent four-vector chunks. Within each chunk, queries are scored two at a time against all four reference vectors. Set `chunk=None` to retain a single reference population while keeping query batching.
+For a larger population of 20,000 vectors, the following configuration creates two independent chunks of 10,000 vectors. Within each chunk, queries are scored 256 at a time against all 10,000 reference vectors. Set `chunk=None` to retain a single reference population while keeping query batching.
 
 ```python
+large_embeddings = torch.randn(
+    20_000, 16, generator=torch.Generator().manual_seed(42),
+)
+large_vectorized = [
+    {"idx": pos, "idx_vector": pos, "vectorized": vector}
+    for pos, vector in enumerate(large_embeddings)
+]
 chunk_weigher = GoldDensityWeigher(
     table_path=f"density_chunks_{uuid4().hex}",
-    weigher=GoldKnnDensityWeighingTool(k=2, distance_batch_size=2),
-    batch_size=4,
-    weighing_batch_size=2,
-    chunk=4,
+    weigher=GoldKnnDensityWeighingTool(k=5, distance_batch_size=256),
+    batch_size=1_024,
+    weighing_batch_size=256,
+    chunk=10_000,
     random_state=42,
 )
-chunk_weighted = chunk_weigher.weigh_in_table(vectorized)
+chunk_weighted = chunk_weigher.weigh_in_table(large_vectorized)
 chunk_weights = chunk_weigher.get_weights_per_idx(chunk_weighted)
 ```
 
