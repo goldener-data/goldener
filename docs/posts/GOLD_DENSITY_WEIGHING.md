@@ -63,6 +63,8 @@ The toy dataset illustrates the mechanics rather than a measured training improv
 
 ## 1. Introduction
 
+Training data rarely reflects exactly how we want a model to learn. Common cases can dominate the dataset, important situations may be scarce, and repeated examples can consume much of the training budget. Sample weighting lets us adjust how much each example contributes, either by changing how often it is sampled or by scaling its contribution to the loss. This makes it possible to emphasize underrepresented cases, reduce the influence of redundant data, or adapt training priorities over time without discarding samples.
+
 Consider a visual inspection dataset with thousands of nearly identical views of a product and only a few examples under unusual lighting. Both groups can share the same class label. Class counts alone cannot reveal this imbalance: uniform sampling repeatedly presents the common appearance and rarely presents the unusual one.
 
 Embedding neighborhoods offer another view of the training distribution. When a representation captures relevant semantics, many nearby vectors suggest a well-represented appearance; larger distances to neighbors suggest a less represented one. Density-based weights let training put more emphasis on the latter without removing the original data.
