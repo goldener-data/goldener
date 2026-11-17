@@ -60,6 +60,7 @@ from goldener.vectorize import (
     FilterLocation,
     Vectorized,
     GoldTensorVectorizationTool,
+    GoldVectorizer,
 )
 from goldener.weigh import (
     GoldDensityWeighingTool,
@@ -99,6 +100,7 @@ __all__ = (
     "FilterLocation",
     "Vectorized",
     "GoldTensorVectorizationTool",
+    "GoldVectorizer",
     "GoldDensityWeighingTool",
     "GoldKnnDensityWeighingTool",
     "GoldDensityWeigher",
