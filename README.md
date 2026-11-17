@@ -424,12 +424,21 @@ workflow manually from the Actions tab of the repository, on the branch or tag t
                 </a>
             </td>
             <td align="center">
+                <a href="https://github.com/CyberKun">
+                    <img src="https://avatars.githubusercontent.com/u/186809931?v=4" width="100;" alt="CyberKun"/>
+                    <br />
+                    <sub><b>Aditya Singh Bakawat</b></sub>
+                </a>
+            </td>
+            <td align="center">
                 <a href="https://github.com/AhmadBilalDSA">
                     <img src="https://avatars.githubusercontent.com/u/315737484?v=4" width="100;" alt="AhmadBilalDSA"/>
                     <br />
                     <sub><b>Ahmad Bilal</b></sub>
                 </a>
             </td>
+		</tr>
+		<tr>
             <td align="center">
                 <a href="https://github.com/LyViolz">
                     <img src="https://avatars.githubusercontent.com/u/67195096?v=4" width="100;" alt="LyViolz"/>
@@ -437,8 +446,6 @@ workflow manually from the Actions tab of the repository, on the branch or tag t
                     <sub><b>Ali Berke Kahraman</b></sub>
                 </a>
             </td>
-		</tr>
-		<tr>
             <td align="center">
                 <a href="https://github.com/Dhruv06000">
                     <img src="https://avatars.githubusercontent.com/u/196720010?v=4" width="100;" alt="Dhruv06000"/>
@@ -474,6 +481,8 @@ workflow manually from the Actions tab of the repository, on the branch or tag t
                     <sub><b>Shekhar</b></sub>
                 </a>
             </td>
+		</tr>
+		<tr>
             <td align="center">
                 <a href="https://github.com/mangomac">
                     <img src="https://avatars.githubusercontent.com/u/333602023?v=4" width="100;" alt="mangomac"/>
