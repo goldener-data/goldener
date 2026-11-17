@@ -71,15 +71,11 @@ Embedding neighborhoods offer another view of the training distribution. When a 
 
 This complements class-level reweighting. For example, [Cui et al. (2019)](https://arxiv.org/abs/1901.05555) address imbalance using the effective number of samples per class. Goldener's density score instead depends on local geometry and can vary between samples with the same label.
 
-**Sparsity is not calibrated sample difficulty.** The score does not inspect the current model's predictions, gradients, or loss. An isolated vector might represent a useful rare case, a mislabeled example, or an artifact. A dense region might still contain a difficult decision boundary. Methods such as [Mindermann et al. (2022)](https://proceedings.mlr.press/v162/mindermann22a.html) use learning-related signals to prioritize training; Goldener's kNN score is a representation-based signal with a different meaning.
-
-Use density weighting when underrepresented semantic regions matter to the task. Inspect the highest-weight samples and compare against uniform training on a held-out evaluation set before adopting it.
-
 ## 2. Components
 
 ### 2.1. From samples to vectors
 
-As in Goldener's [selection](GOLD_SELECTION.md) and [batching](GOLD_BATCHER.md) pipelines, the starting point is a vector representation. `GoldDescriptor` extracts embeddings, and `GoldVectorizer` prepares vectors when a separate vectorization stage is needed. A descriptor configured with a vectorizer can already produce suitable vectors.
+The starting point for sample weighting is a vector representation. `GoldDescriptor` extracts embeddings, and `GoldVectorizer` prepares vectors when a separate vectorization stage is needed. A descriptor configured with a vectorizer can already produce suitable vectors.
 
 `GoldDensityWeigher` accepts either a PyTorch `Dataset` (including a list of dictionaries as above) or a PixelTable `Table`. Dataset items provide a finite floating one-dimensional tensor under `vectorized_key`, which defaults to `"vectorized"`. A table provides the vector column together with `idx` and `idx_vector`. Set `vectorized_key` explicitly when an upstream stage uses another column name.
 
@@ -87,7 +83,9 @@ As in Goldener's [selection](GOLD_SELECTION.md) and [batching](GOLD_BATCHER.md) 
 
 ### 2.2. What the kNN score measures
 
-The tensor algorithm is implemented by [GoldKnnDensityWeighingTool](https://github.com/goldener-data/goldener/blob/main/goldener/weigh.py), an implementation of `GoldDensityWeighingTool`. For vector `x_i`, let `N_k(i)` contain its `k` nearest neighbors after excluding one occurrence of the query itself. Its score is:
+[Goldener](https://github.com/goldener-data/goldener) provides a default weighing algorithm implemented by [GoldKnnDensityWeighingTool](https://github.com/goldener-data/goldener/blob/main/goldener/weigh.py). However, the user can provide new weighing tools following the API defined in `GoldDensityWeighingTool`.
+
+In `GoldKnnDensityWeighingTool`, for vector `x_i`, let `N_k(i)` contain its `k` nearest neighbors after excluding one occurrence of the query itself. Its score is:
 
 $$
 s_i = \left[\max\left(\frac{1}{k}\sum_{j \in N_k(i)}d(x_i,x_j),\ \varepsilon\right)\right]^p.
@@ -97,7 +95,7 @@ The tool retrieves the nearest `k + 1` entries and discards one nearest entry. O
 
 For positive `power`, larger neighbor distances produce larger scores. The default square root compresses distance contrasts; increasing the exponent accentuates them. `power=0` produces uniform scores. The positive distance floor handles coincident vectors before exponentiation. This is a distance-based sparsity score, not a normalized probability density or a calibrated inverse-density estimate.
 
-The deterministic tool accepts a two-dimensional tensor shaped `(num_vectors, feature_dim)` and returns one score per row. Its configurable distance metric and the scale of the embeddings define what counts as nearby, so representation choice and preprocessing matter.
+Choose the neighborhood metric through the tool's `distance` argument. `DistanceType.EUCLIDEAN` (the default) measures straight-line distance and reflects differences in both vector magnitude and direction. `DistanceType.COSINE` uses one minus cosine similarity, comparing vector directions after L2 normalization. For nonzero vectors, this makes cosine distance insensitive to magnitude, which is useful when embedding direction carries the relevant semantics. Import `DistanceType` from `goldener` and pass, for example, `distance=DistanceType.COSINE` to `GoldKnnDensityWeighingTool`. The metric changes neighbor rankings and score scales, so choose it to match the representation.
 
 ### 2.3. Storage and sample aggregation
 
@@ -109,7 +107,7 @@ The deterministic tool accepts a two-dimensional tensor shaped `(num_vectors, fe
 2. Takes the arithmetic mean within each sample.
 3. Divides each sample score by the maximum score in the returned dictionary.
 
-For sample scores `a_i`, the returned weights are `w_i = a_i / max_j(a_j)` when the maximum is positive. All-zero scores remain zero. This is **max normalization, not mean-one normalization**, and retrieval does not modify persisted scores.
+For sample scores `a_i`, the returned weights are `w_i = a_i / max_j(a_j)`. All-zero scores remain zero. This is **max normalization, not mean-one normalization**, and retrieval does not modify persisted scores.
 
 For samples represented by multiple vectors, averaging prevents vector count alone from directly summing into a larger sample weight. Vector count still affects the neighborhood population. Choose another aggregation only when it matches the training objective:
 
@@ -118,7 +116,7 @@ raw_sample_weights = weigher.get_weights_per_idx(weighted, normalize=False)
 raw_vector_scores = weigher.get_weights_per_idx(
     weighted, idx_key="idx_vector", normalize=False,
 )
-max_vector_weights = weigher.get_weights_per_idx(weighted, aggregation=max)
+max_sample_weights = weigher.get_weights_per_idx(weighted, aggregation=max)
 ```
 
 The last call uses each sample's highest vector score instead of its average. Retrieval requires every vector in the table to have a score, even when requesting a label-filtered result.
@@ -137,21 +135,17 @@ There are three distinct controls for batching and chunking:
 | `GoldDensityWeigher.weighing_batch_size` and the tool's `distance_batch_size` | Query batching and pairwise-distance memory | Each query still sees its full chunk |
 | `GoldDensityWeigher.chunk` | Random partition into independently scored chunks | Restricted to each chunk; scores can change |
 
-Without chunking, exact pairwise search has quadratic distance work in the population size. Query batching reduces the temporary distance matrix size but still requires the reference vectors in memory. Chunking reduces the reference population at the cost of changing the score's meaning. Every resulting chunk must satisfy the `k + 2` minimum; a small remainder can make a configuration invalid. `random_state` controls random chunk assignment. An optional `reducer` transforms vectors before scoring; fittable reducers fit independently per chunk, also changing the geometry. Distributed execution is currently unsupported.
+Without chunking, exact pairwise search has quadratic distance work in the population size. Query batching reduces the temporary distance matrix size but still requires the reference vectors in memory. Chunking reduces the reference population at the cost of changing the score's meaning. Every resulting chunk must satisfy the `k + 2` minimum; a small remainder can make a configuration invalid. `random_state` controls random chunk assignment. An optional `reducer` transforms vectors before scoring; fittable reducers fit independently per chunk, also changing the geometry.
 
 Completed raw scores are reused on repeated calls, without duplicate rows, provided IDs, inputs, and scoring settings remain unchanged. **Restart is not equivalent to recomputing a fixed full population.** Only pending vectors participate in new chunk assignments and neighbor searches; completed vectors are excluded. Chunk assignments are not persisted. After an interrupted run, remaining vectors can therefore receive different scores from an uninterrupted run, or fail the minimum population size check.
 
-Similarly, `max_batches` limits the ingested source prefix on each call. Raising it adds rows without updating previous scores; new scores describe the new pending population. It is useful for exploration, but incremental ingestion does not maintain exact full-dataset density scores. Use a fresh result table and score the full intended population for a consistent comparison after changing data or settings. Retrieval normalization can also change when newly returned scores change the maximum.
-
 ## 3. Density-aware training
 
-The runnable example uses a `WeightedRandomSampler` to draw dataset positions with probability proportional to their aligned sample weights. Replacement permits rare samples to appear multiple times in an epoch. The dictionary keys are sample IDs, which may be noncontiguous; the sampler needs weights in **training dataset order**. Sampling does not guarantee balanced classes or balanced individual mini-batches.
+The runnable example uses a `WeightedRandomSampler` to draw dataset positions with probability proportional to their aligned sample weights. Replacement permits rare samples to appear multiple times in an epoch.
 
-An alternative is to keep uniform sampling and multiply each unreduced sample loss by its retrieved weight. For a batch of losses `loss_i`, a scale-controlled weighted average is `sum(w_i * loss_i) / sum(w_i)` when the denominator is positive. Move the batch weights to the loss tensor's device and dtype. Simply computing `mean(w_i * loss_i)` also changes the loss magnitude because the default weights do not have mean one. Using both weighted sampling and weighted loss compounds the emphasis, so choose that combination deliberately.
+An alternative is to keep uniform sampling and multiply each unreduced sample loss by its retrieved weight. For a batch of losses `loss_i`, a scale-controlled weighted average is `sum(w_i * loss_i) / sum(w_i)` when the denominator is positive. Using both weighted sampling and weighted loss compounds the emphasis, so choose that combination deliberately.
 
-Density scores can also inform a curriculum, for example by gradually increasing the exposure of sparse regions. Goldener supplies the scores; the training loop defines the schedule. [Hacohen and Weinshall (2019)](https://proceedings.mlr.press/v97/hacohen19a.html) study curriculum learning and its dependence on ordering and pacing. Their results do not establish that sparse embeddings are intrinsically harder or that this density-based schedule improves a particular task.
-
-Evaluate the policy with the same data split and training budget as the uniform baseline. Compare class and subgroup metrics as well as aggregate accuracy, and inspect whether high weights concentrate on useful rare cases or on noise. The feature makes the weighting policy explicit and traceable to sample IDs; the appropriate policy remains task dependent.
+Density scores can also inform a curriculum, for example by gradually increasing the exposure of sparse regions. Goldener supplies the scores; the training loop defines the schedule. [Hacohen and Weinshall (2019)](https://proceedings.mlr.press/v97/hacohen19a.html) study curriculum learning and its dependence on ordering and pacing.
 
 ## 4. Bibliography
 
