@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
 
+concurrency:
+  group: contributors-readme
+  cancel-in-progress: false
+
 permissions:
   contents: write
   pull-requests: write
@@ -20,51 +24,28 @@ jobs:
           ref: main
           persist-credentials: false
 
-      - name: Check whether the contributor set changed
-        id: contributor
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          python - <<'PY'
-          import os
-          import re
-          import subprocess
-          from pathlib import Path
+      - name: Generate contributors list locally
+        uses: somaz94/contributors-action@c4b932fc924b894ec7f9c39971b169ba5053a81c # v1.2.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          output_file: README.md
+          format: table
+          columns: '6'
+          avatar_size: '100'
+          sort_by: name
+          include_bots: 'false'
+          exclude: actions-user
+          update_section: 'true'
+          section_start: '<!-- readme: contributors -start -->'
+          section_end: '<!-- readme: contributors -end -->'
 
-          repository = os.environ["GITHUB_REPOSITORY"]
-          api_logins = subprocess.check_output(
-              [
-                  "gh",
-                  "api",
-                  "--paginate",
-                  f"repos/{repository}/contributors?per_page=100",
-                  "--jq",
-                  '.[] | select(.type != "Bot" and (.login | contains("actions-user") | not)) | .login // empty',
-              ],
-              text=True,
-          ).splitlines()
-
-          readme = Path("README.md").read_text()
-          start = readme.index("<!-- readme: contributors -start -->")
-          end = readme.index("<!-- readme: contributors -end -->", start)
-          section = readme[start:end]
-          listed = {
-              login.casefold()
-              for login in re.findall(r'href="https://github\.com/([^"]+)"', section)
-          }
-          missing = {
-              login.casefold()
-              for login in api_logins
-              if login and login.casefold() not in listed
-          }
-
-          print(f"New contributors to add: {', '.join(sorted(missing)) or 'none'}")
-          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
-              output.write(f"has_new={str(bool(missing)).lower()}\n")
-          PY
-
-      - name: Update contributors list
-        if: steps.contributor.outputs.has_new == 'true'
-        uses: akhilmhdh/contributors-readme-action@v2.3.11
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create or update contributors pull request
+        uses: peter-evans/create-pull-request@22a9089034f40e5a961c8808d113e2c98fb63676 # v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: contributors-readme-action-update
+          base: main
+          add-paths: README.md
+          commit-message: 'docs(contributor): update contributors list'
+          title: 'docs(contributor): update contributors list'
+          body: Update the README contributors list from GitHub contributor data.
