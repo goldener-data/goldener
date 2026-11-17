@@ -15,6 +15,7 @@ already done:
 - `goldener.select`: select the most representative subset of samples.
 - `goldener.split`: split a dataset in multiple sets (train, validation, test, ...).
 - `goldener.organize`: balance the batches with the clusters of the data during training.
+- `goldener.labelize`: predict class confidences from annotated reference vectors.
 - `goldener.weigh`: compute per-sample weights from embedding-space density.
 
 Most of the main classes are re-exported at the root of the package, e.g. `from goldener import GoldSplitter`.
@@ -36,6 +37,11 @@ from goldener.embed import (
     GoldTorchEmbeddingTool,
     GoldTorchEmbeddingToolConfig,
     GoldMultiModalTorchEmbeddingTool,
+)
+from goldener.labelize import (
+    GoldLabelPredictionTool,
+    GoldKnnLabelPredictionTool,
+    GoldLabelPredictor,
 )
 from goldener.organize import GoldClusterizedBatchSampler
 from goldener.pxt_utils import GoldPxtTorchDataset
@@ -104,4 +110,7 @@ __all__ = (
     "GoldDensityWeighingTool",
     "GoldKnnDensityWeighingTool",
     "GoldDensityWeigher",
+    "GoldLabelPredictionTool",
+    "GoldKnnLabelPredictionTool",
+    "GoldLabelPredictor",
 )
