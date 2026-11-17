@@ -3,8 +3,6 @@ name: Contribute List
 on:
   push:
     branches: [main]
-  schedule:
-    - cron: "17 4 * * *"
 
 permissions:
   contents: write
