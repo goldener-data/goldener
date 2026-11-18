@@ -22,6 +22,7 @@ intermediate results so operations can resume without recomputing completed work
 - `goldener/vision/`: adapt processing to vision data.
 - `tests/`: verify behavior; also read `tests/AGENTS.md`.
 - `README.md`: explain usage and development.
+- `docs/posts/`: explain features and workflows in detailed documentation posts.
 - `scripts/generate_api_docs.sh`: generate API documentation.
 
 ## Architecture
@@ -153,6 +154,15 @@ intermediate results so operations can resume without recomputing completed work
   and table lifecycle details in the doer documentation. Abstract interfaces and
   simple adapters can stay brief when their contracts are already documented by
   the base class and public methods.
+
+## Documentation consistency
+
+- When adding or modifying `GoldDoer`, its subclasses, or any `Gold...Tool`, review
+  the relevant sections of `README.md` and posts in `docs/posts/` before making changes.
+  Use them to understand the documented behavior and usage of the affected APIs.
+- Update affected explanations and examples when behavior, public APIs, defaults,
+  or usage changes. Before finishing, verify that the relevant README sections,
+  documentation posts, and docstrings agree with the implementation.
 
 ## README feature documentation
 
