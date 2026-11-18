@@ -170,7 +170,7 @@ from sklearn.cluster import KMeans
 
 # Reuse the descriptor from smart sampling (vectorizer included).
 # dataset is user-supplied.
-gd = GoldDescriptor(...)  # reuse the descriptor used for smart sampling
+gd = GoldDescriptor(...) 
 n_clusters = 10
 gcluster = GoldClusterizer(
     table_path="my_table_for_clusterization",
