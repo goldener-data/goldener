@@ -16,6 +16,9 @@ from goldener.split import GoldSplitter, GoldSet, check_sets_validity
 from goldener.vectorize import GoldTensorVectorizationTool, GoldVectorizer
 from goldener.select import GoldSelector
 
+COREAX_SKIP_REASON = "GoldSelector's default selection tool needs coreax, which is not installed on Windows"
+requires_coreax = pytest.mark.skipif(sys.platform == "win32", reason=COREAX_SKIP_REASON)
+
 
 class DummyModel(torch.nn.Module):
     def __init__(self):
@@ -62,6 +65,8 @@ def descriptor(embedder):
 
 @pytest.fixture(scope="function")
 def selector():
+    if sys.platform == "win32":
+        pytest.skip(COREAX_SKIP_REASON)
     return GoldSelector(
         table_path="unit_test.selector_split",
         to_keep_schema={"label": pxt.String},
@@ -89,10 +94,6 @@ def basic_splitter(descriptor, vectorizer, selector):
     )
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="GoldSelector's default selection tool needs coreax, which is not installed on Windows",
-)
 class TestGoldSplitter:
     def setup_method(self):
         pxt.drop_dir("unit_test", force=True)
@@ -295,6 +296,7 @@ class TestGoldSplitter:
         assert len(splitted["train"]) == 5
         assert len(splitted["val"]) == 5
 
+    @requires_coreax
     def test_split_with_excluded_labels(self, descriptor, vectorizer, embedder):
         sets = [
             GoldSet(name="train", size=0.5),
@@ -732,6 +734,7 @@ class TestGoldSplitter:
             assert len(indices) == 5
             assert set_name in ["train", "val"]
 
+    @requires_coreax
     def test_with_descriptor_including_vectorizer(self, embedder):
         descriptor = GoldDescriptor(
             table_path="unit_test.descriptor_split",
