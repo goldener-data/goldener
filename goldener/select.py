@@ -11,22 +11,17 @@ used to choose the data to annotate and, by the `goldener.split.GoldSplitter`, t
 """
 
 import math
+import sys
 from abc import ABC, abstractmethod
 from logging import getLogger
-from typing import Callable, Any
+from typing import TYPE_CHECKING, Callable, Any
 
-import jax
 import numpy as np
 import pixeltable as pxt
 from pixeltable import Error, Query
 from pixeltable.catalog import Table
 
 import torch
-import jax.numpy as jnp
-
-from coreax import SupervisedData, ScalarValuedKernel
-from coreax.kernels import LinearKernel
-from coreax.solvers import GreedyKernelPoints
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 
@@ -55,7 +50,19 @@ from goldener.utils import (
     force_non_zero_count,
 )
 
+if TYPE_CHECKING or sys.platform != "win32":
+    import jax
+    import jax.numpy as jnp
+    from coreax import SupervisedData, ScalarValuedKernel
+    from coreax.kernels import LinearKernel
+    from coreax.solvers import GreedyKernelPoints
+
 logger = getLogger(__name__)
+
+
+def _coreax_is_available() -> bool:
+    """Return whether Coreax can be used, which is not the case on Windows where it is not installed."""
+    return sys.platform != "win32"
 
 
 class GoldSelectionTool(ABC):
@@ -98,6 +105,9 @@ class GoldGreedyKernelPointsSelectionTool(GoldSelectionTool):
 
     With this method, the anchors are not used for the selection process.
 
+    This tool is not available on Windows, where Coreax is not installed because its dependencies
+    do not support Windows.
+
     Attributes:
         feature_kernel: The kernel to use for the GreedyKernelPoints solver.
         random_key: Random key for reproducibility in the GreedyKernelPoints solver.
@@ -106,7 +116,7 @@ class GoldGreedyKernelPointsSelectionTool(GoldSelectionTool):
 
     def __init__(
         self,
-        feature_kernel: ScalarValuedKernel,
+        feature_kernel: "ScalarValuedKernel",
         random_key: int = 42,
         distance: DistanceType = DistanceType.EUCLIDEAN,
     ) -> None:
@@ -116,7 +126,16 @@ class GoldGreedyKernelPointsSelectionTool(GoldSelectionTool):
             feature_kernel: The kernel to use for the GreedyKernelPoints solver.
             random_key: Random key for reproducibility in the GreedyKernelPoints solver. Default is 42.
             distance: Not used in this selection tool, included for compatibility with the base class.
+
+        Raises:
+            RuntimeError: If called on Windows, where Coreax is not available.
         """
+        if not _coreax_is_available():
+            raise RuntimeError(
+                "GoldGreedyKernelPointsSelectionTool is not available on Windows because it relies on "
+                "Coreax, which is not installed there. Use another GoldSelectionTool instead."
+            )
+
         super().__init__(distance=distance)
 
         self.random_key = random_key
@@ -667,9 +686,7 @@ class GoldSelector(GoldDoerWithTable):
     def __init__(
         self,
         table_path: str,
-        selection_tool: GoldSelectionTool = GoldGreedyKernelPointsSelectionTool(
-            feature_kernel=LinearKernel(output_scale=1, constant=0)
-        ),
+        selection_tool: GoldSelectionTool | None = None,
         reducer: GoldReductionTool | None = None,
         chunk: int | None = None,
         collate_fn: Callable | None = None,
@@ -692,7 +709,9 @@ class GoldSelector(GoldDoerWithTable):
 
         Args:
             table_path: Path to store the PixelTable table.
-            selection_tool: The GoldSelectionTool implementing the selection algorithm.
+            selection_tool: The GoldSelectionTool implementing the selection algorithm. If None, a
+                `GoldGreedyKernelPointsSelectionTool` with a linear kernel is used, which is not available
+                on Windows.
             reducer: Optional GoldReductionTool instance for dimensionality reduction before selection.
             chunk: Optional chunk size for processing data in chunks.
             collate_fn: Optional collate function for the DataLoader.
@@ -714,11 +733,22 @@ class GoldSelector(GoldDoerWithTable):
             random_state: Optional random state for reproducibility during chunk assignment. Default is None.
 
         Raises:
+            RuntimeError: If `selection_tool` is None on Windows, where the default
+                `GoldGreedyKernelPointsSelectionTool` is not available.
             ValueError: If `exclude_labels` is provided but `label_key` is None.
             NotImplementedError: If `distribute` is True.
             ValueError: If key attributes or `to_keep_schema` collide with identity columns
                 or with each other (see `GoldDoerWithTable`).
         """
+        if selection_tool is None:
+            if not _coreax_is_available():
+                raise RuntimeError(
+                    "GoldSelector needs an explicit selection_tool on Windows: the default "
+                    "GoldGreedyKernelPointsSelectionTool relies on Coreax, which is not installed there."
+                )
+            selection_tool = GoldGreedyKernelPointsSelectionTool(
+                feature_kernel=LinearKernel(output_scale=1, constant=0)
+            )
         self.selection_tool = selection_tool
         self.reducer = reducer
         self.chunk = chunk
