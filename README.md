@@ -224,8 +224,8 @@ from goldener import GoldClusterizedBatchSampler, GoldClusterizer, GoldDescripto
 # Reuse the descriptor and clusterizer from earlier examples.
 # Keep vectorized_key aligned with gd.description_key on the clusterizer.
 # my_dataset is user-supplied.
-gd = GoldDescriptor(...)  # reuse the descriptor used for smart sampling
-gc = GoldClusterizer(...)  # reuse the clusterizer used for annotation guidelines
+gd = GoldDescriptor(...) 
+gc = GoldClusterizer(...)
 
 batch_sampler = GoldClusterizedBatchSampler(
     dataset=my_dataset,
