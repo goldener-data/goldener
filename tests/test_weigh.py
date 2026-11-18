@@ -478,6 +478,7 @@ class TestGoldDensityWeigher:
 
         assert len(result) == 2
         assert next(iter(result))["weight"] > 0
+        assert isinstance(weigher.weigher, CountingWeigher)
         assert weigher.weigher.calls == 1
         assert weigher.weigher.batch_shapes == []
         with pytest.raises(pxt.Error, match="drop_weights"):
