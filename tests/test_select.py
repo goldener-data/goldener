@@ -326,6 +326,17 @@ class TestGoldSelector:
         with pytest.raises(ValueError, match="select_size must be a positive integer"):
             selector.select_in_table(dataset, select_size=0, value="train")
 
+    @pytest.mark.parametrize("value", [None, 42])
+    def test_select_in_table_rejects_non_string_value(self, value):
+        table_path = "unit_test.test_select_invalid_value"
+        selector = GoldSelector(table_path=table_path)
+
+        with pytest.raises(ValueError, match="value must be a non-null string"):
+            selector.select_in_table(DummyDataset([]), select_size=1, value=value)
+
+        with pytest.raises(Error):
+            pxt.get_table(table_path)
+
     def test_select_in_table_from_dataset_with_ratio(self):
         table_path = "unit_test.test_select_from_dataset"
 

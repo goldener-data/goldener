@@ -871,7 +871,7 @@ class GoldSelector(GoldDoerWithTable):
                 dictionary with at least the `vectorized_key` and `idx` keys after applying the collate_fn.
                 If a Table is provided, it should contain at least the `vectorized_key`, `idx` and `idx_vector` columns.
             select_size: Number or ratio (between 0 and 1) of data points to select
-            value: Value to set in the `selection_key` column for selected samples.
+            value: Non-null string to set in the `selection_key` column for selected samples.
             restrict_to: Optional set of indices to restrict the search to.
                 If provided, only the selected indices in `restriction_idx_key` will be used for the selection.
             restriction_idx_key: Column name used to get sample indices for restriction.
@@ -900,7 +900,7 @@ class GoldSelector(GoldDoerWithTable):
         self,
         select_from: Dataset | Table,
         select_size: int | float,
-        value: str | None,
+        value: str,
         restrict_to: set[int] | None = None,
         restriction_idx_key: str = "idx_vector",
     ) -> Table:
@@ -921,7 +921,7 @@ class GoldSelector(GoldDoerWithTable):
                 If a Table is provided, it should contain at least the `vectorized_key`, `idx` and `idx_vector` columns.
             select_size: Positive integer count or floating ratio in `(0, 1]` of
                 data points to select. Booleans are not accepted.
-            value: Value to set in the `selection_key` column for selected samples.
+            value: Non-null string to set in the `selection_key` column for selected samples.
             restrict_to: Optional set of indices to restrict the search to.
                 If provided, only the selected indices in `restriction_idx_key` will be used for the selection.
             restriction_idx_key: Column name used to get sample indices for restriction.
@@ -931,9 +931,13 @@ class GoldSelector(GoldDoerWithTable):
                 and `idx` (index of the sample) and `idx_vector` (index of the vector) columns as well.
 
         Raises:
-            ValueError: If `restriction_idx_key` is not `"idx"` or `"idx_vector"`,
-                or `select_size` is neither a positive integer nor a float in `(0, 1]`.
+            ValueError: If `value` is not a string, `restriction_idx_key` is not
+                `"idx"` or `"idx_vector"`, or `select_size` is neither a positive
+                integer nor a float in `(0, 1]`.
         """
+        if not isinstance(value, str):
+            raise ValueError("value must be a non-null string.")
+
         if restriction_idx_key not in ("idx", "idx_vector"):
             raise ValueError(
                 "restriction_idx_key must be either 'idx' or 'idx_vector'."
@@ -1473,7 +1477,7 @@ class GoldSelector(GoldDoerWithTable):
         selection_table: Table,
         select_count: int,
         select_ratio: float,
-        value: str | None,
+        value: str,
         restrict_to: set[int] | None = None,
         restriction_idx_key: str = "idx_vector",
     ) -> None:
@@ -1653,7 +1657,7 @@ class GoldSelector(GoldDoerWithTable):
         select_from: Table,
         selection_table: Table,
         select_count: int,
-        value: str | None,
+        value: str,
         label_value: str | None = None,
         from_already: bool = True,
         restrict_to: set[int] | None = None,
@@ -1946,7 +1950,7 @@ class GoldSelector(GoldDoerWithTable):
         selection_table: Table,
         select_count: int,
         select_ratio: float,
-        value: str | None,
+        value: str,
         restrict_to: set[int] | None = None,
         restriction_idx_key: str = "idx_vector",
     ) -> None:
