@@ -77,6 +77,18 @@ def test_validate_positive_number_rejects_invalid_values(value, allow_zero):
         validate_positive_number(value, "score", allow_zero=allow_zero)
 
 
+@pytest.mark.parametrize("allow_zero", [False, True])
+def test_validate_positive_number_none_only_when_allowed(allow_zero):
+    validate_positive_number(None, "score", allow_none=True, allow_zero=allow_zero)
+    requirement = "nonnegative" if allow_zero else "positive"
+    with pytest.raises(ValueError, match=rf"score must be finite and {requirement}\."):
+        validate_positive_number(None, "score", allow_zero=allow_zero)
+    with pytest.raises(
+        ValueError, match=f"score must be finite and {requirement} or None"
+    ):
+        validate_positive_number(-1, "score", allow_none=True, allow_zero=allow_zero)
+
+
 class TestCheckXAndYShapes:
     def test_1d_shapes_match(self):
         x = torch.zeros(5)

@@ -150,6 +150,14 @@ max_sample_weights = weigher.get_weights_per_idx(weighted, aggregation=max)
 
 The last call uses each sample's highest vector score instead of its average. Retrieval requires every vector in the table to have a score, even when requesting a label-filtered result.
 
+A few very isolated vectors can produce extreme raw scores, and max normalization then pushes most other weights close to zero. Set `max_raw_score` to cap the returned raw scores before normalization:
+
+```python
+capped_sample_weights = weigher.get_weights_per_idx(weighted, max_raw_score=5.0)
+```
+
+Clipping is disabled by default (`max_raw_score=None`). When set, it must be finite and positive. It is applied after sample aggregation (or directly to vector scores with `idx_key="idx_vector"`) and before normalization: scores above the cap are set to it, and scores at or below it are unchanged. With `normalize=True`, the cap therefore becomes the normalization reference whenever at least one score exceeds it. Like normalization, clipping only affects the returned dictionary, not the persisted scores.
+
 ### 2.4. Label populations, memory, and restart behavior
 
 With `label_key=None` (the default), vectors share a population. Setting `label_key="label"` on the weigher scores each label population independently. Provide the corresponding label on input rows. This measures rarity within a class; it does not automatically equalize class influence. Multi-label samples can be represented by separate vector rows with unique vector IDs and a shared sample ID.

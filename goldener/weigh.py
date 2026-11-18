@@ -10,7 +10,8 @@ those scores for later retrieval.
   distance, an absolute distance floor, and a configurable exponent.
 - `GoldDensityWeigher` orchestrates scoring of Dataset or PixelTable inputs and
   persists raw scores per vector. Its `get_weights_per_idx` method retrieves
-  vector scores or aggregates them into sample weights, optionally normalizing them.
+  vector scores or aggregates them into sample weights, optionally capping raw
+  scores at a maximum and normalizing them.
 """
 
 from abc import ABC, abstractmethod
@@ -1017,13 +1018,14 @@ class GoldDensityWeigher(GoldDoerWithTable):
         label_value: str | None = None,
         aggregation: Callable[[list[float]], float] = mean,
         normalize: bool = True,
+        max_raw_score: float | None = None,
     ) -> dict[int, float]:
         """Retrieve weights by sample or vector index without changing stored scores.
 
-        Sample scores are aggregated before normalization. By default, each
-        returned score is divided by the largest returned score when it is
-        positive; all-zero scores remain zero. The default `statistics.mean`
-        avoids overflow when aggregating large finite scores.
+        Sample scores are aggregated, then optionally clipped, then normalized.
+        By default, each returned score is divided by the largest returned score
+        when it is positive; all-zero scores remain zero. The default
+        `statistics.mean` avoids overflow when aggregating large finite scores.
 
         Args:
             table: PixelTable table in which every vector has a score.
@@ -1037,15 +1039,24 @@ class GoldDensityWeigher(GoldDoerWithTable):
             normalize: Whether to divide by the maximum returned score after
                 filtering and aggregation. Defaults to True. False returns raw
                 or aggregated scores without rescaling.
+            max_raw_score: Optional maximum for the returned raw scores. Scores
+                above it are set to it and smaller scores are unchanged. It is
+                applied after sample aggregation (or directly to vector scores
+                for "idx_vector") and before normalization, so the clipped
+                maximum becomes the normalization reference. Must be finite and
+                positive. Defaults to None, which disables clipping.
 
         Returns:
             A dictionary mapping the requested sample or vector indices to weights.
 
         Raises:
-            ValueError: If `label_key` is provided without `label_value`.
+            ValueError: If `label_key` is provided without `label_value`, or if
+                `max_raw_score` is not a finite positive number.
             RuntimeError: If any vector in the table lacks a score, or no scores
                 are found for the requested filter.
         """
+        validate_positive_number(max_raw_score, "max_raw_score", allow_none=True)
+
         weight_col = get_expr_from_column_name(table, weight_key)
         if table.where(weight_col == None).count() > 0:  # noqa: E711
             raise RuntimeError(
@@ -1081,6 +1092,9 @@ class GoldDensityWeigher(GoldDoerWithTable):
             raise RuntimeError(
                 "No scores found for the specified index key and label filter."
             )
+
+        if max_raw_score is not None:
+            scores = {idx: min(score, max_raw_score) for idx, score in scores.items()}
 
         if normalize:
             max_score = np.max(list(scores.values()))
