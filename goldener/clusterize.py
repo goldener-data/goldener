@@ -227,6 +227,130 @@ class GoldSKLearnClusteringTool(GoldClusteringTool):
         return torch.from_numpy(self.tool.predict(x_np))
 
 
+class GoldEMeansClusteringTool(GoldClusteringTool):
+    """Pure-PyTorch exponential moving-average mini-batch k-means tool."""
+
+    def __init__(
+        self,
+        batch_size: int = 256,
+        n_iter: int = 10,
+        decay: float = 0.99,
+        random_state: int | None = None,
+    ) -> None:
+        """Initialize GoldEMeansClusteringTool.
+
+        Args:
+            batch_size: Mini-batch size for EMA updates (must be >= 1).
+            n_iter: Number of passes over the dataset (must be >= 1).
+            decay: EMA decay factor in (0.0, 1.0).
+            random_state: Optional random seed for reproducibility.
+
+        Raises:
+            ValueError: If batch_size < 1, n_iter < 1, or decay not in (0, 1).
+        """
+        if batch_size < 1:
+            raise ValueError(f"batch_size must be >= 1, got {batch_size}.")
+        if n_iter < 1:
+            raise ValueError(f"n_iter must be >= 1, got {n_iter}.")
+        if not 0.0 < decay < 1.0:
+            raise ValueError(f"decay must be in (0.0, 1.0), got {decay}.")
+        self.batch_size = batch_size
+        self.n_iter = n_iter
+        self.decay = decay
+        self.random_state = random_state
+        self._rng = np.random.default_rng(random_state)
+        self.centroids: torch.Tensor | None = None
+
+    def get_random_state(self) -> dict[str, Any]:
+        """Return a snapshot of the internal NumPy RNG bit-generator state.
+
+        Returns:
+            Dictionary representing the current bit-generator state.
+        """
+        return self._rng.bit_generator.state
+
+    def set_random_state(self, state: dict[str, Any]) -> None:
+        """Restore the internal NumPy RNG bit-generator state.
+
+        Args:
+            state: Bit-generator state dictionary from `get_random_state`.
+        """
+        self._rng.bit_generator.state = state
+
+    def fit(self, x: torch.Tensor, n_clusters: int) -> torch.Tensor:
+        """Fit mini-batch EMA k-means centroids and return cluster assignments.
+
+        Args:
+            x: Finite floating tensor shaped `(num_vectors, feature_dim)` with
+                positive feature width. Each row represents one vector.
+            n_clusters: Number of clusters to form (`1 <= n_clusters <= N`).
+
+        Returns:
+            A 1D tensor with one cluster index per input row.
+
+        Raises:
+            ValueError: If `x` is invalid or `n_clusters` is out of range.
+        """
+        validate_vectorized_input(x, "GoldEMeansClusteringTool")
+        n_samples = x.shape[0]
+        if not 1 <= n_clusters <= n_samples:
+            raise ValueError(
+                f"n_clusters must be in [1, {n_samples}], got {n_clusters}."
+            )
+
+        init_indices = self._rng.choice(n_samples, size=n_clusters, replace=False)
+        centroids = x[
+            torch.as_tensor(init_indices, dtype=torch.long, device=x.device)
+        ].clone()
+
+        for _ in range(self.n_iter):
+            perm = self._rng.permutation(n_samples)
+            for start in range(0, n_samples, self.batch_size):
+                batch_idx = torch.as_tensor(
+                    perm[start : start + self.batch_size],
+                    dtype=torch.long,
+                    device=x.device,
+                )
+                batch = x[batch_idx]
+                labels = torch.cdist(batch, centroids).argmin(dim=1)
+                for c_idx in range(n_clusters):
+                    mask = labels == c_idx
+                    if mask.any():
+                        batch_mean = batch[mask].mean(dim=0)
+                        centroids[c_idx] = (
+                            self.decay * centroids[c_idx]
+                            + (1.0 - self.decay) * batch_mean
+                        )
+
+        self.centroids = centroids
+        return self.predict(x)
+
+    def predict(self, x: torch.Tensor) -> torch.Tensor:
+        """Assign input vectors to the nearest learned centroid.
+
+        Args:
+            x: Finite floating tensor shaped `(num_vectors, feature_dim)` with
+                positive feature width matching the fitted centroids.
+
+        Returns:
+            A 1D tensor of cluster indices predicted for each input vector.
+
+        Raises:
+            ValueError: If `x` is invalid, the tool is unfitted, or feature
+                dimensions do not match.
+        """
+        validate_vectorized_input(x, "GoldEMeansClusteringTool")
+        if self.centroids is None:
+            raise ValueError(
+                "GoldEMeansClusteringTool must be fitted before calling predict."
+            )
+        if x.shape[1] != self.centroids.shape[1]:
+            raise ValueError(
+                f"Feature dimension mismatch: expected {self.centroids.shape[1]}, "
+                f"got {x.shape[1]}."
+            )
+        return torch.cdist(x.to(self.centroids.dtype), self.centroids).argmin(dim=1)
+
 class GoldClusterizer(GoldDoerWithTable):
     """Cluster data points from vectorized samples.
 
