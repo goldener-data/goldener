@@ -593,6 +593,63 @@ class TestGoldDensityWeigher:
         ) == {21: 1.0, 22: 3.0, 23: 2.0}
         assert {row["idx_vector"]: row["weight"] for row in table.collect()} == original
 
+    def test_getter_normalizes_each_label_separately_without_label_value(self):
+        samples = [
+            (0, "a", 1.0),
+            (0, "a", 3.0),
+            (1, "a", 4.0),
+            (2, "b", 100.0),
+            (2, "b", 300.0),
+            (3, "b", 400.0),
+            (4, "zero", 0.0),
+        ]
+        dataset = VectorDataset(
+            [
+                {"idx": idx, "vectorized": torch.tensor([float(i)]), "label": label}
+                for i, (idx, label, _) in enumerate(samples)
+            ]
+        )
+        weigher = GoldDensityWeigher(
+            "unit_test.per_label_getter",
+            weigher=FixedScoreWeigher([score for _, _, score in samples]),
+            chunk=None,
+            to_keep_schema={"label": pxt.String},
+        )
+        table = weigher.weigh_in_table(dataset)
+
+        all_labels = weigher.get_weights_per_idx(table, label_key="label")
+
+        # Each label is scaled by its own maximum, so label b is not compressed.
+        assert all_labels == pytest.approx({0: 0.5, 1: 1.0, 2: 0.5, 3: 1.0, 4: 0.0})
+        # Same as merging the single-label calls.
+        merged = {}
+        for label in ("a", "b", "zero"):
+            merged |= weigher.get_weights_per_idx(
+                table, label_key="label", label_value=label
+            )
+        assert all_labels == pytest.approx(merged)
+        assert weigher.get_weights_per_idx(
+            table, label_key="label", normalize=False, max_raw_score=3.0
+        ) == pytest.approx({0: 2.0, 1: 3.0, 2: 3.0, 3: 3.0, 4: 0.0})
+
+    def test_getter_rejects_sample_in_several_labels_without_label_value(self):
+        dataset = VectorDataset(
+            [
+                {"idx": 0, "vectorized": torch.tensor([0.0]), "label": "a"},
+                {"idx": 0, "vectorized": torch.tensor([1.0]), "label": "b"},
+            ]
+        )
+        weigher = GoldDensityWeigher(
+            "unit_test.multi_label_getter",
+            weigher=FixedScoreWeigher([1.0, 2.0]),
+            chunk=None,
+            to_keep_schema={"label": pxt.String},
+        )
+        table = weigher.weigh_in_table(dataset)
+
+        with pytest.raises(RuntimeError, match="several labels"):
+            weigher.get_weights_per_idx(table, label_key="label")
+
     @pytest.mark.parametrize(
         "max_raw_score",
         [0.0, -1.0, float("nan"), float("inf"), True, "2.0"],
@@ -857,8 +914,18 @@ class TestGoldDensityWeigher:
         ) == pytest.approx(
             {idx: score / max(selected.values()) for idx, score in selected.items()}
         )
-        with pytest.raises(ValueError, match="label_value must also be provided"):
-            weigher.get_weights_per_idx(result, label_key="label")
+        assert weigher.get_weights_per_idx(
+            result, idx_key="idx_vector", label_key="label"
+        ) == pytest.approx(
+            {
+                idx: score / max(group.values())
+                for group in (
+                    {i: s for i, s in scores.items() if i < 3},
+                    {i: s for i, s in scores.items() if i >= 3},
+                )
+                for idx, score in group.items()
+            }
+        )
         with pytest.raises(RuntimeError, match="No scores found"):
             weigher.get_weights_per_idx(result, label_key="label", label_value="absent")
 

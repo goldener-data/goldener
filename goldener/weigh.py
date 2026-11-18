@@ -1032,8 +1032,12 @@ class GoldDensityWeigher(GoldDoerWithTable):
             weight_key: Column containing raw vector scores. Defaults to "weight".
             idx_key: "idx" aggregates vectors belonging to each sample;
                 "idx_vector" returns individual vector scores. Defaults to "idx".
-            label_key: Optional label column to filter. Requires `label_value`.
+            label_key: Optional label column. With `label_value` only that
+                label is returned; without it every label is returned and
+                aggregation, clipping and normalization are applied to each
+                label separately.
             label_value: Label to select when `label_key` is provided.
+                Defaults to None, which keeps all labels.
             aggregation: Function applied to each sample's vector scores.
                 Defaults to the arithmetic mean. Ignored for "idx_vector".
             normalize: Whether to divide by the maximum returned score after
@@ -1050,10 +1054,11 @@ class GoldDensityWeigher(GoldDoerWithTable):
             A dictionary mapping the requested sample or vector indices to weights.
 
         Raises:
-            ValueError: If `label_key` is provided without `label_value`, or if
+            ValueError: If `label_value` is provided without `label_key`, or if
                 `max_raw_score` is not a finite positive number.
-            RuntimeError: If any vector in the table lacks a score, or no scores
-                are found for the requested filter.
+            RuntimeError: If any vector in the table lacks a score, no scores
+                are found for the requested filter, or (with `label_key` only
+                and `idx_key="idx"`) a sample belongs to several labels.
         """
         validate_positive_number(max_raw_score, "max_raw_score", allow_none=True)
 
@@ -1067,38 +1072,56 @@ class GoldDensityWeigher(GoldDoerWithTable):
         idx_vector_col = get_expr_from_column_name(table, "idx_vector")
         idx_col = get_expr_from_column_name(table, "idx")
         pool: Table | Query = table
+        columns = [idx_col, idx_vector_col, weight_col]
         if label_key is not None:
-            if label_value is None:
-                raise ValueError(
-                    "If label_key is provided, label_value must also be provided."
-                )
             label_col = get_expr_from_column_name(table, label_key)
-            pool = pool.where(label_col == label_value)
+            columns.append(label_col)
+            if label_value is not None:
+                pool = pool.where(label_col == label_value)
 
-        rows = pool.select(idx_col, idx_vector_col, weight_col).collect()
-        scores: dict[int, float]
-        if idx_key == "idx_vector":
-            scores = {int(row["idx_vector"]): float(row[weight_key]) for row in rows}
-        else:
-            scores_per_index = defaultdict(list)
-            for row in rows:
-                scores_per_index[int(row["idx"])].append(float(row[weight_key]))
+        # One group per label when label_key is given without label_value,
+        # otherwise a single group holding every returned row.
+        groups: dict[Any, list[Any]] = defaultdict(list)
+        for row in pool.select(*columns).collect():
+            group = row[label_key] if label_key and label_value is None else None
+            groups[group].append(row)
 
-            scores = {}
-            for idx, index_scores in scores_per_index.items():
-                scores[idx] = aggregation(index_scores)
+        weights: dict[int, float] = {}
+        for rows in groups.values():
+            scores: dict[int, float]
+            if idx_key == "idx_vector":
+                scores = {
+                    int(row["idx_vector"]): float(row[weight_key]) for row in rows
+                }
+            else:
+                scores_per_index = defaultdict(list)
+                for row in rows:
+                    scores_per_index[int(row["idx"])].append(float(row[weight_key]))
 
-        if not scores:
+                scores = {}
+                for idx, index_scores in scores_per_index.items():
+                    scores[idx] = aggregation(index_scores)
+
+            if max_raw_score is not None:
+                scores = {
+                    idx: min(score, max_raw_score) for idx, score in scores.items()
+                }
+
+            if normalize:
+                max_score = np.max(list(scores.values()))
+                if max_score > 0:
+                    scores = {idx: score / max_score for idx, score in scores.items()}
+
+            if not weights.keys().isdisjoint(scores):
+                raise RuntimeError(
+                    "Some indices belong to several labels; per-label weights "
+                    "cannot be merged. Provide label_value to select one label."
+                )
+            weights.update(scores)
+
+        if not weights:
             raise RuntimeError(
                 "No scores found for the specified index key and label filter."
             )
 
-        if max_raw_score is not None:
-            scores = {idx: min(score, max_raw_score) for idx, score in scores.items()}
-
-        if normalize:
-            max_score = np.max(list(scores.values()))
-            if max_score > 0:
-                scores = {idx: score / max_score for idx, score in scores.items()}
-
-        return scores
+        return weights
