@@ -921,6 +921,16 @@ class TestGoldSelector:
 
         dataset.keep_cache = False
 
+    def test_select_in_table_rejects_none_value(self):
+        selector = GoldSelector(table_path="unit_test.test_reject_none")
+
+        with pytest.raises(TypeError, match="value must be a non-null string"):
+            selector.select_in_table(
+                DummyDataset([{"vectorized": torch.rand(5), "idx": 0}]),
+                select_size=1,
+                value=None,
+            )
+
     def test_get_selected_indices(self):
         src_path = "unit_test.test_select"
 

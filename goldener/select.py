@@ -900,7 +900,7 @@ class GoldSelector(GoldDoerWithTable):
         self,
         select_from: Dataset | Table,
         select_size: int | float,
-        value: str | None,
+        value: str,
         restrict_to: set[int] | None = None,
         restriction_idx_key: str = "idx_vector",
     ) -> Table:
@@ -931,9 +931,15 @@ class GoldSelector(GoldDoerWithTable):
                 and `idx` (index of the sample) and `idx_vector` (index of the vector) columns as well.
 
         Raises:
+            TypeError: If `value` is not a non-null string.
             ValueError: If `restriction_idx_key` is not `"idx"` or `"idx_vector"`,
                 or `select_size` is neither a positive integer nor a float in `(0, 1]`.
         """
+        if not isinstance(value, str):
+            raise TypeError(
+                f"value must be a non-null string, got {type(value).__name__}."
+            )
+
         if restriction_idx_key not in ("idx", "idx_vector"):
             raise ValueError(
                 "restriction_idx_key must be either 'idx' or 'idx_vector'."

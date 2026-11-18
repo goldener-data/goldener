@@ -1000,6 +1000,12 @@ class TestGoldSplitter:
         assert set(distinct_clusters).issubset({0, 1})
 
 
+class TestGoldSet:
+    def test_name_cannot_be_none(self):
+        with pytest.raises(TypeError, match="name must be a non-null string"):
+            GoldSet(name=None, size=0.5)
+
+
 class TestCheckSetsValidity:
     def test_sum_of_sizes_less_than_one(self):
         sets = [GoldSet(name="train", size=0.4), GoldSet(name="val", size=0.5)]
