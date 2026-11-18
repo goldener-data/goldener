@@ -1,7 +1,7 @@
 import torch
 import pytest
 
-from goldener.distance import cosine_distance
+from goldener.distance import DistanceType, cosine_distance
 
 
 class TestCosineDistance:
@@ -52,3 +52,26 @@ class TestCosineDistance:
 
         with pytest.raises(ValueError, match="must have the same number of channels"):
             cosine_distance(x1, x2)
+
+
+class TestDistanceType:
+    def test_values(self) -> None:
+        assert {metric.name: metric.value for metric in DistanceType} == {
+            "EUCLIDEAN": "euclidean",
+            "COSINE": "cosine",
+        }
+
+    @pytest.mark.parametrize(
+        ("metric", "reference"),
+        [(DistanceType.EUCLIDEAN, torch.cdist), (DistanceType.COSINE, cosine_distance)],
+        ids=["euclidean", "cosine"],
+    )
+    def test_distance_function_matches_the_metric(self, metric, reference) -> None:
+        generator = torch.Generator().manual_seed(0)
+        queries = torch.randn(4, 3, generator=generator)
+        references = torch.randn(6, 3, generator=generator)
+
+        distances = metric.distance_function(queries, references)
+
+        assert distances.shape == (4, 6)
+        torch.testing.assert_close(distances, reference(queries, references))

@@ -111,12 +111,12 @@ The tool retrieves the nearest `k + 1` entries and discards one nearest entry. O
 
 For positive `power`, larger neighbor distances produce larger scores. The default square root compresses distance contrasts; increasing the exponent accentuates them. `power=0` produces uniform scores. The positive distance floor handles coincident vectors before exponentiation. This is a distance-based sparsity score, not a normalized probability density or a calibrated inverse-density estimate.
 
-Choose the neighborhood metric through the tool's `distance` argument. `DistanceType.EUCLIDEAN` (the default) measures straight-line distance and reflects differences in both vector magnitude and direction. `DistanceType.COSINE` uses one minus cosine similarity, comparing vector directions after L2 normalization. For nonzero vectors, this makes cosine distance insensitive to magnitude, which is useful when embedding direction carries the relevant semantics. Import `DistanceType` from `goldener.select` and pass, for example, `distance=DistanceType.COSINE` to `GoldKnnDensityWeighingTool`. The metric changes neighbor rankings and score scales, so choose it to match the representation.
+Choose the neighborhood metric through the tool's `distance` argument. `DistanceType.EUCLIDEAN` (the default) measures straight-line distance and reflects differences in both vector magnitude and direction. `DistanceType.COSINE` uses one minus cosine similarity, comparing vector directions after L2 normalization. For nonzero vectors, this makes cosine distance insensitive to magnitude, which is useful when embedding direction carries the relevant semantics. Import `DistanceType` from `goldener.distance` and pass, for example, `distance=DistanceType.COSINE` to `GoldKnnDensityWeighingTool`. The metric changes neighbor rankings and score scales, so choose it to match the representation.
 
 You can also score a tensor directly to compare metrics before storing results. These calls return raw scores in input row order.
 
 ```python
-from goldener.select import DistanceType
+from goldener.distance import DistanceType
 
 # Use nonzero vectors so every row has a direction for cosine comparison.
 metric_vectors = embeddings + 1.0

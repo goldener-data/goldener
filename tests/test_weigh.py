@@ -6,7 +6,7 @@ import torch
 from torch.utils.data import Dataset
 
 from goldener.reduce import GoldReductionTool, GoldReductionToolWithFit
-from goldener.select import DistanceType
+from goldener.distance import DistanceType
 from goldener.torch_utils import collate_keeping_sequences_as_sequences
 from goldener.weigh import (
     GoldDensityWeigher,

@@ -12,11 +12,8 @@ used to choose the data to annotate and, by the `goldener.split.GoldSplitter`, t
 
 import math
 from abc import ABC, abstractmethod
-from enum import Enum
-from functools import partial
 from logging import getLogger
 from typing import Callable, Any
-from typing_extensions import assert_never
 
 import jax
 import numpy as np
@@ -35,7 +32,7 @@ from tqdm import tqdm
 
 from goldener.clusterize import get_random_chunk_assignment
 from goldener.do import GoldDoerWithTable
-from goldener.distance import cosine_distance
+from goldener.distance import DistanceType
 from goldener.pxt_utils import (
     set_value_to_idx_rows,
     GoldPxtTorchDataset,
@@ -59,34 +56,6 @@ from goldener.utils import (
 )
 
 logger = getLogger(__name__)
-
-
-class DistanceType(Enum):
-    """Supported pairwise distance metrics for tensor tools."""
-
-    EUCLIDEAN = "euclidean"
-    COSINE = "cosine"
-
-    @property
-    def distance_function(self) -> Callable[[torch.Tensor, torch.Tensor], torch.Tensor]:
-        """Return the pairwise distance callable for this metric.
-
-        Returns:
-            A callable accepting tensors shaped `(num_queries, feature_dim)` and
-            `(num_references, feature_dim)`, returning distances shaped
-            `(num_queries, num_references)`. Euclidean distance uses `torch.cdist`
-            without its matrix-multiplication shortcut; cosine distance uses
-            `goldener.distance.cosine_distance`.
-        """
-        if self is DistanceType.EUCLIDEAN:
-            return partial(
-                torch.cdist,
-                compute_mode="donot_use_mm_for_euclid_dist",
-            )
-        elif self is DistanceType.COSINE:
-            return cosine_distance
-        else:
-            assert_never(self)
 
 
 class GoldSelectionTool(ABC):
