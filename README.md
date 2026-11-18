@@ -119,7 +119,7 @@ selected = GoldSelector.get_selection_indices(
 ```
 
 By default, `GoldSelector` uses `GoldGreedyKernelPointsSelectionTool`, which relies on Coreax. Coreax is not
-installed on Windows, so on Windows pass another selection tool:
+installed on Windows, so on Windows replace the `GoldSelector` above with one that uses another selection tool:
 
 ```python
 from goldener import GoldGreedyKCenterSelectionTool
