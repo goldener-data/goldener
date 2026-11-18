@@ -91,6 +91,7 @@ from goldener import (
     GoldTensorVectorizationTool,
 )
 
+# my_model, my_layers, and dataset are user-supplied.
 gd = GoldDescriptor(
     table_path="my_table_for_description",
     embedder=GoldTorchEmbeddingTool(
@@ -99,16 +100,21 @@ gd = GoldDescriptor(
             layers=my_layers,
         )
     ),
-    vectorizer=GoldTensorVectorizationTool()
+    vectorizer=GoldTensorVectorizationTool(),
 )
 
+# Descriptor stores vectors under description_key (default "embeddings").
 gs = GoldSelector(
-    table_path="my_table_for_selection", selection_key="selection"
+    table_path="my_table_for_selection",
+    vectorized_key=gd.description_key,
 )
 
 description = gd.describe_in_table(dataset)
 selection_table = gs.select_in_table(description, 100, "to_annotate")
-selected = GoldSelector.get_selection_indices(selection_table, "to_annotate", "selection")
+selected = GoldSelector.get_selection_indices(
+    selection_table,
+    value="to_annotate",
+)
 
 ```
 
@@ -126,8 +132,13 @@ from goldener import (
     GoldSelector,
 )
 
-gd = GoldDescriptor(...) # reuse the descriptor used for smart sampling
-gselector = GoldSelector(...)
+# Reuse the descriptor from smart sampling (vectorizer included).
+# dataset is user-supplied. The selector must read the descriptor output column.
+gd = GoldDescriptor(...)
+gselector = GoldSelector(
+    table_path="my_table_for_selection",
+    vectorized_key=gd.description_key,
+)
 gs = GoldSplitter(
     sets=[GoldSet("train", 0.7), GoldSet("val", 0.3)],
     descriptor=gd,
@@ -135,7 +146,7 @@ gs = GoldSplitter(
 )
 
 split_table = gs.split_in_table(dataset)
-splits = gs.get_split_indices(
+splits = GoldSplitter.get_split_indices(
     split_table, selection_key="selected", idx_key="idx"
 )
 train_indices = splits["train"]
@@ -154,24 +165,30 @@ from goldener import (
     GoldClusterizer,
     GoldSKLearnClusteringTool,
     GoldDescriptor,
-    GoldTorchEmbeddingTool,
-    GoldTorchEmbeddingToolConfig,
-    GoldTensorVectorizationTool,
 )
 from sklearn.cluster import KMeans
 
-gd = GoldDescriptor(...) # reuse the descriptor used for smart sampling
+# Reuse the descriptor from smart sampling (vectorizer included).
+# dataset is user-supplied.
+gd = GoldDescriptor(...) 
+n_clusters = 10
 gcluster = GoldClusterizer(
     table_path="my_table_for_clusterization",
-    clustering_tool=GoldSKLearnClusteringTool(KMeans(n_clusters=10)),
+    clustering_tool=GoldSKLearnClusteringTool(KMeans(n_clusters=n_clusters)),
     cluster_key="cluster",
+    vectorized_key=gd.description_key,
 )
 
 description = gd.describe_in_table(dataset)
-clustered_table = gcluster.clusterize_in_table(description)
+clustered_table = gcluster.cluster_in_table(description, n_clusters=n_clusters)
 
-for cluster_id in range(10):
-    cluster_indices = get_cluster_indices(clustered_table, "cluster", cluster_id)
+for cluster_id in range(n_clusters):
+    cluster_indices = GoldClusterizer.get_cluster_indices(
+        clustered_table,
+        cluster_key="cluster",
+        cluster_idx=cluster_id,
+        idx_key="idx",
+    )
 
     # sample few samples and use them to define annotation guidelines for this cluster
 
@@ -202,12 +219,13 @@ can hurt how well a model learns to recognize the underrepresented cases.
 Goldener proposes a batch sampler grouping data into groups of similar content, and then drawing samples so each batch is spread across clusters as evenly as possible.
 
 ```python
-from goldener.organize import GoldClusterizedBatchSampler
-from goldener import GoldClusterizer, GoldDescriptor, GoldSKLearnClusteringTool
-from sklearn.cluster import KMeans
+from goldener import GoldClusterizedBatchSampler, GoldClusterizer, GoldDescriptor
 
-gd = GoldDescriptor(...)  # reuse the descriptor used for smart sampling
-gc = GoldClusterizer(...)  # reuse the clusterizer used for annotation guidelines
+# Reuse the descriptor and clusterizer from earlier examples.
+# Keep vectorized_key aligned with gd.description_key on the clusterizer.
+# my_dataset is user-supplied.
+gd = GoldDescriptor(...) 
+gc = GoldClusterizer(...)
 
 batch_sampler = GoldClusterizedBatchSampler(
     dataset=my_dataset,
@@ -231,13 +249,23 @@ and restart limitations. Raw scores are stored per vector; retrieval defaults to
 averaging by sample `idx`, then dividing by the maximum returned score.
 
 ```python
-from goldener import GoldDensityWeigher, GoldDescriptor, GoldVectorizer
+from goldener import (
+    GoldDensityWeigher,
+    GoldDescriptor,
+    GoldTensorVectorizationTool,
+    GoldVectorizer,
+)
 
+# Explicit vectorization stage: descriptor embeddings -> vectorized column.
+# dataset, and embedder settings inside GoldDescriptor(...), are user-supplied.
 described = GoldDescriptor(...).describe_in_table(dataset)
-vectors = GoldVectorizer(...).vectorize_in_table(described)
-weigher = GoldDensityWeigher("weights")
+vectors = GoldVectorizer(
+    table_path="my_table_for_vectorization",
+    vectorizer=GoldTensorVectorizationTool(),
+).vectorize_in_table(described)
+weigher = GoldDensityWeigher(table_path="my_table_for_weights")
 weighted = weigher.weigh_in_table(vectors)
-sample_weights = weigher.get_weights_per_idx(weighted)
+sample_weights = GoldDensityWeigher.get_weights_per_idx(weighted)
 ```
 
 # Installation
@@ -285,7 +313,7 @@ uv sync --all-extras  # Install all dependencies including development dependenc
 
 4. Run tests:
 ```bash
-uv run pytest .
+uv run pytest tests/
 ```
 
 5. Run type checking with mypy:
@@ -314,9 +342,8 @@ uv run pre-commit run --all-files
 The pre-commit hooks will automatically run:
 - mypy for type checking
 - ruff for linting and formatting
-- pytest for tests
 
-whenever you make a commit.
+whenever you make a commit. Run tests separately with `uv run pytest tests/`.
 
 8. Generate the developer API documentation:
 ```bash
