@@ -890,10 +890,12 @@ class GoldDensityWeigher(GoldDoerWithTable):
 
         # do not recompute weights for already processed vectors
         available_query = weight_col == None  # noqa: E711
+        label_scope = ""
         if label_value is not None:
             assert self.label_key is not None
             label_col = get_expr_from_column_name(weighing_table, self.label_key)
             available_query = available_query & (label_col == label_value)
+            label_scope = f" for label '{label_value}'"
 
         weighing_pool = weighing_table.where(available_query)
 
@@ -901,7 +903,7 @@ class GoldDensityWeigher(GoldDoerWithTable):
         if weighing_pool.count() == 0:
             return
 
-        logger.info(f"Starting density weighing for label '{label_value}'")
+        logger.info(f"Starting density weighing{label_scope}")
         to_weigh_vector_indices = [
             int(row["idx_vector"])
             for row in weighing_pool.select(weighing_table.idx_vector).collect()
@@ -917,7 +919,7 @@ class GoldDensityWeigher(GoldDoerWithTable):
             raise ValueError("Each weighing chunk must contain at least k + 2 vectors.")
         for chunk_id, chunk_vector_indices in enumerate(chunk_assignment):
             logger.info(
-                f"Weighing {len(chunk_vector_indices)} vectors for label '{label_value}' "
+                f"Weighing {len(chunk_vector_indices)} vectors{label_scope} "
                 f"from chunk {chunk_id}"
             )
 
@@ -942,8 +944,7 @@ class GoldDensityWeigher(GoldDoerWithTable):
                 ]
             )
             logger.info(
-                f"Weighed {len(indices)} vectors after the current chunk "
-                f"for label '{label_value}'"
+                f"Weighed {len(indices)} vectors after the current chunk{label_scope}"
             )
 
     def _compute_weights(self, vectors: torch.Tensor) -> torch.Tensor:

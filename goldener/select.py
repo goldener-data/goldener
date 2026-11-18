@@ -1723,10 +1723,12 @@ class GoldSelector(GoldDoerWithTable):
         # Then, the same data point can be selected multiple times if it has multiple vectors selected.
         # To achieve select_count of unique data points, we loop until we have enough unique data points selected.
         available_query = selection_col == None  # noqa: E711
+        selection_scope = f"value '{value}'"
         if label_value is not None:
             assert self.label_key is not None
             label_col = get_expr_from_column_name(selection_table, self.label_key)
             available_query = available_query & (label_col == label_value)  # noqa: E712 E711
+            selection_scope += f" and label '{label_value}'"
 
         if restrict_to is not None:
             restricted_idx_col = get_expr_from_column_name(
@@ -1736,7 +1738,7 @@ class GoldSelector(GoldDoerWithTable):
 
         while current_selected_count < select_count:
             logger.info(
-                f"Starting coresubset selection for value '{value}' and label '{label_value}'"
+                f"Starting coresubset selection for {selection_scope}"
                 f" with target count {select_count} and already selected count {already_selected_count}"
             )
             loop_start = (
@@ -1761,14 +1763,14 @@ class GoldSelector(GoldDoerWithTable):
             loop_select_count = select_count - current_selected_count
             if loop_select_count != select_count:
                 logger.info(
-                    f"{current_selected_count} samples have already been selected for value '{value}' and label '{label_value}'. "
+                    f"{current_selected_count} samples have already been selected for {selection_scope}. "
                     f"Selecting the remaining {loop_select_count} samples to reach the target count {select_count}"
                 )
 
             if loop_select_count == still_selectable:
                 logger.info(
-                    f"Selecting all the remaining {still_selectable} samples for value"
-                    f" '{value}' and label '{label_value}' to reach the target count {select_count}"
+                    f"Selecting all the remaining {still_selectable} samples for "
+                    f"{selection_scope} to reach the target count {select_count}"
                 )
                 set_value_to_idx_rows(
                     table=selection_table,
@@ -1807,8 +1809,8 @@ class GoldSelector(GoldDoerWithTable):
                     continue
 
                 logger.info(
-                    f"Selecting {chunk_select_count} samples for value '{value}' and "
-                    f"label '{label_value}' from a chunk of {len(chunk_indices)} vectors"
+                    f"Selecting {chunk_select_count} samples for {selection_scope} "
+                    f"from a chunk of {len(chunk_indices)} vectors"
                 )
 
                 # update the vector available for selection because the selection from previous chunks
@@ -1826,7 +1828,7 @@ class GoldSelector(GoldDoerWithTable):
                 if len(chunk_vector_indices_not_selected) == 0:
                     logger.info(
                         f"No more vector available for selection in the current "
-                        f"chunk for value '{value}' and label '{label_value}', skipping the chunk"
+                        f"chunk for {selection_scope}, skipping the chunk"
                     )
                     continue
 
@@ -1926,12 +1928,12 @@ class GoldSelector(GoldDoerWithTable):
 
                 logger.info(
                     f"Selected {current_selected_count} samples "
-                    f"after the current chunk for value '{value}' and label '{label_value}'. "
+                    f"after the current chunk for {selection_scope}. "
                 )
 
             logger.info(
                 f"Selected {current_selected_count} samples in the current loop "
-                f"for value '{value}' and label '{label_value}'."
+                f"for {selection_scope}."
             )
 
             if current_selected_count == loop_start:
