@@ -42,27 +42,31 @@ def validate_positive_integer(
 
 
 def validate_positive_number(
-    value: object, name: str, *, allow_zero: bool = False
+    value: object, name: str, *, allow_none: bool = False, allow_zero: bool = False
 ) -> None:
-    """Validate a finite positive real number, optionally accepting zero.
+    """Validate a finite positive real number, optionally accepting zero or `None`.
 
     Args:
         value: Real scalar to validate. Booleans are not accepted.
         name: Parameter name included in the error message.
+        allow_none: Whether `None` is also valid. Defaults to `False`.
         allow_zero: Whether zero is valid. Defaults to `False`.
 
     Raises:
         ValueError: If the value is not finite, is not a real scalar, or is
-            outside the permitted range.
+            outside the permitted range, and is not an allowed `None`.
     """
+    if value is None and allow_none:
+        return
     requirement = "nonnegative" if allow_zero else "positive"
+    suffix = " or None" if allow_none else ""
     if (
         isinstance(value, bool)
         or not isinstance(value, Real)
         or not math.isfinite(value)
         or (value < 0 if allow_zero else value <= 0)
     ):
-        raise ValueError(f"{name} must be finite and {requirement}.")
+        raise ValueError(f"{name} must be finite and {requirement}{suffix}.")
 
 
 def validate_vectorized_input(x: torch.Tensor, tool_name: str) -> None:

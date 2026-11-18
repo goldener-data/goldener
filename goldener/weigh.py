@@ -1055,8 +1055,7 @@ class GoldDensityWeigher(GoldDoerWithTable):
             RuntimeError: If any vector in the table lacks a score, or no scores
                 are found for the requested filter.
         """
-        if max_raw_score is not None:
-            validate_positive_number(max_raw_score, "max_raw_score")
+        validate_positive_number(max_raw_score, "max_raw_score", allow_none=True)
 
         weight_col = get_expr_from_column_name(table, weight_key)
         if table.where(weight_col == None).count() > 0:  # noqa: E711
