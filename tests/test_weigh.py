@@ -572,7 +572,49 @@ class TestGoldDensityWeigher:
         assert weigher.get_weights_per_idx(table, aggregation=max) == pytest.approx(
             {0: 1.0, 1: 2 / 3}
         )
+        assert weigher.get_weights_per_idx(table, max_raw_score=1.5) == {0: 1.0, 1: 1.0}
+        assert weigher.get_weights_per_idx(
+            table, normalize=False, max_raw_score=1.5
+        ) == {0: 1.5, 1: 1.5}
+        assert weigher.get_weights_per_idx(
+            table, aggregation=max, normalize=False, max_raw_score=2.5
+        ) == {0: 2.5, 1: 2.0}
+        assert weigher.get_weights_per_idx(
+            table, aggregation=max, normalize=False, max_raw_score=3.0
+        ) == {0: 3.0, 1: 2.0}
+        assert weigher.get_weights_per_idx(
+            table, aggregation=max, max_raw_score=2.5
+        ) == pytest.approx({0: 1.0, 1: 0.8})
+        assert weigher.get_weights_per_idx(
+            table, idx_key="idx_vector", max_raw_score=2.0
+        ) == {21: 0.5, 22: 1.0, 23: 1.0}
+        assert weigher.get_weights_per_idx(
+            table, idx_key="idx_vector", normalize=False, max_raw_score=100.0
+        ) == {21: 1.0, 22: 3.0, 23: 2.0}
         assert {row["idx_vector"]: row["weight"] for row in table.collect()} == original
+
+    @pytest.mark.parametrize(
+        "max_raw_score",
+        [0.0, -1.0, float("nan"), float("inf"), True, "2.0"],
+        ids=["zero", "negative", "nan", "inf", "bool", "string"],
+    )
+    def test_getter_rejects_invalid_max_raw_score(self, max_raw_score):
+        weigher = GoldDensityWeigher(
+            "unit_test.invalid_max_raw_score", weigher=FixedScoreWeigher([1.0, 2.0])
+        )
+        table = weigher.weigh_in_table(
+            VectorDataset(
+                [
+                    {"idx": 0, "vectorized": torch.tensor([0.0])},
+                    {"idx": 1, "vectorized": torch.tensor([1.0])},
+                ]
+            )
+        )
+
+        with pytest.raises(
+            ValueError, match="max_raw_score must be finite and positive"
+        ):
+            weigher.get_weights_per_idx(table, max_raw_score=max_raw_score)
 
     def test_zero_raw_scores_remain_zero_when_normalized(self):
         dataset = VectorDataset(
