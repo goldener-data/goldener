@@ -458,7 +458,10 @@ class TestGoldDensityWeigher:
         again.weigh_in_table(source)
         assert new_tool.calls == 0
 
-    def test_weigh_in_dataset_snapshot_survives_drop_table(self):
+    def test_weigh_in_dataset_snapshot_survives_drop_table(
+        self, caplog: pytest.LogCaptureFixture
+    ):
+        caplog.set_level("INFO", logger="goldener.weigh")
         dataset = VectorDataset(
             [
                 {"idx": 0, "vectorized": torch.tensor([0.0, 1.0])},
@@ -470,6 +473,8 @@ class TestGoldDensityWeigher:
         )
 
         result = weigher.weigh_in_dataset(dataset)
+        assert "Starting density weighing" in caplog.messages
+        assert all("label 'None'" not in message for message in caplog.messages)
 
         assert len(result) == 2
         assert next(iter(result))["weight"] > 0

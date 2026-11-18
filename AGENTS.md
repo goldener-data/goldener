@@ -60,6 +60,8 @@ intermediate results so operations can resume without recomputing completed work
 - Validate invalid public inputs with informative exceptions, normally `ValueError`.
   Use `NotImplementedError` for unsupported capabilities, following the relevant API.
   Use module-level loggers for operational messages and warnings.
+- Omit label clauses from progress logs when no label is selected, including
+  when an operation has no `label_key`.
 - Keep changes focused. Do not silently change device, dtype, shape, index meaning,
   persistence behavior, or randomness while adding an algorithm or option.
 - When exposing a new root-level public API, update both imports and `__all__` in

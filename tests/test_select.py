@@ -203,8 +203,9 @@ class TestGoldSelector:
         ]
         assert set(row_indices) == {0, 1}
 
-    def test_select_in_table_from_dataset(self):
+    def test_select_in_table_from_dataset(self, caplog: pytest.LogCaptureFixture):
         table_path = "unit_test.test_select_from_dataset"
+        caplog.set_level("INFO", logger="goldener.select")
 
         dataset = DummyDataset(
             [{"vectorized": torch.rand(5), "idx": idx} for idx in range(100)]
@@ -217,6 +218,12 @@ class TestGoldSelector:
         selection_table = selector.select_in_table(
             dataset, select_size=10, value="train"
         )
+        assert any(
+            "Starting coresubset selection for value 'train' with target count"
+            in message
+            for message in caplog.messages
+        )
+        assert all("label 'None'" not in message for message in caplog.messages)
 
         assert selection_table.count() == 100
         assert (
