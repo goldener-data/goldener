@@ -1480,10 +1480,12 @@ class GoldSelector(GoldDoerWithTable):
         selection_key: str,
         label_key: str | None = None,
         label_value: str | None = None,
+        idx_key: str = "idx",
         restrict_to: set[int] | None = None,
         restriction_idx_key: str = "idx_vector",
     ) -> Query:
         """Get the query for samples not selected yet (selection column is null)."""
+        idx_col = get_expr_from_column_name(table, idx_key)
         selection_col = get_expr_from_column_name(table, selection_key)
         query = selection_col == None  # noqa: E711
         if label_value is not None and label_key is not None:
@@ -1492,7 +1494,9 @@ class GoldSelector(GoldDoerWithTable):
         if restrict_to is not None:
             restrict_idx_col = get_expr_from_column_name(table, restriction_idx_key)
             query = query & restrict_idx_col.isin(restrict_to)
-        return table.where(query)
+        # Mirror get_selection_pxt_query: one row per sample idx, even when a
+        # sample has multiple idx_vector rows.
+        return table.where(query).select(idx_col).distinct()
 
     @classmethod
     def _get_unselected_count(
@@ -1501,6 +1505,7 @@ class GoldSelector(GoldDoerWithTable):
         selection_key: str,
         label_key: str | None = None,
         label_value: str | None = None,
+        idx_key: str = "idx",
         restrict_to: set[int] | None = None,
         restriction_idx_key: str = "idx_vector",
     ) -> int:
@@ -1510,9 +1515,26 @@ class GoldSelector(GoldDoerWithTable):
             selection_key=selection_key,
             label_key=label_key,
             label_value=label_value,
+            idx_key=idx_key,
             restrict_to=restrict_to,
             restriction_idx_key=restriction_idx_key,
         ).count()
+
+    @staticmethod
+    def _get_unselected_indices(
+        table: Table,
+        selection_key: str,
+        idx_key: str = "idx",
+    ) -> set[int]:
+        """Get the indices of samples whose selection column is still null."""
+        return {
+            row[idx_key]
+            for row in GoldSelector._get_unselected_query(
+                table=table,
+                selection_key=selection_key,
+                idx_key=idx_key,
+            ).collect()
+        }
 
     def _sequential_select(
         self,

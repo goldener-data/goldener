@@ -973,6 +973,14 @@ class TestGoldSelector:
             table=src_table, value="train", selection_key="selected"
         )
 
+        unselected_indices = {
+            row["idx"]
+            for row in GoldSelector._get_unselected_query(
+                table=src_table,
+                selection_key="selected",
+            ).collect()
+        }
+        assert unselected_indices == set(range(50, 100))
         assert (
             GoldSelector._get_unselected_count(
                 table=src_table,
