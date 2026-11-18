@@ -118,6 +118,10 @@ selected = GoldSelector.get_selection_indices(
 
 ```
 
+By default, `GoldSelector` uses `GoldGreedyKernelPointsSelectionTool`, which relies on Coreax. Coreax is not
+installed on Windows, so on Windows pass another tool, for example
+`selection_tool=GoldGreedyKCenterSelectionTool(device="cpu")`.
+
 ## Splitting annotated data in train and validation sets
 
 Goldener can split data between the train and validation sets ensuring that the training set is containing
