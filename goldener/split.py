@@ -45,21 +45,26 @@ class GoldSet:
     """Configuration for a gold set used for splitting.
 
     Attributes:
-        name: Name of the gold set (None if the set is for not selected data).
+        name: Non-null name of the gold set.
         size: Size (ratio or actual number) of samples to assign to this set (between 0 and 1). If a ratio, this value
         cannot be one of 0 or 1 (goal is to select a subset of the full dataset). If a number, it must be strictly
         positive and less than the total number of samples in the dataset.
     """
 
-    name: str | None
+    name: str
     size: float | int
 
     def __post_init__(self) -> None:
         """Validate the GoldSet configuration after initialization.
 
         Raises:
+            TypeError: If `name` is not a non-null string.
             ValueError: If ratio is not between 0 and 1 (exclusive).
         """
+        if not isinstance(self.name, str):
+            raise TypeError(
+                f"name must be a non-null string, got {type(self.name).__name__}."
+            )
         if isinstance(self.size, float) and not (0 < self.size < 1):
             raise ValueError("Size as float must be between 0 and 1.")
         elif isinstance(self.size, int) and self.size <= 0:
@@ -358,26 +363,6 @@ class GoldSplitter(GoldDoer):
 
         return set_indices
 
-    def _selection_count(self, table: Table, set_name: str | None) -> int:
-        """Count samples for a set; a None name means the still-unselected samples."""
-        if set_name is None:
-            return self.selector._get_unselected_count(
-                table, selection_key=self.selector.selection_key
-            )
-        return self.selector.get_selection_count(
-            table, selection_key=self.selector.selection_key, value=set_name
-        )
-
-    def _selection_indices(self, table: Table, set_name: str | None) -> set[int]:
-        """Get sample indices for a set; a None name means the still-unselected samples."""
-        if set_name is None:
-            return self.selector._get_unselected_indices(
-                table, selection_key=self.selector.selection_key
-            )
-        return self.selector.get_selection_indices(
-            table, selection_key=self.selector.selection_key, value=set_name
-        )
-
     def split_in_dataset(
         self,
         to_split: Dataset | Table,
@@ -485,8 +470,10 @@ class GoldSplitter(GoldDoer):
                     f"Last set '{gold_set.name}' has no remaining samples to select from."
                 )
 
-            already_selected_count = self._selection_count(
-                selection_table, gold_set.name
+            already_selected_count = self.selector.get_selection_count(
+                selection_table,
+                selection_key=self.selector.selection_key,
+                value=gold_set.name,
             )
             if already_selected_count == set_count:
                 logger.info(f"{gold_set.name} has already been fully selected.")
@@ -522,8 +509,10 @@ class GoldSplitter(GoldDoer):
                 selection_col = get_expr_from_column_name(
                     selection_table, self.selector.selection_key
                 )
-                already_in_set_count = self._selection_count(
-                    selection_table, gold_set.name
+                already_in_set_count = self.selector.get_selection_count(
+                    table=selection_table,
+                    selection_key=self.selector.selection_key,
+                    value=gold_set.name,
                 )
                 not_yet_selected = selection_table.where(selection_col == None)  # noqa: E711
                 not_yet_selected_count = (
@@ -560,10 +549,6 @@ class GoldSplitter(GoldDoer):
                 )
             for set_cfg in self._sets:
                 set_name = set_cfg.name
-                if set_name is None:
-                    # The unnamed set represents "not selected yet"; it is not
-                    # a real selection value to export.
-                    continue
                 set_indices = self.selector.get_selection_indices(
                     selection_table,
                     selection_key=self.selector.selection_key,
@@ -634,8 +619,10 @@ class GoldSplitter(GoldDoer):
             # so the selection might require multiple iterations to select the
             # expected number of samples for the set, cluster after cluster, based
             # on the number of available samples in each cluster at each iteration
-            already_selected: set[int] = self._selection_indices(
-                selection_table, gold_set.name
+            already_selected: set[int] = self.selector.get_selection_indices(
+                selection_table,
+                selection_key=self.selector.selection_key,
+                value=gold_set.name,
             )
             selected_count = len(already_selected)
             force_all_clusters = (
@@ -757,8 +744,10 @@ class GoldSplitter(GoldDoer):
                     )
 
                     # update the elements allowing to compute the selection specs for the next clusters
-                    already_selected = self._selection_indices(
-                        selection_table, gold_set.name
+                    already_selected = self.selector.get_selection_indices(
+                        selection_table,
+                        selection_key=self.selector.selection_key,
+                        value=gold_set.name,
                     )
                     selected_count = len(already_selected)
                     loop_cluster_selected_counts = {

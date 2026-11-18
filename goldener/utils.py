@@ -15,25 +15,6 @@ import torch
 from goldener.torch_utils import get_unique_values_in_tensor
 
 
-def validate_selection_value(value: object, name: str = "value") -> None:
-    """Validate that a selection value is a non-null string.
-
-    A selection must assign a non-null string so that selected samples can be
-    distinguished from the still-available ones (whose column stays `None`).
-
-    Args:
-        value: Value to validate.
-        name: Parameter name included in the error message.
-
-    Raises:
-        TypeError: If `value` is not a string, including when it is `None`.
-    """
-    if not isinstance(value, str):
-        raise TypeError(
-            f"{name} must be a non-null string, got {type(value).__name__}."
-        )
-
-
 def validate_positive_integer(
     value: object, name: str, *, allow_none: bool = False, allow_zero: bool = False
 ) -> None:
