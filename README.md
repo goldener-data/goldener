@@ -134,7 +134,7 @@ from goldener import (
 
 # Reuse the descriptor from smart sampling (vectorizer included).
 # dataset is user-supplied. The selector must read the descriptor output column.
-gd = GoldDescriptor(...)  # reuse the descriptor used for smart sampling
+gd = GoldDescriptor(...)
 gselector = GoldSelector(
     table_path="my_table_for_selection",
     vectorized_key=gd.description_key,
