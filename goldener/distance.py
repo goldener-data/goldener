@@ -1,7 +1,12 @@
-"""Distance functions between vectors used by the selection algorithms."""
+"""Distance functions between vectors, shared by the selection and density weighing tools."""
+
+from enum import Enum
+from functools import partial
+from typing import Callable
 
 import torch
 import torch.nn.functional as F
+from typing_extensions import assert_never
 
 
 def cosine_distance(x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
@@ -30,3 +35,31 @@ def cosine_distance(x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
     similarity = (x_norm @ y_norm.T).clamp(min=-1.0, max=1.0)
 
     return 1 - similarity
+
+
+class DistanceType(Enum):
+    """Supported pairwise distance metrics for tensor tools."""
+
+    EUCLIDEAN = "euclidean"
+    COSINE = "cosine"
+
+    @property
+    def distance_function(self) -> Callable[[torch.Tensor, torch.Tensor], torch.Tensor]:
+        """Return the pairwise distance callable for this metric.
+
+        Returns:
+            A callable accepting tensors shaped `(num_queries, feature_dim)` and
+            `(num_references, feature_dim)`, returning distances shaped
+            `(num_queries, num_references)`. Euclidean distance uses `torch.cdist`
+            without its matrix-multiplication shortcut; cosine distance uses
+            `goldener.distance.cosine_distance`.
+        """
+        if self is DistanceType.EUCLIDEAN:
+            return partial(
+                torch.cdist,
+                compute_mode="donot_use_mm_for_euclid_dist",
+            )
+        elif self is DistanceType.COSINE:
+            return cosine_distance
+        else:
+            assert_never(self)

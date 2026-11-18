@@ -11,13 +11,13 @@ from sklearn.decomposition import PCA
 import pixeltable as pxt
 from torch.utils.data import Dataset
 
+from goldener.distance import DistanceType
 from goldener.pxt_utils import GoldPxtTorchDataset
 from goldener.reduce import GoldSKLearnReductionTool
 from goldener.select import (
     GoldSelector,
     GoldGreedyFarthestPointSelectionTool,
     GoldGreedyKCenterSelectionTool,
-    DistanceType,
 )
 from goldener.select import (
     GoldGreedyClosestPointSelectionTool,

@@ -39,7 +39,7 @@ from goldener.pxt_utils import (
     get_sample_row_from_idx,
 )
 from goldener.reduce import GoldReductionTool, GoldReductionToolWithFit
-from goldener.select import DistanceType
+from goldener.distance import DistanceType
 from goldener.torch_utils import get_dataset_sample_dict
 from goldener.utils import (
     validate_positive_number,
