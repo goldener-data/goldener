@@ -914,6 +914,37 @@ class TestGoldSelector:
 
         dataset.keep_cache = False
 
+    def test_selection_methods_reject_none_value(self):
+        selector = GoldSelector(table_path="unit_test.test_reject_none")
+
+        with pytest.raises(TypeError, match="value must be a non-null string"):
+            selector.select_in_table(
+                DummyDataset([{"vectorized": torch.rand(5), "idx": 0}]),
+                select_size=1,
+                value=None,
+            )
+
+        with pytest.raises(TypeError, match="value must be a non-null string"):
+            GoldSelector.get_selection_indices(
+                table=object(),
+                value=None,
+                selection_key="selected",
+            )
+
+        with pytest.raises(TypeError, match="value must be a non-null string"):
+            GoldSelector.get_selection_count(
+                table=object(),
+                value=None,
+                selection_key="selected",
+            )
+
+        with pytest.raises(TypeError, match="value must be a non-null string"):
+            GoldSelector.get_selection_pxt_query(
+                table=object(),
+                value=None,
+                selection_key="selected",
+            )
+
     def test_get_selected_indices(self):
         src_path = "unit_test.test_select"
 
@@ -942,12 +973,13 @@ class TestGoldSelector:
             table=src_table, value="train", selection_key="selected"
         )
 
-        sample_indices = GoldSelector.get_selection_indices(
-            table=src_table,
-            value=None,
-            selection_key="selected",
+        assert (
+            GoldSelector._get_unselected_count(
+                table=src_table,
+                selection_key="selected",
+            )
+            == 50
         )
-        assert sample_indices == set(range(50, 100, 1))
 
         sample_indices = GoldSelector.get_selection_indices(
             table=src_table,

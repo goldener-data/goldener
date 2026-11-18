@@ -56,6 +56,7 @@ from goldener.utils import (
     get_sampling_count_from_ratios,
     get_ratios_for_counts,
     force_non_zero_count,
+    validate_selection_value,
 )
 
 logger = getLogger(__name__)
@@ -900,7 +901,7 @@ class GoldSelector(GoldDoerWithTable):
         self,
         select_from: Dataset | Table,
         select_size: int | float,
-        value: str | None,
+        value: str,
         restrict_to: set[int] | None = None,
         restriction_idx_key: str = "idx_vector",
     ) -> Table:
@@ -931,9 +932,12 @@ class GoldSelector(GoldDoerWithTable):
                 and `idx` (index of the sample) and `idx_vector` (index of the vector) columns as well.
 
         Raises:
+            TypeError: If `value` is not a non-null string.
             ValueError: If `restriction_idx_key` is not `"idx"` or `"idx_vector"`,
                 or `select_size` is neither a positive integer nor a float in `(0, 1]`.
         """
+        validate_selection_value(value)
+
         if restriction_idx_key not in ("idx", "idx_vector"):
             raise ValueError(
                 "restriction_idx_key must be either 'idx' or 'idx_vector'."
@@ -1339,7 +1343,7 @@ class GoldSelector(GoldDoerWithTable):
     @staticmethod
     def get_selection_pxt_query(
         table: Table,
-        value: str | None,
+        value: str,
         selection_key: str,
         label_key: str | None = None,
         label_value: str | None = None,
@@ -1365,8 +1369,11 @@ class GoldSelector(GoldDoerWithTable):
                 the samples with the specified value (and label if specified).
 
         Raises:
+            TypeError: If `value` is not a non-null string.
             ValueError: If only one of `label_key` or `label_value` is provided (both must be set together).
         """
+        validate_selection_value(value)
+
         idx_col = get_expr_from_column_name(table, idx_key)
         selection_col = get_expr_from_column_name(table, selection_key)
         if label_value is not None and label_key is not None:
@@ -1386,7 +1393,7 @@ class GoldSelector(GoldDoerWithTable):
     @staticmethod
     def get_selection_indices(
         table: Table,
-        value: str | None,
+        value: str,
         selection_key: str = "selected",
         label_key: str | None = None,
         label_value: str | None = None,
@@ -1432,7 +1439,7 @@ class GoldSelector(GoldDoerWithTable):
     @staticmethod
     def get_selection_count(
         table: Table,
-        value: str | None,
+        value: str,
         selection_key: str,
         label_key: str | None = None,
         label_value: str | None = None,
@@ -1467,13 +1474,53 @@ class GoldSelector(GoldDoerWithTable):
             restriction_idx_key=restriction_idx_key,
         ).count()
 
+    @staticmethod
+    def _get_unselected_query(
+        table: Table,
+        selection_key: str,
+        label_key: str | None = None,
+        label_value: str | None = None,
+        restrict_to: set[int] | None = None,
+        restriction_idx_key: str = "idx_vector",
+    ) -> Query:
+        """Get the query for samples not selected yet (selection column is null)."""
+        selection_col = get_expr_from_column_name(table, selection_key)
+        query = selection_col == None  # noqa: E711
+        if label_value is not None and label_key is not None:
+            label_col = get_expr_from_column_name(table, label_key)
+            query = query & (label_col == label_value)  # noqa: E712
+        if restrict_to is not None:
+            restrict_idx_col = get_expr_from_column_name(table, restriction_idx_key)
+            query = query & restrict_idx_col.isin(restrict_to)
+        return table.where(query)
+
+    @classmethod
+    def _get_unselected_count(
+        cls,
+        table: Table,
+        selection_key: str,
+        label_key: str | None = None,
+        label_value: str | None = None,
+        restrict_to: set[int] | None = None,
+        restriction_idx_key: str = "idx_vector",
+    ) -> int:
+        """Count the samples whose selection column is still null."""
+        return cls._get_unselected_query(
+            table=table,
+            selection_key=selection_key,
+            label_key=label_key,
+            label_value=label_value,
+            restrict_to=restrict_to,
+            restriction_idx_key=restriction_idx_key,
+        ).count()
+
     def _sequential_select(
         self,
         select_from: Table,
         selection_table: Table,
         select_count: int,
         select_ratio: float,
-        value: str | None,
+        value: str,
         restrict_to: set[int] | None = None,
         restriction_idx_key: str = "idx_vector",
     ) -> None:
@@ -1653,7 +1700,7 @@ class GoldSelector(GoldDoerWithTable):
         select_from: Table,
         selection_table: Table,
         select_count: int,
-        value: str | None,
+        value: str,
         label_value: str | None = None,
         from_already: bool = True,
         restrict_to: set[int] | None = None,
@@ -1702,9 +1749,8 @@ class GoldSelector(GoldDoerWithTable):
 
         # validate that there is still enough samples to select from
         current_selected_count = already_selected_count if from_already else 0
-        available_samples_for_selection_count = self.get_selection_count(
+        available_samples_for_selection_count = self._get_unselected_count(
             table=selection_table,
-            value=None,
             selection_key=self.selection_key,
             label_key=self.label_key,
             label_value=label_value,
@@ -1946,7 +1992,7 @@ class GoldSelector(GoldDoerWithTable):
         selection_table: Table,
         select_count: int,
         select_ratio: float,
-        value: str | None,
+        value: str,
         restrict_to: set[int] | None = None,
         restriction_idx_key: str = "idx_vector",
     ) -> None:
@@ -2004,9 +2050,8 @@ class GoldSelector(GoldDoerWithTable):
         assert self.label_key is not None
         label_counts = {}
         for label in labels:
-            count = self.get_selection_count(
+            count = self._get_unselected_count(
                 table=selection_table,
-                value=None,
                 selection_key=self.selection_key,
                 label_key=self.label_key,
                 label_value=label,
@@ -2039,7 +2084,7 @@ class GoldSelector(GoldDoerWithTable):
         selection_table: Table,
         labels: list[str],
         select_ratio: float,
-        value: str | None = None,
+        value: str = "selected",
         restrict_to: set[int] | None = None,
         restriction_idx_key: str = "idx_vector",
     ) -> dict[str, int]:
@@ -2055,9 +2100,8 @@ class GoldSelector(GoldDoerWithTable):
                 restrict_to=restrict_to,
                 restriction_idx_key=restriction_idx_key,
             )
-            + self.get_selection_count(
+            + self._get_unselected_count(
                 table=selection_table,
-                value=None,
                 selection_key=self.selection_key,
                 label_key=self.label_key,
                 label_value=label,
