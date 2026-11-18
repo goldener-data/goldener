@@ -1,3 +1,5 @@
+import sys
+
 import numpy as np
 import pytest
 import torch
@@ -87,6 +89,10 @@ def basic_splitter(descriptor, vectorizer, selector):
     )
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="GoldSelector's default selection tool needs coreax, which is not installed on Windows",
+)
 class TestGoldSplitter:
     def setup_method(self):
         pxt.drop_dir("unit_test", force=True)
