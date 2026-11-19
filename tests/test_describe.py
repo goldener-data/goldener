@@ -104,6 +104,12 @@ class TestGoldDescriptor:
                 id="key_is_identity",
             ),
             pytest.param(
+                {"description_key": "idx_vector"},
+                r"description_key='idx_vector' is reserved for internal indexing "
+                r"and cannot be used as a custom key\.",
+                id="reserved_idx_vector_absent_from_schema",
+            ),
+            pytest.param(
                 {"data_key": "embeddings"},
                 r"share the same column name: 'embeddings'",
                 id="duplicate_keys",

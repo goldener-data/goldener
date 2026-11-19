@@ -336,8 +336,10 @@ class GoldClusterizer(GoldDoerWithTable):
         Raises:
             ValueError: If `chunk` is not a positive integer or None.
             NotImplementedError: If `distribute` is True.
-            ValueError: If key attributes or `to_keep_schema` collide with identity columns
-                or with each other (see `GoldDoerWithTable`).
+            ValueError: If a customizable key uses `idx` or `idx_vector`, collides
+                with an identity column, or shares its value with another key, or
+                if `to_keep_schema` uses one of those columns (see `GoldDoerWithTable`).
+                Both names are identity columns of this class.
         """
         self.clustering_tool = clustering_tool
         self.reducer = reducer

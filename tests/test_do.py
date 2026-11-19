@@ -127,6 +127,23 @@ class _DoerWithKeys(GoldDoerWithTable):
             r"cannot redefine the identity columns \['idx'\]",
             id="kept_identity",
         ),
+        pytest.param(
+            {"output_key": "idx_vector"},
+            r"output_key='idx_vector' is reserved for internal indexing "
+            r"and cannot be used as a custom key\.",
+            id="reserved_idx_vector_absent_from_schema",
+        ),
+        pytest.param(
+            {"label_key": "idx_vector"},
+            r"label_key='idx_vector' is reserved for internal indexing "
+            r"and cannot be used as a custom key\.",
+            id="reserved_label_key_assigned_by_table_doer",
+        ),
+        pytest.param(
+            {"to_keep_schema": {"idx_vector": pxt.Int, "label": pxt.String}},
+            r"cannot use the reserved columns \['idx_vector'\]",
+            id="kept_reserved_idx_vector",
+        ),
     ],
 )
 def test_rejects_column_name_collisions(kwargs, match):
@@ -143,3 +160,37 @@ def test_accepts_kept_column_named_after_key_and_unset_keys():
     )
 
     assert doer.label_key == "label"
+
+
+def test_rejects_reserved_idx_vector_on_every_doer(make_doer):
+    if make_doer is GoldDoer:
+
+        class _PlainDoer(GoldDoer):
+            def __init__(self, data_key: str) -> None:
+                self.data_key = data_key
+                super().__init__()
+
+        reserved = (
+            r"data_key='{}' is reserved for internal indexing "
+            r"and cannot be used as a custom key\."
+        )
+        with pytest.raises(ValueError, match=reserved.format("idx")):
+            _PlainDoer("idx")
+        with pytest.raises(ValueError, match=reserved.format("idx_vector")):
+            _PlainDoer("idx_vector")
+        plain = _PlainDoer("data")
+        assert plain.RESERVED_KEYS == frozenset({"idx", "idx_vector"})
+        return
+
+    cls = make_doer.func
+    if "idx_vector" in cls._MINIMAL_SCHEMA:
+        match = (
+            r"label_key='idx_vector' collides with the identity column 'idx_vector'\."
+        )
+    else:
+        match = (
+            r"label_key='idx_vector' is reserved for internal indexing "
+            r"and cannot be used as a custom key\."
+        )
+    with pytest.raises(ValueError, match=match):
+        make_doer(label_key="idx_vector")
