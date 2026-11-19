@@ -1,7 +1,9 @@
+import numpy as np
 import pytest
 import torch
 import pixeltable as pxt
 
+from sklearn.cluster import BisectingKMeans, Birch, KMeans, MiniBatchKMeans
 from torch.utils.data import Dataset
 
 from goldener.clusterize import (
@@ -231,6 +233,76 @@ class TestGoldSKLearnClusteringTool:
         assert isinstance(preds, torch.Tensor)
         assert preds.shape == (n_samples,)
         assert set(preds.tolist()).issubset(set(range(n_clusters)))
+
+    def test_random_state_initialization(self):
+        def assert_seeded_state(state, seed):
+            expected = np.random.RandomState(seed).get_state(legacy=False)
+            assert state is not None
+            assert np.array_equal(state["state"]["key"], expected["state"]["key"])
+            assert state["state"]["pos"] == expected["state"]["pos"]
+
+        seeded = KMeans(n_clusters=2, random_state=0)
+        tool = GoldSKLearnClusteringTool(seeded)
+        assert tool.random_state is None
+        assert seeded.random_state == 0
+
+        tool.update_random_state(np.random.RandomState(7).get_state(legacy=False))
+        assert_seeded_state(seeded.random_state.get_state(legacy=False), 7)
+        assert_seeded_state(tool.random_state, 7)
+
+        caller_state = np.random.RandomState(3)
+        reused = KMeans(n_clusters=2, random_state=caller_state)
+        assert_seeded_state(GoldSKLearnClusteringTool(reused).random_state, 3)
+        assert reused.random_state is caller_state
+
+        override = KMeans(n_clusters=2, random_state=caller_state)
+        tool = GoldSKLearnClusteringTool(override, random_state=5)
+        assert isinstance(override.random_state, np.random.RandomState)
+        assert override.random_state is not caller_state
+        assert_seeded_state(tool.random_state, 5)
+
+        explicit = KMeans(n_clusters=2)
+        GoldSKLearnClusteringTool(explicit, random_state=caller_state)
+        assert explicit.random_state is caller_state
+
+        with pytest.raises(ValueError, match="must be a NumPy RandomState"):
+            GoldSKLearnClusteringTool(
+                KMeans(n_clusters=2), random_state=np.random.default_rng(0)
+            )
+
+        birch = GoldSKLearnClusteringTool(Birch(n_clusters=2))
+        assert birch.random_state is None
+        with pytest.raises(ValueError, match="has no `random_state` parameter"):
+            birch.update_random_state(caller_state.get_state(legacy=False))
+        with pytest.raises(ValueError, match="has no `random_state` parameter"):
+            GoldSKLearnClusteringTool(Birch(n_clusters=2), random_state=0)
+
+    @pytest.mark.parametrize(
+        "make_estimator",
+        [
+            lambda: KMeans(n_clusters=4),
+            lambda: MiniBatchKMeans(n_clusters=4),
+            lambda: BisectingKMeans(n_clusters=4),
+        ],
+        ids=["kmeans", "minibatch_kmeans", "bisecting_kmeans"],
+    )
+    def test_random_state_roundtrip_restores_assignments(self, make_estimator):
+        x = torch.randn(30, 2, generator=torch.Generator().manual_seed(0))
+        tool = GoldSKLearnClusteringTool(make_estimator(), random_state=0)
+        state = tool.random_state
+        assert state is not None
+
+        first = tool.fit(x, 4)
+        advanced = tool.random_state
+        assert advanced is not None
+        assert not np.array_equal(advanced["state"]["key"], state["state"]["key"])
+        assert not torch.equal(tool.fit(x, 4), first)
+
+        tool.update_random_state(state)
+        assert torch.equal(tool.fit(x, 4), first)
+
+        expected = GoldSKLearnClusteringTool(make_estimator(), random_state=0).fit(x, 4)
+        assert torch.equal(first, expected)
 
 
 class TestGoldClusterizer:
