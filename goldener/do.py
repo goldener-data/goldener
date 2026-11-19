@@ -9,9 +9,6 @@ from goldener.torch_utils import collate_keeping_sequences_as_sequences
 class GoldDoer:
     """Shared initialization for Goldener's data orchestration tools.
 
-    A plain `GoldDoer` does not reserve column names. `idx` and `idx_vector`
-    are reserved only by `GoldDoerWithTable`, which uses intermediate tables.
-
     Args:
         allow_existing: Whether to allow using existing tables. Defaults to True.
         drop_table: Whether to drop intermediate tables. Defaults to False.
@@ -27,43 +24,6 @@ class GoldDoer:
         self.allow_existing = allow_existing
         self.drop_table = drop_table
         self.max_batches = max_batches
-        self._validate_key_attributes()
-
-    def _key_attributes(self) -> dict[str, str]:
-        """Return string attributes whose names contain `key`.
-
-        `None` values are omitted. Non-string values are omitted.
-        """
-        return {
-            name: value
-            for name, value in vars(self).items()
-            if "key" in name and isinstance(value, str)
-        }
-
-    def _identity_column_names(self) -> set[str]:
-        """Return this instance's identity columns, or an empty set.
-
-        Identity columns are the keys of `_MINIMAL_SCHEMA` when that class
-        attribute exists. `GoldDoer` itself has no table schema.
-        """
-        schema: dict[str, type] | None = getattr(self, "_MINIMAL_SCHEMA", None)
-        if schema is None:
-            return set()
-        return set(schema)
-
-    def _validate_key_attributes(self) -> None:
-        """Reject customizable keys that use an identity column name.
-
-        Raises:
-            ValueError: If a customizable key equals an identity column of
-                this instance.
-        """
-        identity_columns = self._identity_column_names()
-        for name, value in self._key_attributes().items():
-            if value in identity_columns:
-                raise ValueError(
-                    f"{name}='{value}' collides with the identity column '{value}'."
-                )
 
 
 class GoldDoerWithTable(GoldDoer):
@@ -73,15 +33,10 @@ class GoldDoerWithTable(GoldDoer):
     `_RESERVED_KEYS` holds `idx` and `idx_vector`. Those names are merged with
     the keys of `_MINIMAL_SCHEMA`, and that merged set is what collision
     checks treat as identity columns. A customizable key cannot use a name in
-    the merged set, even when `_MINIMAL_SCHEMA` lists only `idx`. Customizable
-    keys also cannot share one value across two attributes. `to_keep_schema`
-    cannot redefine a name in the merged set. `label_key` is assigned in this
-    constructor, after `GoldDoer` initialization, and is included in the same
-    check. Child classes must set their own attributes before calling
+    the merged set. Customizable keys also cannot share one value across two
+    attributes. `to_keep_schema` cannot redefine a name in the merged set.
+    Child classes must set their own attributes before calling
     `super().__init__()`.
-
-    Merging `_RESERVED_KEYS` does not add `idx_vector` to a schema that does
-    not store that column.
 
     Args:
         table_path: Path to the PixelTable table where results are stored.
@@ -146,9 +101,34 @@ class GoldDoerWithTable(GoldDoer):
         self.label_key = label_key
         self._validate_column_names()
 
+    def _key_attributes(self) -> dict[str, str]:
+        """Return string attributes whose names contain `key`.
+
+        `None` values are omitted. Non-string values are omitted.
+        """
+        return {
+            name: value
+            for name, value in vars(self).items()
+            if "key" in name and isinstance(value, str)
+        }
+
     def _identity_column_names(self) -> set[str]:
         """Return `_MINIMAL_SCHEMA` keys merged with `_RESERVED_KEYS`."""
-        return super()._identity_column_names() | set(self._RESERVED_KEYS)
+        return set(self._MINIMAL_SCHEMA) | set(self._RESERVED_KEYS)
+
+    def _validate_key_attributes(self) -> None:
+        """Reject customizable keys that use a merged identity name.
+
+        Raises:
+            ValueError: If a customizable key equals a name in
+                `_RESERVED_KEYS` merged with the keys of `_MINIMAL_SCHEMA`.
+        """
+        identity_columns = self._identity_column_names()
+        for name, value in self._key_attributes().items():
+            if value in identity_columns:
+                raise ValueError(
+                    f"{name}='{value}' collides with the identity column '{value}'."
+                )
 
     def _validate_column_names(self) -> None:
         """Check merged identity names, duplicate keys, and kept columns.

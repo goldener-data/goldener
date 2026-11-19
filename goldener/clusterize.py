@@ -339,7 +339,6 @@ class GoldClusterizer(GoldDoerWithTable):
             ValueError: If a customizable key uses `idx` or `idx_vector`, collides
                 with an identity column, or shares its value with another key, or
                 if `to_keep_schema` uses one of those columns (see `GoldDoerWithTable`).
-                Both names are identity columns of this class.
         """
         self.clustering_tool = clustering_tool
         self.reducer = reducer

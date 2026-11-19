@@ -176,6 +176,9 @@ def test_plain_doer_accepts_index_names():
         assert plain.data_key == value
     assert not hasattr(GoldDoer, "RESERVED_KEYS")
     assert not hasattr(GoldDoer, "_RESERVED_KEYS")
+    assert not hasattr(GoldDoer, "_key_attributes")
+    assert not hasattr(GoldDoer, "_identity_column_names")
+    assert not hasattr(GoldDoer, "_validate_key_attributes")
 
 
 def test_table_doer_merges_reserved_keys_with_schema():

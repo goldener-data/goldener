@@ -618,7 +618,6 @@ class GoldVectorizer(GoldDoerWithTable):
             ValueError: If a customizable key uses `idx` or `idx_vector`, collides
                 with an identity column, or shares its value with another key, or
                 if `to_keep_schema` uses one of those columns (see `GoldDoerWithTable`).
-                Both names are identity columns of this class.
         """
         self.vectorizer = vectorizer
         self.data_key = data_key
