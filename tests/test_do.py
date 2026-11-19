@@ -27,9 +27,12 @@ from goldener.weigh import GoldDensityWeigher
     ids=lambda cls: cls.__name__,
 )
 def make_doer(request):
-    cls = request.param
-    if cls is GoldDoer:
-        return cls
+    if request.param is GoldDoer:
+        return GoldDoer
+    return _table_doer(request.param)
+
+
+def _table_doer(cls):
     kwargs = {"table_path": "unit_test.doer"}
     if cls is GoldDescriptor:
         kwargs["embedder"] = GoldTorchEmbeddingTool(
@@ -129,6 +132,23 @@ class _DoerWithKeys(GoldDoerWithTable):
             r"cannot redefine the identity columns \['idx'\]",
             id="kept_identity",
         ),
+        pytest.param(
+            {"output_key": "idx_vector"},
+            r"output_key='idx_vector' collides with the identity column "
+            r"'idx_vector'\.",
+            id="reserved_idx_vector_merged_with_schema",
+        ),
+        pytest.param(
+            {"label_key": "idx_vector"},
+            r"label_key='idx_vector' collides with the identity column "
+            r"'idx_vector'\.",
+            id="reserved_label_key_assigned_by_table_doer",
+        ),
+        pytest.param(
+            {"to_keep_schema": {"idx_vector": pxt.Int, "label": pxt.String}},
+            r"cannot redefine the identity columns \['idx_vector'\]",
+            id="kept_reserved_idx_vector",
+        ),
     ],
 )
 def test_rejects_column_name_collisions(kwargs, match):
@@ -145,3 +165,48 @@ def test_accepts_kept_column_named_after_key_and_unset_keys():
     )
 
     assert doer.label_key == "label"
+
+
+def test_plain_doer_accepts_index_names():
+    class _PlainDoer(GoldDoer):
+        def __init__(self, data_key: str) -> None:
+            self.data_key = data_key
+            super().__init__()
+
+    for value in ("idx", "idx_vector"):
+        plain = _PlainDoer(value)
+        assert plain.data_key == value
+    assert not hasattr(GoldDoer, "RESERVED_KEYS")
+    assert not hasattr(GoldDoer, "_RESERVED_KEYS")
+    assert not hasattr(GoldDoer, "_key_attributes")
+    assert not hasattr(GoldDoer, "_identity_column_names")
+    assert not hasattr(GoldDoer, "_validate_key_attributes")
+
+
+def test_table_doer_merges_reserved_keys_with_schema():
+    assert GoldDoerWithTable._RESERVED_KEYS == frozenset({"idx", "idx_vector"})
+    doer = GoldDoerWithTable(table_path="unit_test.doer")
+    assert doer._identity_column_names() == {"idx", "idx_vector"}
+    descriptor = _table_doer(GoldDescriptor)()
+    assert descriptor._identity_column_names() == {"idx", "idx_vector"}
+
+
+_IDENTITY_IDX_VECTOR = (
+    r"label_key='idx_vector' collides with the identity column 'idx_vector'\."
+)
+
+
+@pytest.mark.parametrize(
+    "cls",
+    [
+        pytest.param(GoldDoerWithTable, id="GoldDoerWithTable"),
+        pytest.param(GoldDescriptor, id="GoldDescriptor"),
+        pytest.param(GoldSelector, id="GoldSelector"),
+        pytest.param(GoldClusterizer, id="GoldClusterizer"),
+        pytest.param(GoldVectorizer, id="GoldVectorizer"),
+        pytest.param(GoldDensityWeigher, id="GoldDensityWeigher"),
+    ],
+)
+def test_rejects_idx_vector_label_on_each_table_doer(cls):
+    with pytest.raises(ValueError, match=_IDENTITY_IDX_VECTOR):
+        _table_doer(cls)(label_key="idx_vector")

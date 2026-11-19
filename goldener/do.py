@@ -39,11 +39,14 @@ class GoldDoer:
 class GoldDoerWithTable(GoldDoer):
     """Shared initialization for data-orchestration features that populate intermediate tables.
 
-    The column names of the table are validated at initialization: the identity
-    columns of `_MINIMAL_SCHEMA`, the values of every attribute whose name contains
-    `key` (e.g. `data_key`, `label_key`) and the columns of `to_keep_schema` must not
-    collide. Child classes must therefore set their own attributes before calling
-    `super().__init__()`, so that the validation sees them.
+    The column names of the table are validated at initialization.
+    `_RESERVED_KEYS` holds `idx` and `idx_vector`. Those names are merged with
+    the keys of `_MINIMAL_SCHEMA`, and that merged set is what collision
+    checks treat as identity columns. A customizable key cannot use a name in
+    the merged set. Customizable keys also cannot share one value across two
+    attributes. `to_keep_schema` cannot redefine a name in the merged set.
+    Child classes must set their own attributes before calling
+    `super().__init__()`.
 
     Attributes:
         table_path: Path to the PixelTable table where results are stored.
@@ -59,13 +62,21 @@ class GoldDoerWithTable(GoldDoer):
         num_workers: Number of workers for the PyTorch DataLoader. Defaults to 0.
         label_key: Optional key for label stratification.
 
+    Raises:
+        ValueError: If a customizable key uses a name in `_RESERVED_KEYS`
+            merged with the keys of `_MINIMAL_SCHEMA`, if customizable keys
+            share the same value, or if `to_keep_schema` defines one of those
+            names.
+
     Note:
         This is the base class for features instantiating data orchestration that
-        populate an intermediate table. `_MINIMAL_SCHEMA` defines the minimal
-        expected columns in the intermediary table. Each subclass should adapt it
-        if needed.
+        populate an intermediate table.  `_MINIMAL_SCHEMA` defines the minimal
+        expected columns in the intermediary table. Each subclass should adapt it if needed.
+        `idx_vector` stays reserved through `_RESERVED_KEYS` when a subclass schema
+        does not list it.
     """
 
+    _RESERVED_KEYS: frozenset[str] = frozenset({"idx", "idx_vector"})
     _MINIMAL_SCHEMA: dict[str, type] = {
         "idx": pxt.Required[pxt.Int],
     }
@@ -122,31 +133,55 @@ class GoldDoerWithTable(GoldDoer):
         self.label_key = label_key
         self._validate_column_names()
 
-    def _validate_column_names(self) -> None:
-        """Check that identity columns, key attributes and kept columns do not collide.
+    def _key_attributes(self) -> dict[str, str]:
+        """Return string attributes whose names contain `key`.
 
-        Identity columns are the keys of `_MINIMAL_SCHEMA`. Key attributes are the
-        instance attributes whose name contains `key` and whose value is a string;
-        None values are ignored. Kept columns may share a name with an input key
-        attribute (e.g. `label_key` and a kept label column).
-
-        Raises:
-            ValueError: If a key attribute is named after an identity column, if key
-                attributes share the same value (all duplicates are reported at once),
-                or if `to_keep_schema` defines an identity column.
+        `None` values are omitted. Non-string values are omitted.
         """
-        identity_columns = set(self._MINIMAL_SCHEMA)
-        key_attributes = {
+        return {
             name: value
             for name, value in vars(self).items()
             if "key" in name and isinstance(value, str)
         }
 
-        for name, value in key_attributes.items():
+    def _identity_column_names(self) -> set[str]:
+        """Return `_MINIMAL_SCHEMA` keys merged with `_RESERVED_KEYS`."""
+        return set(self._MINIMAL_SCHEMA) | set(self._RESERVED_KEYS)
+
+    def _validate_key_attributes(self) -> None:
+        """Reject customizable keys that use a merged identity name.
+
+        Raises:
+            ValueError: If a customizable key equals a name in
+                `_RESERVED_KEYS` merged with the keys of `_MINIMAL_SCHEMA`.
+        """
+        identity_columns = self._identity_column_names()
+        for name, value in self._key_attributes().items():
             if value in identity_columns:
                 raise ValueError(
                     f"{name}='{value}' collides with the identity column '{value}'."
                 )
+
+    def _validate_column_names(self) -> None:
+        """Check merged identity names, duplicate keys, and kept columns.
+
+        Customizable keys are checked by `_validate_key_attributes`. The
+        identity set is the keys of `_MINIMAL_SCHEMA` merged with
+        `_RESERVED_KEYS`, so `idx` and `idx_vector` raise the identity-column
+        error even when the schema lists only `idx`. If that check passes,
+        duplicate customizable keys are reported together. `to_keep_schema`
+        may share a name with an input key attribute (for example `label_key`
+        and a kept label column). It cannot redefine a name in the merged set.
+
+        Raises:
+            ValueError: If a customizable key uses a merged identity name, if
+                customizable keys share the same value (all duplicates are
+                reported at once), or if `to_keep_schema` defines a merged
+                identity name.
+        """
+        self._validate_key_attributes()
+        key_attributes = self._key_attributes()
+        identity_columns = self._identity_column_names()
 
         attributes_by_value: dict[str, list[str]] = defaultdict(list)
         for name, value in key_attributes.items():
@@ -162,7 +197,8 @@ class GoldDoerWithTable(GoldDoer):
             )
 
         if self.to_keep_schema is not None:
-            collisions = sorted(identity_columns & set(self.to_keep_schema))
+            kept_columns = set(self.to_keep_schema)
+            collisions = sorted(identity_columns & kept_columns)
             if collisions:
                 raise ValueError(
                     f"to_keep_schema cannot redefine the identity columns {collisions}."

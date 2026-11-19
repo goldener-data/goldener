@@ -737,8 +737,9 @@ class GoldSelector(GoldDoerWithTable):
                 `GoldGreedyKernelPointsSelectionTool` is not available.
             ValueError: If `exclude_labels` is provided but `label_key` is None.
             NotImplementedError: If `distribute` is True.
-            ValueError: If key attributes or `to_keep_schema` collide with identity columns
-                or with each other (see `GoldDoerWithTable`).
+            ValueError: If a customizable key uses `idx` or `idx_vector`, collides
+                with an identity column, or shares its value with another key, or
+                if `to_keep_schema` uses one of those columns (see `GoldDoerWithTable`).
         """
         if selection_tool is None:
             if not _coreax_is_available():

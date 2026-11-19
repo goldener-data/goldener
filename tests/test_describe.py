@@ -104,6 +104,12 @@ class TestGoldDescriptor:
                 id="key_is_identity",
             ),
             pytest.param(
+                {"description_key": "idx_vector"},
+                r"description_key='idx_vector' collides with the identity column "
+                r"'idx_vector'\.",
+                id="reserved_idx_vector_merged_with_schema",
+            ),
+            pytest.param(
                 {"data_key": "embeddings"},
                 r"share the same column name: 'embeddings'",
                 id="duplicate_keys",
