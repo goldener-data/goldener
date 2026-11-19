@@ -8,6 +8,7 @@ from goldener.clusterize import (
     GoldRandomClusteringTool,
     GoldClusterizer,
     GoldSKLearnClusteringTool,
+    GoldEMeansClusteringTool,
     get_random_chunk_assignment,
 )
 from goldener.reduce import GoldSKLearnReductionTool
@@ -29,6 +30,72 @@ class DummyDataset(Dataset):
             else self._samples[idx]
         )
 
+
+class TestGoldEMeansClusteringTool:
+    def test_fit_and_predict(self):
+        c1 = torch.zeros(10, 4)
+        c2 = torch.full((10, 4), 10.0)
+        x = torch.cat([c1, c2], dim=0)
+
+        tool = GoldEMeansClusteringTool(
+            batch_size=5, n_iter=20, decay=0.5, random_state=42
+        )
+        labels = tool.fit(x, n_clusters=2)
+        assert labels.shape == (20,)
+        assert labels.dtype == torch.long
+        assert tool.centroids is not None
+        assert tool.centroids.shape == (2, 4)
+        assert torch.unique(labels[:10]).numel() == 1
+        assert torch.unique(labels[10:]).numel() == 1
+        assert labels[0].item() != labels[10].item()
+
+        pred = tool.predict(x)
+        assert torch.equal(pred, labels)
+
+    def test_invalid_inputs(self):
+        with pytest.raises(ValueError):
+            GoldEMeansClusteringTool(batch_size=0)
+        with pytest.raises(ValueError):
+            GoldEMeansClusteringTool(n_iter=0)
+        with pytest.raises(ValueError):
+            GoldEMeansClusteringTool(decay=0.0)
+        with pytest.raises(ValueError):
+            GoldEMeansClusteringTool(decay=1.0)
+
+        tool = GoldEMeansClusteringTool(random_state=0)
+        x = torch.randn(6, 3)
+        with pytest.raises(ValueError):
+            tool.predict(x)
+        with pytest.raises(ValueError):
+            tool.fit(x, n_clusters=0)
+        with pytest.raises(ValueError):
+            tool.fit(x, n_clusters=7)
+
+        tool.fit(x, n_clusters=2)
+        with pytest.raises(ValueError):
+            tool.predict(torch.randn(4, 5))
+
+    def test_rejects_1d_and_3d_tensors(self):
+        tool = GoldEMeansClusteringTool(random_state=0)
+        with pytest.raises(ValueError):
+            tool.fit(torch.randn(5), n_clusters=2)
+        with pytest.raises(ValueError):
+            tool.fit(torch.randn(2, 3, 4), n_clusters=2)
+
+    def test_controlled_randomness_and_state_snapshot(self):
+        x = torch.randn(20, 4)
+        tool1 = GoldEMeansClusteringTool(batch_size=4, n_iter=5, random_state=123)
+        labels1 = tool1.fit(x, n_clusters=3)
+
+        tool2 = GoldEMeansClusteringTool(batch_size=4, n_iter=5, random_state=123)
+        labels2 = tool2.fit(x, n_clusters=3)
+        assert torch.equal(labels1, labels2)
+
+        state = tool1.get_random_state()
+        labels_after = tool1.fit(x, n_clusters=3)
+        tool1.set_random_state(state)
+        labels_restored = tool1.fit(x, n_clusters=3)
+        assert torch.equal(labels_after, labels_restored)
 
 class TestGoldRandomClusteringTool:
     def test_fit(self):
