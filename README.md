@@ -211,8 +211,7 @@ x_reduced = reducer.fit_transform(x)  # shape: (50, 2)
 ```
 
 See [Reducing the dimensionality of embeddings](docs/posts/GOLD_REDUCTION.md)
-for fitting versus transforming new rows, which estimators can map new vectors,
-and how `GoldSelector` and `GoldClusterizer` fit a reducer on each label or chunk.
+for the reduction API, fitting versus transforming new rows, and which estimators can map new vectors.
 
 ## Balancing batches during training
 
