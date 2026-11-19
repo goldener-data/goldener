@@ -6,7 +6,7 @@
 
 ## TLDR
 
-High-dimensional embeddings make processing algorithm expensive in memory and time. [Goldener](https://github.com/goldener-data/goldener) can project those vectors with `GoldSKLearnReductionTool` or `GoldTorchModuleReductionTool` before the downstream computation. A fitted linear method such as PCA can then place new rows in the same mapping. The projection drops information, and a visualization method such as t-SNE does not provide that reusable mapping.
+Processing high-dimensional embeddings can be expensive in memory and time. [Goldener](https://github.com/goldener-data/goldener) can project those vectors with `GoldSKLearnReductionTool` or `GoldTorchModuleReductionTool` before the downstream computation. A fitted linear method such as PCA can then place new rows in the same mapping. The projection drops information, and a visualization method such as t-SNE does not provide that reusable mapping.
 
 The following example runs with Goldener installed. The tensor stands in for embeddings that are already vectors. `fit_transform` learns the mapping from these rows and returns one reduced row per input row. `transform` applies that fitted PCA to later rows.
 
