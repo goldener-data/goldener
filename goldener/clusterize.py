@@ -11,10 +11,11 @@ when selecting or splitting it, and to balance the batches during training (`gol
   assignments locally (one per vector by default, a sample with multiple vectors can then have multiple clusters).
 """
 
+import copy
 import math
 from abc import ABC, abstractmethod
 from logging import getLogger
-from typing import Callable, Any
+from typing import Callable, Any, cast
 
 import numpy as np
 import pixeltable as pxt
@@ -80,13 +81,80 @@ class GoldClusteringTool(ABC):
 
 
 class GoldRandomClusteringTool(GoldClusteringTool):
-    """Chunk data randomly into clusters of almost equal size."""
+    """Chunk data randomly into clusters of almost equal size.
+
+    A successful `fit` labels row `i` with `i % n_clusters`, then shuffles those
+    labels with the NumPy generator created in `__init__`. For `num_rows` rows,
+    cluster sizes differ by at most one. When `num_rows % n_clusters` is `r` and
+    `r` is not zero, cluster ids `0` through `r - 1` each receive one more row
+    than the other ids. The shuffle changes which rows receive which ids and
+    leaves those sizes unchanged.
+
+    The generator is `numpy.random.default_rng(random_state)`. Each successful
+    `fit` consumes it, so a later `fit` on the same instance does not repeat the
+    shuffle drawn from the original seed. `random_state` keeps the seed passed
+    to `__init__`. It is not updated by `fit`, and it is not a snapshot of the
+    generator. `generator_state` returns that snapshot. `update_generator_state`
+    restores it. Later fits read `_generator`, not the `random_state` attribute.
+
+    `predict` is not supported. A fit does not store centroids or another mapping
+    that could label new rows.
+
+    Attributes:
+        random_state: Seed passed to `__init__`. An integer seeds the generator.
+            None lets NumPy draw entropy. This is the constructor input, not the
+            generator state after `fit`.
+        _generator: NumPy `Generator` consumed by each successful `fit`.
+    """
 
     def __init__(self, random_state: int | None = None) -> None:
+        """Build the NumPy generator consumed by later fits.
+
+        Args:
+            random_state: Seed for `numpy.random.default_rng`. None draws
+                entropy. Stored on `random_state`. This seed is not a snapshot
+                of the generator after `fit`.
+        """
         self.random_state = random_state
+        self._generator = np.random.default_rng(random_state)
+
+    @property
+    def generator_state(self) -> dict[str, Any]:
+        """Return an independent snapshot of the NumPy generator.
+
+        Reading this property does not advance the generator. The result is a
+        copy of `Generator.bit_generator.state` for the generator built in
+        `__init__`. It is not `random_state`.
+
+        Returns:
+            A detached copy of the bit-generator state.
+        """
+        return copy.deepcopy(cast(dict[str, Any], self._generator.bit_generator.state))
+
+    def update_generator_state(self, state: dict[str, Any]) -> None:
+        """Restore the NumPy generator from a previous snapshot.
+
+        The next successful `fit` uses the restored generator. `random_state`
+        is left unchanged. A copy of `state` is installed so a later `fit` does
+        not mutate the caller's dictionary.
+
+        Args:
+            state: Bit-generator state, as returned by `generator_state`.
+
+        Raises:
+            TypeError: If `state` is not a dictionary.
+            ValueError: If `state` is not a state for this generator's bit
+                generator.
+            KeyError: If `state` omits a key that bit generator requires.
+        """
+        self._generator.bit_generator.state = copy.deepcopy(state)
 
     def fit(self, x: torch.Tensor, n_clusters: int) -> torch.Tensor:
         """Randomly assign each input vector to clusters of roughly the same size.
+
+        Labels row `i` with `i % n_clusters`, then shuffles those labels with
+        this tool's NumPy generator. A successful call advances that generator.
+        A call that raises does not.
 
         Args:
             x: Finite floating tensor shaped `(num_vectors, feature_dim)` with
@@ -94,7 +162,8 @@ class GoldRandomClusteringTool(GoldClusteringTool):
             n_clusters: Number of clusters to form.
 
         Returns:
-            A 1D tensor with one cluster index per input row.
+            A 1D tensor with one cluster index per input row. Cluster sizes
+            follow the labeling above and are not changed by the shuffle.
 
         Raises:
             ValueError: If `x` is not a finite floating 2D tensor with positive
@@ -110,7 +179,7 @@ class GoldRandomClusteringTool(GoldClusteringTool):
             )
 
         cluster_assignment = [i % n_clusters for i in range(total)]
-        np.random.default_rng(self.random_state).shuffle(cluster_assignment)
+        self._generator.shuffle(cluster_assignment)
 
         return torch.tensor(
             cluster_assignment,
