@@ -118,6 +118,19 @@ selected = GoldSelector.get_selection_indices(
 
 ```
 
+By default, `GoldSelector` uses `GoldGreedyKernelPointsSelectionTool`, which relies on Coreax. Coreax is not
+installed on Windows, so on Windows replace the `GoldSelector` above with one that uses another selection tool:
+
+```python
+from goldener import GoldGreedyKCenterSelectionTool
+
+gs = GoldSelector(
+    table_path="my_table_for_selection",
+    vectorized_key=gd.description_key,
+    selection_tool=GoldGreedyKCenterSelectionTool(device="cpu"),
+)
+```
+
 ## Splitting annotated data in train and validation sets
 
 Goldener can split data between the train and validation sets ensuring that the training set is containing
@@ -209,6 +222,9 @@ x = torch.randn(50, 16)
 reducer = GoldSKLearnReductionTool(PCA(n_components=2))
 x_reduced = reducer.fit_transform(x)  # shape: (50, 2)
 ```
+
+See [Reducing the dimensionality of embeddings](docs/posts/GOLD_REDUCTION.md)
+for the reduction API, fitting versus transforming new rows, and which estimators can map new vectors.
 
 ## Balancing batches during training
 

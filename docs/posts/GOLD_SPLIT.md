@@ -175,7 +175,7 @@ vectorized_table = gold_vectorizer.vectorize_in_table(my_dataset)
 The main entry point in the code is [GoldSelector](https://github.com/goldener-data/goldener/blob/main/goldener/select.py).
 
 Multiple algorithms exist to select some data based on the `Description` (vectors) of the samples. [Goldener](https://github.com/goldener-data/goldener) proposes different selection tools inheriting from the `GoldSelectionTool` class, for instance:
-* `GoldGreedyKernelPointsSelectionTool` based on the `GreedyKernelPoints` class from [Coreax](https://coreax.readthedocs.io/en/latest/index.html)
+* `GoldGreedyKernelPointsSelectionTool` based on the `GreedyKernelPoints` class from [Coreax](https://coreax.readthedocs.io/en/latest/index.html) (not available on Windows, where Coreax is not installed)
 * `GoldGreedyKCenterSelectionTool` based on an internal reimplementation of the Greedy K-Center algorithm
 * `GoldZCoreSelectionTool` based on an internal reimplementation of the ZCore method
 
