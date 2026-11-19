@@ -91,9 +91,12 @@ class GoldRandomClusteringTool(GoldClusteringTool):
     leaves those sizes unchanged.
 
     The generator is `numpy.random.default_rng(random_state)`. Each successful
-    `fit` consumes it, so a later `fit` on the same instance does not repeat the
-    shuffle drawn from the original seed. `random_state` keeps the seed passed
-    to `__init__`. It is not updated by `fit`, and it is not a snapshot of the
+    `fit` of one or more rows consumes it, so a later `fit` on the same instance
+    does not repeat the shuffle drawn from the original seed. A one-row fit
+    leaves its only label in place. `Generator.shuffle` draws nothing for a
+    one-element sequence, so that fit draws one value with `Generator.random()`
+    and still advances the generator. `random_state` keeps the seed passed to
+    `__init__`. It is not updated by `fit`, and it is not a snapshot of the
     generator. `generator_state` returns that snapshot. `update_generator_state`
     restores it. Later fits read `_generator`, not the `random_state` attribute.
 
@@ -153,7 +156,10 @@ class GoldRandomClusteringTool(GoldClusteringTool):
         """Randomly assign each input vector to clusters of roughly the same size.
 
         Labels row `i` with `i % n_clusters`, then shuffles those labels with
-        this tool's NumPy generator. A successful call advances that generator.
+        this tool's NumPy generator. A one-row fit does not call `shuffle`.
+        `Generator.shuffle` draws nothing for a one-element sequence, so that
+        fit draws one value with `Generator.random()` and leaves its only label
+        in place. A successful call of one or more rows advances the generator.
         A call that raises does not.
 
         Args:
@@ -179,7 +185,10 @@ class GoldRandomClusteringTool(GoldClusteringTool):
             )
 
         cluster_assignment = [i % n_clusters for i in range(total)]
-        self._generator.shuffle(cluster_assignment)
+        if len(cluster_assignment) == 1:
+            self._generator.random()
+        else:
+            self._generator.shuffle(cluster_assignment)
 
         return torch.tensor(
             cluster_assignment,

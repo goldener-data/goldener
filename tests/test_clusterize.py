@@ -97,7 +97,7 @@ class TestGoldRandomClusteringTool:
         advanced = tool.generator_state
         assert advanced != initial
         second = tool.fit(x, n_clusters)
-        assert not torch.equal(first, second)
+        assert tool.generator_state != advanced
 
         replay = GoldRandomClusteringTool(42)
         assert torch.equal(replay.fit(x, n_clusters), first)
@@ -134,6 +134,20 @@ class TestGoldRandomClusteringTool:
             3,
             3,
         ]
+
+    def test_one_row_fit_advances_generator(self):
+        one_row = torch.tensor([[0.0, 1.0, -1.0]])
+        tool = GoldRandomClusteringTool(42)
+        before = tool.generator_state
+        labels = tool.fit(one_row, 1)
+        after = tool.generator_state
+        assert labels.dtype == torch.int64
+        assert torch.equal(labels, torch.zeros(1, dtype=torch.int64))
+        assert after != before
+
+        tool.update_generator_state(before)
+        assert torch.equal(tool.fit(one_row, 1), torch.zeros(1, dtype=torch.int64))
+        assert tool.generator_state == after
 
     @pytest.mark.parametrize(
         ("state", "exc", "message"),
