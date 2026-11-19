@@ -7,7 +7,7 @@
 
 ## TLDR
 
-[Goldener](https://github.com/goldener-data/goldener) can group vectorized samples by embedding similarity and list the modes in a dataset. Drafting annotation guidelines for a group is one use. Selecting samples from each mode is another. `GoldClusterizer` stores one cluster id per vector. `GoldClusterizer.get_cluster_indices(..., idx_key="idx")` returns the original sample IDs in a group.
+[Goldener](https://github.com/goldener-data/goldener) can group vectorized samples by embedding similarity into a requested number of clusters, which you can read as modes. Drafting annotation guidelines for a group is one use. Selecting samples from each mode is another. `GoldClusterizer` stores one cluster id per vector. `GoldClusterizer.get_cluster_indices(..., idx_key="idx")` returns the original sample IDs in a group.
 
 A cluster is a partition of the vectors that were fitted together. It is not necessarily a ground-truth class, and the integer ids are local to that fit.
 
@@ -56,7 +56,7 @@ This fit uses one population and no chunking, so the two ids are one partition o
 
 ## 1. Introduction
 
-Datasets often mix several modes: different kinds of images, different kinds of text, or different situations inside one nominal class. Embeddings from a pretrained model place similar samples near each other. Clustering those vectors lists the modes. A later step can use the groups in more than one way. One example is to open a few members of each mode and draft annotation guidelines from what is there. Another is to select samples from each mode.
+Datasets often mix several modes: different kinds of images, different kinds of text, or different situations inside one nominal class. Embeddings from a pretrained model place similar samples near each other. Clustering those vectors assigns them to the number of clusters the caller requests. Those clusters can be read as modes. A later step can use the groups in more than one way. One example is to open a few members of each mode and draft annotation guidelines from what is there. Another is to select samples from each mode.
 
 The caller chooses how many clusters to request. The algorithm then assigns the fitted vectors to those ids. Samples that share a cluster share a neighborhood in that fit. They can still belong to different labels, and samples that share a label can fall into different clusters. The stored ids record that partition. A guideline, a sample selection, or another later decision stays separate from the fit.
 
@@ -267,7 +267,7 @@ Distributed clustering is currently unsupported. `distribute=True` raises `NotIm
 
 For a single fit, the TLDR loop lists each cluster id and the sample ids in it. `get_cluster_indices(..., idx_key="idx")` returns those ids as a set, with no order. Open the samples in the original dataset when the next step needs the content.
 
-Those groups can feed more than one decision. Drafting annotation guidelines is one: look at a few members of a mode, including the boundary cases, and write the guideline from what is there. Selecting samples for each mode is another: take ids from each cluster so the selection covers the modes the fit found. In both cases the integer is the id of a fitted partition. It is not a class name, and it is not a ground-truth label.
+Those groups can feed more than one decision. Drafting annotation guidelines is one: look at a few members of a mode, including the boundary cases, and write the guideline from what is there. Selecting samples for each mode is another: take ids from each cluster so the selection covers the requested partition. Those clusters can be read as modes. In both cases the integer is the id of a fitted partition. It is not a class name, and it is not a ground-truth label.
 
 When labels or chunks were used, restrict that reading to one fitted population before treating an id as a group. Per-label retrieval needs `label_key` and `label_value`. A chunked column needs a single unchunked fit, or an external record of chunk membership, before its ids can be read as one partition. Goldener does not store that chunk membership today.
 
