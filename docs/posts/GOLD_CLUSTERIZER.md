@@ -1,4 +1,4 @@
-# GOLDENER <br> Clustering embeddings to define annotation guidelines
+# GOLDENER <br> Clustering embeddings
 
 [**Introduction**](#1-introduction) |
 [**Components**](#2-components) |
@@ -7,7 +7,7 @@
 
 ## TLDR
 
-[Goldener](https://github.com/goldener-data/goldener) can group vectorized samples by embedding similarity so you can inspect the modes in a dataset and draft annotation guidelines for each group. `GoldClusterizer` stores one cluster id per vector. `GoldClusterizer.get_cluster_indices(..., idx_key="idx")` returns the original sample IDs in a group.
+[Goldener](https://github.com/goldener-data/goldener) can group vectorized samples by embedding similarity and list the modes in a dataset. Drafting annotation guidelines for a group is one use. Selecting samples from each mode is another. `GoldClusterizer` stores one cluster id per vector. `GoldClusterizer.get_cluster_indices(..., idx_key="idx")` returns the original sample IDs in a group.
 
 A cluster is a partition of the vectors that were fitted together. It is not necessarily a ground-truth class, and the integer ids are local to that fit.
 
@@ -52,13 +52,13 @@ for cluster_id in range(n_clusters):
     print(cluster_id, sorted(sample_indices))
 ```
 
-This fit uses one population and no chunking, so the two ids are one partition of these eight samples. Label populations and chunking, below, reuse the same integers for separate fits. The toy geometry illustrates the API. It is not a measured improvement in annotation quality.
+This fit uses one population and no chunking, so the two ids are one partition of these eight samples. Label populations and chunking, below, reuse the same integers for separate fits. The toy geometry illustrates the API. It is not a measured result for annotation, selection, or another later use.
 
 ## 1. Introduction
 
-Datasets often mix several modes: different kinds of images, different kinds of text, or different situations inside one nominal class. Embeddings from a pretrained model place similar samples near each other. Clustering those vectors is a way to list the modes, open a few members of each group, and write annotation guidelines that match what is actually in the data.
+Datasets often mix several modes: different kinds of images, different kinds of text, or different situations inside one nominal class. Embeddings from a pretrained model place similar samples near each other. Clustering those vectors lists the modes. A later step can use the groups in more than one way. One example is to open a few members of each mode and draft annotation guidelines from what is there. Another is to select samples from each mode.
 
-The caller chooses how many clusters to request. The algorithm then assigns the fitted vectors to those ids. Samples that share a cluster share a neighborhood in that fit. They can still belong to different labels, and samples that share a label can fall into different clusters. Use the groups to decide what to look at and how to instruct annotators. Keep human labels, or any other supervision, as a separate decision.
+The caller chooses how many clusters to request. The algorithm then assigns the fitted vectors to those ids. Samples that share a cluster share a neighborhood in that fit. They can still belong to different labels, and samples that share a label can fall into different clusters. The stored ids record that partition. A guideline, a sample selection, or another later decision stays separate from the fit.
 
 `GoldClusterizer` orchestrates that assignment and stores it locally. `GoldSKLearnClusteringTool` adapts a scikit-learn estimator. Training batches that draw from clusters are a later step, described in [Smart batching from embeddings and clustering](GOLD_BATCHER.md).
 
@@ -265,9 +265,11 @@ Distributed clustering is currently unsupported. `distribute=True` raises `NotIm
 
 ## 3. Using the groups
 
-For a single fit, the TLDR loop is the inspection step: take each cluster id, retrieve sample ids with `idx_key="idx"`, and open those samples in the original dataset. The set has no order. Sample a few members and write the guideline from the content you see, then review the boundary cases rather than treating the integer as a class name.
+For a single fit, the TLDR loop lists each cluster id and the sample ids in it. `get_cluster_indices(..., idx_key="idx")` returns those ids as a set, with no order. Open the samples in the original dataset when the next step needs the content.
 
-When labels or chunks were used, restrict the review to one fitted population before treating an id as a group. Per-label retrieval needs `label_key` and `label_value`. A chunked column needs a single unchunked fit, or an external record of chunk membership, before its ids can be read as one partition. Goldener does not store that chunk membership today.
+Those groups can feed more than one decision. Drafting annotation guidelines is one: look at a few members of a mode, including the boundary cases, and write the guideline from what is there. Selecting samples for each mode is another: take ids from each cluster so the selection covers the modes the fit found. In both cases the integer is the id of a fitted partition. It is not a class name, and it is not a ground-truth label.
+
+When labels or chunks were used, restrict that reading to one fitted population before treating an id as a group. Per-label retrieval needs `label_key` and `label_value`. A chunked column needs a single unchunked fit, or an external record of chunk membership, before its ids can be read as one partition. Goldener does not store that chunk membership today.
 
 Those sample ids are also the link into later steps. [Smart batching from embeddings and clustering](GOLD_BATCHER.md) uses a `GoldClusterizer` to balance training batches. The batch sampler consumes the stored ids; it does not turn them into ground-truth labels.
 

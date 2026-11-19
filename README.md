@@ -159,9 +159,6 @@ val_indices = splits["val"]
 Among the data, there are often multiple "modes" (e.g. different types of images, different types of text, etc.).
 Goldener can clusterize the data to find these different modes. Then, the different clusters can be leveraged
 to define annotation guidelines for each cluster.
-A cluster is a group in embedding space, and it is not necessarily a ground-truth class.
-See [Clustering embeddings to define annotation guidelines](docs/posts/GOLD_CLUSTERIZER.md)
-for sample and vector IDs, label populations, chunking, and restart limits.
 
 ```python
 from goldener import (
