@@ -220,7 +220,7 @@ The scikit-learn reduction adapter moves inputs to CPU for NumPy and restores th
 
 Each chunk is fitted separately with the same `n_clusters`. The table stores those ids side by side. Cluster `0` from one chunk and cluster `0` from another chunk are not one globally fitted partition. Do not present a chunked `cluster` column, or a loop over `range(n_clusters)` on that column, as a single clustering of the whole dataset.
 
-Every fitted chunk has to be large enough for the estimator. KMeans requires at least `n_clusters` vectors in the chunk. A small remainder can make the call fail. Keep `chunk` at least `n_clusters`, and keep each label population large enough after it is split. When `chunk` is `None` or at least the population size, the population stays in one fit.
+Every fitted chunk has to be large enough for the estimator. KMeans needs at least `n_clusters` vectors in each fit. For `n` pending vectors, the assignment makes `ceil(n / chunk)` fits of nearly equal size, and the smallest fit has `n // ceil(n / chunk)` vectors. That size can be well below `chunk`: 9 vectors with `chunk=4` become three fits of 3, which is too small for `n_clusters=4`. Choose `chunk` so the smallest fit has at least `n_clusters` vectors. With a `label_key`, use each label's pending vector count as `n`. When `chunk` is `None` or at least the population size, that population stays in one fit.
 
 ```python
 chunked = GoldClusterizer(
