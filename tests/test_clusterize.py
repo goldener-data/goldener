@@ -1,3 +1,5 @@
+import re
+
 import numpy as np
 import pytest
 import torch
@@ -32,6 +34,16 @@ class DummyDataset(Dataset):
         )
 
 
+def _same_random_state(left: dict, right: dict) -> bool:
+    return bool(
+        left["bit_generator"] == right["bit_generator"]
+        and np.array_equal(left["state"]["key"], right["state"]["key"])
+        and left["state"]["pos"] == right["state"]["pos"]
+        and left["has_gauss"] == right["has_gauss"]
+        and left["gauss"] == right["gauss"]
+    )
+
+
 class TestGoldRandomClusteringTool:
     def test_fit(self):
         n_clusters = 2
@@ -49,30 +61,145 @@ class TestGoldRandomClusteringTool:
         with pytest.raises(NotImplementedError):
             GoldRandomClusteringTool(42).predict(torch.randn(10, 3))
 
-    def test_with_nclusters_greater_than_total(self):
-        n_clusters = 15
-        total = 10
-        tool = GoldRandomClusteringTool(42)
-        with pytest.raises(
-            ValueError, match="cannot be greater than the number of samples"
-        ):
-            tool.fit(torch.randn(total, 3), n_clusters)
+    def test_constructor_seeds_or_reuses_random_state(self):
+        seeded = GoldRandomClusteringTool(42)
+        expected = np.random.RandomState(42).get_state(legacy=False)
+        assert _same_random_state(seeded.random_state, expected)
+        again = seeded.random_state
+        assert _same_random_state(seeded.random_state, again)
 
-    def test_rejects_1d_tensor(self):
-        """Test that GoldRandomClusteringTool rejects 1D tensor input."""
-        tool = GoldRandomClusteringTool(42)
-        with pytest.raises(
-            ValueError, match="GoldRandomClusteringTool only accepts 2D tensors"
-        ):
-            tool.fit(torch.randn(10), n_clusters=2)
+        caller = np.random.RandomState(3)
+        shared = GoldRandomClusteringTool(caller)
+        before = shared.random_state
+        caller.random()
+        assert not _same_random_state(shared.random_state, before)
 
-    def test_rejects_3d_tensor(self):
-        """Test that GoldRandomClusteringTool rejects 3D tensor input."""
-        tool = GoldRandomClusteringTool(42)
+        fresh = GoldRandomClusteringTool(None)
+        first_read = fresh.random_state
+        assert _same_random_state(fresh.random_state, first_read)
+
         with pytest.raises(
-            ValueError, match="GoldRandomClusteringTool only accepts 2D tensors"
+            ValueError,
+            match=re.escape(
+                "The random state must be a NumPy RandomState, an integer or None, "
+                "got Generator."
+            ),
         ):
-            tool.fit(torch.randn(10, 5, 3), n_clusters=2)
+            GoldRandomClusteringTool(np.random.default_rng(0))
+
+    @pytest.mark.parametrize(
+        ("x", "n_clusters", "message"),
+        [
+            pytest.param(
+                torch.randn(10),
+                2,
+                "GoldRandomClusteringTool only accepts 2D tensors "
+                "(num_vectors, feature_dim). Got shape torch.Size([10]). "
+                "Please ensure your input is already vectorized.",
+                id="1d",
+            ),
+            pytest.param(
+                torch.randn(10, 5, 3),
+                2,
+                "GoldRandomClusteringTool only accepts 2D tensors "
+                "(num_vectors, feature_dim). Got shape torch.Size([10, 5, 3]). "
+                "Please ensure your input is already vectorized.",
+                id="3d",
+            ),
+            pytest.param(
+                torch.randn(10, 3),
+                15,
+                "Number of clusters (15) cannot be greater than "
+                "the number of samples (10).",
+                id="too_many_clusters",
+            ),
+        ],
+    )
+    def test_rejected_fit_does_not_advance_random_state(self, x, n_clusters, message):
+        tool = GoldRandomClusteringTool(42)
+        state = tool.random_state
+        with pytest.raises(ValueError, match=re.escape(message)):
+            tool.fit(x, n_clusters)
+        assert _same_random_state(tool.random_state, state)
+
+    def test_fit_consumes_random_state_and_restore_replays(self):
+        x = torch.randn(10, 3)
+        n_clusters = 2
+        tool = GoldRandomClusteringTool(42)
+        initial = tool.random_state
+
+        first = tool.fit(x, n_clusters)
+        advanced = tool.random_state
+        assert not _same_random_state(advanced, initial)
+        second = tool.fit(x, n_clusters)
+        assert not _same_random_state(tool.random_state, advanced)
+
+        replay = GoldRandomClusteringTool(42)
+        assert torch.equal(replay.fit(x, n_clusters), first)
+        assert torch.equal(replay.fit(x, n_clusters), second)
+
+        returned = tool.random_state
+        held = tool.random_state
+        returned["state"]["key"][0] = 0
+        assert _same_random_state(tool.random_state, held)
+
+        tool.update_random_state(initial)
+        assert _same_random_state(tool.random_state, initial)
+        assert torch.equal(tool.fit(x, n_clusters), first)
+        assert _same_random_state(initial, GoldRandomClusteringTool(42).random_state)
+
+        held_tool = GoldRandomClusteringTool(None)
+        before = held_tool.random_state
+        held_first = held_tool.fit(x, n_clusters)
+        after = held_tool.random_state
+        assert not _same_random_state(after, before)
+        held_tool.update_random_state(before)
+        assert torch.equal(held_tool.fit(x, n_clusters), held_first)
+        assert _same_random_state(held_tool.random_state, after)
+
+        single = GoldRandomClusteringTool(42)
+        before_single = single.random_state
+        single_labels = single.fit(x, 1)
+        assert single_labels.dtype == torch.int64
+        assert torch.equal(single_labels, torch.zeros(10, dtype=torch.int64))
+        assert not _same_random_state(single.random_state, before_single)
+
+        uneven = GoldRandomClusteringTool(42).fit(torch.randn(10, 3), 3)
+        assert [uneven.tolist().count(cluster_id) for cluster_id in range(3)] == [
+            4,
+            3,
+            3,
+        ]
+
+    @pytest.mark.parametrize(
+        ("state", "exc", "message"),
+        [
+            pytest.param(
+                1,
+                TypeError,
+                "state must be a dict or a tuple.",
+                id="not_a_dict",
+            ),
+            pytest.param(
+                {},
+                ValueError,
+                "state dictionary is not valid.",
+                id="empty_dict",
+            ),
+            pytest.param(
+                {"bit_generator": "MT19937"},
+                ValueError,
+                "state dictionary is not valid.",
+                id="incomplete_dict",
+            ),
+        ],
+    )
+    def test_rejected_state_does_not_replace_random_state(self, state, exc, message):
+        tool = GoldRandomClusteringTool(42)
+        before = tool.random_state
+        with pytest.raises(exc, match=re.escape(message)):
+            tool.update_random_state(state)
+        assert _same_random_state(tool.random_state, before)
 
 
 class TestGetRandomChunkAssignment:

@@ -80,13 +80,83 @@ class GoldClusteringTool(ABC):
 
 
 class GoldRandomClusteringTool(GoldClusteringTool):
-    """Chunk data randomly into clusters of almost equal size."""
+    """Chunk data randomly into clusters of almost equal size.
 
-    def __init__(self, random_state: int | None = None) -> None:
-        self.random_state = random_state
+    A successful `fit` labels row `i` with `i % n_clusters`, then shuffles those
+    labels with this tool's NumPy `RandomState`. For `num_rows` rows, cluster
+    sizes differ by at most one. When `num_rows % n_clusters` is `r` and `r` is
+    not zero, cluster ids `0` through `r - 1` each receive one more row than the
+    other ids. The shuffle changes which rows receive which ids and leaves those
+    sizes unchanged.
+
+    The tool always owns a `RandomState`. An integer seeds a new one. None draws
+    entropy. A passed `RandomState` is used as that instance. Each successful
+    `fit` of one or more rows consumes it, so a later `fit` on the same instance
+    does not repeat the shuffle drawn from the original state.
+
+    `predict` is not supported. A fit does not store centroids or another mapping
+    that could label new rows.
+    """
+
+    def __init__(self, random_state: np.random.RandomState | int | None = None) -> None:
+        """Build the NumPy `RandomState` consumed by later fits.
+
+        Args:
+            random_state: Seed or random state for the assignments. An integer
+                seeds a new `RandomState`. None draws entropy. A `RandomState`
+                is used as this tool's own random state.
+
+        Raises:
+            ValueError: If `random_state` is not a `RandomState`, an integer,
+                or None.
+        """
+        if random_state is not None and not isinstance(
+            random_state, int | np.random.RandomState
+        ):
+            raise ValueError(
+                "The random state must be a NumPy RandomState, an integer or None, "
+                f"got {type(random_state).__name__}."
+            )
+        if isinstance(random_state, int) or random_state is None:
+            random_state = np.random.RandomState(random_state)
+        self._random_state = random_state
+
+    @property
+    def random_state(self) -> dict[str, Any]:
+        """Return a snapshot of this tool's random state.
+
+        Reading this property does not advance the random state. The result is
+        the state returned by `RandomState.get_state(legacy=False)`. It is not
+        the seed passed to `__init__`.
+
+        Returns:
+            A snapshot of the current `RandomState`.
+        """
+        return self._random_state.get_state(legacy=False)
+
+    def update_random_state(self, state: dict[str, Any]) -> None:
+        """Restore this tool's random state from a previous snapshot.
+
+        The next successful `fit` uses the restored state.
+
+        Args:
+            state: Random state, as returned by `random_state`.
+
+        Raises:
+            TypeError: If `state` is not a dictionary or a tuple.
+            ValueError: If `state` is not a valid `RandomState` state.
+        """
+        self._random_state.set_state(state)
 
     def fit(self, x: torch.Tensor, n_clusters: int) -> torch.Tensor:
         """Randomly assign each input vector to clusters of roughly the same size.
+
+        Labels row `i` with `i % n_clusters`, then shuffles those labels with
+        this tool's NumPy `RandomState`. A one-row fit does not call `shuffle`.
+        `RandomState.shuffle` draws nothing for a one-element sequence, so that
+        fit draws one value with `RandomState.random()`. A successful call of
+        one or more rows advances the random state.
+        A call that raises does not.
 
         Args:
             x: Finite floating tensor shaped `(num_vectors, feature_dim)` with
@@ -110,7 +180,10 @@ class GoldRandomClusteringTool(GoldClusteringTool):
             )
 
         cluster_assignment = [i % n_clusters for i in range(total)]
-        np.random.default_rng(self.random_state).shuffle(cluster_assignment)
+        if len(cluster_assignment) == 1:
+            self._random_state.random()
+        else:
+            self._random_state.shuffle(cluster_assignment)
 
         return torch.tensor(
             cluster_assignment,
