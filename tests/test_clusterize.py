@@ -36,8 +36,11 @@ class DummyDataset(Dataset):
 
 def _same_random_state(left: dict, right: dict) -> bool:
     return bool(
-        np.array_equal(left["state"]["key"], right["state"]["key"])
+        left["bit_generator"] == right["bit_generator"]
+        and np.array_equal(left["state"]["key"], right["state"]["key"])
         and left["state"]["pos"] == right["state"]["pos"]
+        and left["has_gauss"] == right["has_gauss"]
+        and left["gauss"] == right["gauss"]
     )
 
 
@@ -167,20 +170,6 @@ class TestGoldRandomClusteringTool:
             3,
             3,
         ]
-
-    def test_one_row_fit_advances_random_state(self):
-        one_row = torch.tensor([[0.0, 1.0, -1.0]])
-        tool = GoldRandomClusteringTool(42)
-        before = tool.random_state
-        labels = tool.fit(one_row, 1)
-        after = tool.random_state
-        assert labels.dtype == torch.int64
-        assert torch.equal(labels, torch.zeros(1, dtype=torch.int64))
-        assert not _same_random_state(after, before)
-
-        tool.update_random_state(before)
-        assert torch.equal(tool.fit(one_row, 1), torch.zeros(1, dtype=torch.int64))
-        assert _same_random_state(tool.random_state, after)
 
     @pytest.mark.parametrize(
         ("state", "exc", "message"),

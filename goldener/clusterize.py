@@ -92,19 +92,10 @@ class GoldRandomClusteringTool(GoldClusteringTool):
     The tool always owns a `RandomState`. An integer seeds a new one. None draws
     entropy. A passed `RandomState` is used as that instance. Each successful
     `fit` of one or more rows consumes it, so a later `fit` on the same instance
-    does not repeat the shuffle drawn from the original state. A one-row fit
-    leaves its only label in place. `RandomState.shuffle` draws nothing for a
-    one-element sequence, so that fit draws one value with `RandomState.random()`
-    and still advances the random state. `random_state` returns a snapshot from
-    `RandomState.get_state(legacy=False)`. It is updated by use of the random
-    state. It is not the constructor seed. `update_random_state` restores that
-    snapshot. Later fits read `_random_state`.
+    does not repeat the shuffle drawn from the original state.
 
     `predict` is not supported. A fit does not store centroids or another mapping
     that could label new rows.
-
-    Attributes:
-        _random_state: NumPy `RandomState` consumed by each successful `fit`.
     """
 
     def __init__(self, random_state: np.random.RandomState | int | None = None) -> None:
@@ -163,8 +154,8 @@ class GoldRandomClusteringTool(GoldClusteringTool):
         Labels row `i` with `i % n_clusters`, then shuffles those labels with
         this tool's NumPy `RandomState`. A one-row fit does not call `shuffle`.
         `RandomState.shuffle` draws nothing for a one-element sequence, so that
-        fit draws one value with `RandomState.random()` and leaves its only label
-        in place. A successful call of one or more rows advances the random state.
+        fit draws one value with `RandomState.random()`. A successful call of
+        one or more rows advances the random state.
         A call that raises does not.
 
         Args:
@@ -173,8 +164,7 @@ class GoldRandomClusteringTool(GoldClusteringTool):
             n_clusters: Number of clusters to form.
 
         Returns:
-            A 1D tensor with one cluster index per input row. Cluster sizes
-            follow the labeling above and are not changed by the shuffle.
+            A 1D tensor with one cluster index per input row.
 
         Raises:
             ValueError: If `x` is not a finite floating 2D tensor with positive
