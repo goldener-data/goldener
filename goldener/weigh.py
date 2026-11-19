@@ -535,9 +535,10 @@ class GoldDensityWeigher(GoldDoerWithTable):
 
         Raises:
             ValueError: If `chunk` or `weighing_batch_size` is not a positive integer
-                or `None`, `exclude_same_sample` is not a boolean, or column names
-                collide with identity columns or each other as checked by
-                `GoldDoerWithTable`.
+                or `None`, `exclude_same_sample` is not a boolean, or a customizable
+                key uses `idx` or `idx_vector`, collides with an identity column, or
+                shares its value with another key, or `to_keep_schema` uses one of
+                those columns (see `GoldDoerWithTable`).
             NotImplementedError: If `distribute` is True.
         """
         self.weigher = weigher

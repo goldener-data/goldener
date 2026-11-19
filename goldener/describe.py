@@ -164,8 +164,13 @@ class GoldDescriptor(GoldDoerWithTable):
         Raises:
             NotImplementedError: If `distribute` is True.
             ValueError: If `estimation_time_batch_count` is not a positive integer.
-            ValueError: If key attributes or `to_keep_schema` collide with identity columns
-                or with each other (see `GoldDoerWithTable`).
+            ValueError: If a customizable key uses `idx` or `idx_vector`, collides
+                with an identity column, or shares its value with another key, or
+                if `to_keep_schema` uses one of those columns (see `GoldDoerWithTable`).
+                `idx_vector` is in `_RESERVED_KEYS` and is merged with the schema
+                keys, so it raises the identity-column error even though
+                `_MINIMAL_SCHEMA` lists only `idx`. The table gains an
+                `idx_vector` column only when a vectorizer is set.
         """
         self.embedder = embedder
         self.vectorizer = vectorizer
