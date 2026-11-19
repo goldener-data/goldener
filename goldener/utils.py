@@ -99,9 +99,11 @@ _INTEGER_DTYPES = (
     torch.int32,
     torch.int64,
     torch.uint8,
-    torch.uint16,
-    torch.uint32,
-    torch.uint64,
+    *(
+        getattr(torch, dtype)
+        for dtype in ("uint16", "uint32", "uint64")
+        if hasattr(torch, dtype)
+    ),
 )
 
 

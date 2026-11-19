@@ -339,6 +339,7 @@ class GoldKnnDensityWeighingTool(GoldDensityWeighingTool):
 
         reference = x.to(device=self.device, dtype=torch.float64)
         queries = batch.to(device=self.device, dtype=torch.float64)
+        reference_ids = reference_ids.to(device=self.device)
         means = []
         query_parts = queries.split(self.distance_batch_size)
         if query_ids is None:
@@ -351,6 +352,8 @@ class GoldKnnDensityWeighingTool(GoldDensityWeighingTool):
             distances = self.distance_func(query, reference)
             if query_id_part is None:
                 query_id_part = distances.argmin(dim=1)
+            else:
+                query_id_part = query_id_part.to(device=self.device)
             means.append(
                 self._mean_eligible_distances(
                     distances, reference_ids, query_id_part, offset
@@ -372,8 +375,10 @@ class GoldKnnDensityWeighingTool(GoldDensityWeighingTool):
 
         Args:
             distances: Pairwise distances shaped `(num_queries, num_references)`.
-            sample_idx: Sample id of each reference column.
-            query_sample_idx: Sample id of each query row in this distance batch.
+            sample_idx: Sample id of each reference column, already on the
+                distance device.
+            query_sample_idx: Sample id of each query row in this distance batch,
+                already on the distance device.
             query_offset: Position of this batch's first query in the full query
                 tensor. Error messages use that position.
 
@@ -384,8 +389,8 @@ class GoldKnnDensityWeighingTool(GoldDensityWeighingTool):
             ValueError: If a query has fewer than `k` references with a different
                 sample id.
         """
-        reference_ids = sample_idx.to(device=distances.device)
-        query_ids = query_sample_idx.to(device=distances.device)
+        reference_ids = sample_idx
+        query_ids = query_sample_idx
         eligible = query_ids[:, None] != reference_ids[None, :]
         eligible_count = eligible.sum(dim=1)
         short = eligible_count < self.k
