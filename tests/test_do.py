@@ -27,9 +27,12 @@ from goldener.weigh import GoldDensityWeigher
     ids=lambda cls: cls.__name__,
 )
 def make_doer(request):
-    cls = request.param
-    if cls is GoldDoer:
-        return cls
+    if request.param is GoldDoer:
+        return GoldDoer
+    return _table_doer(request.param)
+
+
+def _table_doer(cls):
     kwargs = {"table_path": "unit_test.doer"}
     if cls is GoldDescriptor:
         kwargs["embedder"] = GoldTorchEmbeddingTool(
@@ -162,35 +165,52 @@ def test_accepts_kept_column_named_after_key_and_unset_keys():
     assert doer.label_key == "label"
 
 
-def test_rejects_reserved_idx_vector_on_every_doer(make_doer):
-    if make_doer is GoldDoer:
+def test_rejects_reserved_keys_on_plain_doer():
+    class _PlainDoer(GoldDoer):
+        def __init__(self, data_key: str) -> None:
+            self.data_key = data_key
+            super().__init__()
 
-        class _PlainDoer(GoldDoer):
-            def __init__(self, data_key: str) -> None:
-                self.data_key = data_key
-                super().__init__()
+    reserved = (
+        r"data_key='{}' is reserved for internal indexing "
+        r"and cannot be used as a custom key\."
+    )
+    with pytest.raises(ValueError, match=reserved.format("idx")):
+        _PlainDoer("idx")
+    with pytest.raises(ValueError, match=reserved.format("idx_vector")):
+        _PlainDoer("idx_vector")
+    plain = _PlainDoer("data")
+    assert plain.RESERVED_KEYS == frozenset({"idx", "idx_vector"})
 
-        reserved = (
-            r"data_key='{}' is reserved for internal indexing "
-            r"and cannot be used as a custom key\."
-        )
-        with pytest.raises(ValueError, match=reserved.format("idx")):
-            _PlainDoer("idx")
-        with pytest.raises(ValueError, match=reserved.format("idx_vector")):
-            _PlainDoer("idx_vector")
-        plain = _PlainDoer("data")
-        assert plain.RESERVED_KEYS == frozenset({"idx", "idx_vector"})
-        return
 
-    cls = make_doer.func
-    if "idx_vector" in cls._MINIMAL_SCHEMA:
-        match = (
-            r"label_key='idx_vector' collides with the identity column 'idx_vector'\."
-        )
-    else:
-        match = (
-            r"label_key='idx_vector' is reserved for internal indexing "
-            r"and cannot be used as a custom key\."
-        )
+_RESERVED_IDX_VECTOR = (
+    r"label_key='idx_vector' is reserved for internal indexing "
+    r"and cannot be used as a custom key\."
+)
+_IDENTITY_IDX_VECTOR = (
+    r"label_key='idx_vector' collides with the identity column 'idx_vector'\."
+)
+
+
+@pytest.mark.parametrize(
+    ("cls", "match"),
+    [
+        pytest.param(
+            GoldDoerWithTable,
+            _RESERVED_IDX_VECTOR,
+            id="GoldDoerWithTable",
+        ),
+        pytest.param(GoldDescriptor, _RESERVED_IDX_VECTOR, id="GoldDescriptor"),
+        pytest.param(GoldSelector, _IDENTITY_IDX_VECTOR, id="GoldSelector"),
+        pytest.param(GoldClusterizer, _IDENTITY_IDX_VECTOR, id="GoldClusterizer"),
+        pytest.param(GoldVectorizer, _IDENTITY_IDX_VECTOR, id="GoldVectorizer"),
+        pytest.param(
+            GoldDensityWeigher,
+            _IDENTITY_IDX_VECTOR,
+            id="GoldDensityWeigher",
+        ),
+    ],
+)
+def test_rejects_idx_vector_label_on_each_table_doer(cls, match):
     with pytest.raises(ValueError, match=match):
-        make_doer(label_key="idx_vector")
+        _table_doer(cls)(label_key="idx_vector")
