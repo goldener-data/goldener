@@ -62,7 +62,7 @@ Reduction operates on vectors that are already 2D. Every tool expects a finite f
 - `GoldSKLearnReductionTool` is the fittable adapter for UMAP, PCA, t-SNE, and Gaussian random projection.
 - `GoldTorchModuleReductionTool` wraps a `torch.nn.Module`. It only implements `transform`; it does not fit the module.
 
-`GoldSKLearnReductionTool` accepts only those four estimator types. Passing one of them does not mean the four algorithms share a transform, a random-state contract, or a comparable geometry. Invalid inputs raise `ValueError` and name the concrete tool that rejected them.
+UMAP, PCA, t-SNE, and Gaussian random projection are the supported estimators. The constructor annotation names those four, and the constructor stores the given object without checking its type. Passing one of them does not mean the four algorithms share a transform, a random-state contract, or a comparable geometry. A tensor that is not finite, floating, and shaped `(num_vectors, feature_dim)` with a positive feature width raises `ValueError` and names the concrete tool that rejected it.
 
 `n_components` has to be valid for the wrapped estimator and the tensor. For PCA it cannot exceed the number of rows or the feature width.
 
@@ -83,7 +83,7 @@ Default PCA on a small dense matrix uses a deterministic solver and may ignore `
 
 `fit` learns the estimator and returns nothing. `fit_transform` learns it and returns the reduced rows of that same tensor. For an estimator that implements `transform`, a later `transform` uses the learned mapping and does not fit again. Row `i` of a PCA result is the projection of input row `i`. `transform` of the fitted tensor agrees with `fit_transform` up to ordinary float32 roundoff from the NumPy conversion.
 
-On every `fit`, `fit_transform`, and successful `transform`, `GoldSKLearnReductionTool` detaches the tensor, moves it to CPU, and converts it with NumPy. The scikit-learn or UMAP call runs there. The adapter then builds a tensor with `torch.from_numpy(...).to(device=x.device, dtype=x.dtype)`. float32 and float64 inputs come back with that dtype and on the input device. bfloat16 has no NumPy conversion, so that input raises. The adapter does not leave a supported result on CPU unless the input was already there.
+After validation, `fit`, `fit_transform`, and `transform` detach the tensor, move it to CPU, and convert it with NumPy before the scikit-learn or UMAP call. `fit` returns nothing. `fit_transform` and `transform` convert the estimator output with `torch.from_numpy(...).to(device=x.device, dtype=x.dtype)`. float32 and float64 results keep that dtype and the input device. bfloat16 has no NumPy conversion, so that input raises. The adapter does not leave a supported result on CPU unless the input was already there.
 
 The number of rows is unchanged. The feature width becomes the estimator's `n_components`, or whatever width that estimator returns.
 
@@ -133,7 +133,7 @@ replayed = projection.fit_transform(x)
 print(torch.allclose(first, replayed))
 ```
 
-The snapshot belongs to this tool and this sequence of calls. Another fit is another mapping. A second population, a second chunk, or a second label is fit on its own rows. Using the same seed for that other fit does not put both results in one coordinate system, and restored randomness does not make those projections interchangeable. UMAP treats a fixed `random_state` as incompatible with a parallel `n_jobs` and warns when it overrides that setting. That warning comes from UMAP.
+The snapshot belongs to this tool and this sequence of calls. PCA, UMAP, and t-SNE learn their map from the rows in the fit. A second population, chunk, or label with different rows gets a different map, including when both fits start from the same random state. Gaussian random projection with an integer `n_components` draws its matrix from the random state and the feature width, then stores that matrix in the input dtype. The values in the rows are not part of that draw. Two fits that begin from the same random state, with the same feature width, the same `n_components`, and the same dtype, rebuild that matrix, so both results lie in one coordinate system. Each population is still projected from its own rows. A tool that owns the `RandomState` begins there again only when `update_random_state` restores the snapshot. Its next fit otherwise draws a new matrix. `GoldSelector`, `GoldClusterizer`, and `GoldDensityWeigher` call `fit_transform` on the same tool and leave the advanced state in place. An integer `random_state` left on the estimator restarts from that integer on every fit, so those refits share the matrix when the feature width, `n_components`, and dtype match. With `n_components="auto"`, the width also depends on the number of rows, so populations of different lengths can draw different matrices. UMAP treats a fixed `random_state` as incompatible with a parallel `n_jobs` and warns when it overrides that setting. That warning comes from UMAP.
 
 Chunk assignment on `GoldSelector` and `GoldClusterizer` uses the doer's own integer `random_state`. That seed is not the reducer's snapshot.
 
