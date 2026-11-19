@@ -62,7 +62,7 @@ Reduction operates on vectors that are already 2D. Every tool expects a finite f
 - `GoldSKLearnReductionTool` is the fittable adapter for UMAP, PCA, t-SNE, and Gaussian random projection.
 - `GoldTorchModuleReductionTool` wraps a `torch.nn.Module`. It only implements `transform`; it does not fit the module.
 
-UMAP, PCA, t-SNE, and Gaussian random projection are the supported estimators. The constructor annotation names those four, and the constructor stores the given object without checking its type. Passing one of them does not mean the four algorithms share a transform, a random-state contract, or a comparable geometry. A tensor that is not finite, floating, and shaped `(num_vectors, feature_dim)` with a positive feature width raises `ValueError` and names the concrete tool that rejected it.
+UMAP, PCA, t-SNE, and Gaussian random projection are the supported estimators. The constructor annotation names those four, and the constructor stores the given object without checking its type. Passing one of them does not mean the four algorithms share a transform, a random-state contract, or a comparable geometry. A tensor that is not 2D raises `ValueError` starting with `GoldSKLearnReductionTool only accepts 2D tensors`. A feature width of zero raises `ValueError` with `GoldSKLearnReductionTool requires positive feature width.` A tensor that is not floating, or that contains a nonfinite value, raises `ValueError` with `x must contain only finite floating point values.` That message does not name the tool.
 
 `n_components` has to be valid for the wrapped estimator and the tensor. For PCA it cannot exceed the number of rows or the feature width.
 
