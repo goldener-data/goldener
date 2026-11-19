@@ -1,10 +1,12 @@
+import sys
 from time import sleep
+from typing import TYPE_CHECKING
+from unittest.mock import Mock
 
 import numpy as np
 import pytest
 
 import torch
-from coreax.kernels import LinearKernel
 from pixeltable import Error
 from sklearn.decomposition import PCA
 
@@ -26,6 +28,13 @@ from goldener.select import (
 )
 from goldener.torch_utils import collate_keeping_sequences_as_sequences
 
+if TYPE_CHECKING or sys.platform != "win32":
+    from coreax.kernels import LinearKernel
+
+requires_coreax = pytest.mark.skipif(
+    sys.platform == "win32", reason="coreax is not installed on Windows"
+)
+
 
 class DummyDataset(Dataset):
     def __init__(self, samples):
@@ -42,6 +51,7 @@ class DummyDataset(Dataset):
         )
 
 
+@requires_coreax
 class TestGoldSelector:
     def setup_method(self):
         pxt.drop_dir("unit_test", force=True)
@@ -1227,6 +1237,7 @@ class TestGoldGreedyKCenterSelectionTool:
 
 
 class TestGoldGreedyKernelPointsSelectionTool:
+    @requires_coreax
     def test_simple_usage(self) -> None:
         tool = GoldGreedyKernelPointsSelectionTool(
             feature_kernel=LinearKernel(output_scale=1, constant=0)
@@ -1240,6 +1251,7 @@ class TestGoldGreedyKernelPointsSelectionTool:
         assert len(indices) == k
         assert len(set(indices)) == k
 
+    @requires_coreax
     def test_select_all_points_with_linear_kernel(self) -> None:
         tool = GoldGreedyKernelPointsSelectionTool(
             feature_kernel=LinearKernel(output_scale=1, constant=0)
@@ -1253,6 +1265,7 @@ class TestGoldGreedyKernelPointsSelectionTool:
         assert len(indices) == k
         assert len(set(indices)) == k
 
+    @requires_coreax
     def test_with_k_greater_than_size(self) -> None:
         x = torch.tensor([[0.0], [1.0]], dtype=torch.float32)
 
@@ -1262,6 +1275,7 @@ class TestGoldGreedyKernelPointsSelectionTool:
         with pytest.raises(ValueError, match="k cannot be greater"):
             tool.select(x, k=5)
 
+    @requires_coreax
     def test_rejects_1d_tensor(self) -> None:
         tool = GoldGreedyKernelPointsSelectionTool(
             feature_kernel=LinearKernel(output_scale=1, constant=0)
@@ -1272,6 +1286,7 @@ class TestGoldGreedyKernelPointsSelectionTool:
         ):
             tool.select(torch.randn(10), k=2)
 
+    @requires_coreax
     def test_rejects_3d_tensor(self) -> None:
         tool = GoldGreedyKernelPointsSelectionTool(
             feature_kernel=LinearKernel(output_scale=1, constant=0)
@@ -1281,6 +1296,26 @@ class TestGoldGreedyKernelPointsSelectionTool:
             match="GoldGreedyKernelPointsSelectionTool only accepts 2D tensors",
         ):
             tool.select(torch.randn(10, 5, 3), k=2)
+
+    @pytest.mark.parametrize(
+        ("build", "match"),
+        [
+            (
+                lambda: GoldGreedyKernelPointsSelectionTool(feature_kernel=Mock()),
+                "GoldGreedyKernelPointsSelectionTool is not available on Windows",
+            ),
+            (
+                lambda: GoldSelector(table_path="unit_test.select_windows_default"),
+                "GoldSelector needs an explicit selection_tool on Windows",
+            ),
+        ],
+        ids=["tool", "selector_default_tool"],
+    )
+    def test_rejects_windows(self, monkeypatch, build, match) -> None:
+        monkeypatch.setattr(sys, "platform", "win32")
+
+        with pytest.raises(RuntimeError, match=match):
+            build()
 
 
 class TestGoldZCoreSelectionTool:

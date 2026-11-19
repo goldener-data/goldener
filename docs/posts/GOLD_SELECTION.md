@@ -122,7 +122,7 @@ Once the semantics `Description` (vectors) of the dataset is available, smart sa
 
 In [Goldener](https://github.com/goldener-data/goldener), the coreset subsampling algorithm must be implemented within a class inheriting from the `GoldSelectionTool` class. Goldener natively supports several strategies:
 
-* `GoldGreedyKernelPointsSelectionTool` based on the `GreedyKernelPoints` class from [Coreax](https://coreax.readthedocs.io/en/latest/index.html)
+* `GoldGreedyKernelPointsSelectionTool` based on the `GreedyKernelPoints` class from [Coreax](https://coreax.readthedocs.io/en/latest/index.html) (not available on Windows, where Coreax is not installed)
 * `GoldGreedyKCenterSelectionTool` based on an internal reimplementation of the Greedy K-Center algorithm
 * `GoldZCoreSelectionTool` based on an internal reimplementation of the ZCore method
 `GoldSelectionTool` assumes that all the data to select from fits in memory (RAM or VRAM). Those selection tools take the vectorized data as input and return a list of integers specifying which vectors have been selected.

@@ -24,7 +24,7 @@ dependencies = [
   "scikit-learn",
   "umap-learn",
   "torchvision",
-  "coreax",
+  "coreax; sys_platform != 'win32'",
   "tqdm",
 ]
 
