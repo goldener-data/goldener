@@ -242,9 +242,9 @@ batch_sampler = GoldClusterizedBatchSampler(
 Use it to explore loss weighting or sampling policies that emphasize underrepresented
 patterns, including variation within a class. Sparsity is a representation-based
 signal, not a calibrated measure of model difficulty or a guarantee of better generalization.
-The default kNN tool excludes one copy of the query vector and can still match other
-vectors from the same sample. `GoldKnnDensityWeighingTool(exclude_same_sample=True)`
-ignores every reference vector that shares the query sample `idx`.
+The default kNN tool drops one nearest reference and can still match other vectors
+from the same sample. `GoldDensityWeigher(exclude_same_sample=True)` passes each
+vector's sample `idx` into the weighing tool so those same-sample references are ignored.
 
 See [Weighting training samples by embedding density](docs/posts/GOLD_DENSITY_WEIGHING.md)
 for a runnable example, the kNN scoring formula, training integration, and chunking
