@@ -64,9 +64,9 @@ class GoldDensityWeighingTool(ABC):
     return a one-dimensional tensor with one score per queried row.
     `weigh_batch` scores query rows against the full input population.
 
-    `weigh` and `weigh_batch` take optional sample ids. `resolve_sample_indices`
-    checks a provided pair and, when both are omitted, builds reference ids
-    `0 .. num_references - 1` for every tool to reuse.
+    `weigh` and `weigh_batch` take optional sample ids. `_resolve_sample_indices`
+    checks a provided pair and, when both are omitted, builds independent ids
+    `0 .. n - 1` for the reference rows and the query rows.
 
     Attributes:
         device: Device used for tensor computation. Defaults to `"cpu"`.
@@ -103,7 +103,7 @@ class GoldDensityWeighingTool(ABC):
         x: torch.Tensor,
         batch: torch.Tensor,
         sample_idx: torch.Tensor | None = None,
-        query_sample_idx: torch.Tensor | None = None,
+        batch_sample_idx: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """Score batch rows against the full reference population.
 
@@ -112,33 +112,37 @@ class GoldDensityWeighingTool(ABC):
             batch: Query rows shaped `(batch_size, feature_dim)`, preserving
                 query order and duplicates.
             sample_idx: Optional sample id for each reference row, shaped
-                `(num_vectors,)`. Provide it together with `query_sample_idx`.
-            query_sample_idx: Optional sample id for each query row, shaped
+                `(num_vectors,)`. Provide it together with `batch_sample_idx`.
+                The two tensors may contain the same ids.
+            batch_sample_idx: Optional sample id for each query row, shaped
                 `(batch_size,)`.
 
         Returns:
             One finite nonnegative score per batch row, in query order.
         """
 
-    def resolve_sample_indices(
+    def _resolve_sample_indices(
         self,
         num_references: int,
         num_queries: int,
         sample_idx: torch.Tensor | None,
-        query_sample_idx: torch.Tensor | None,
-    ) -> tuple[torch.Tensor, torch.Tensor | None]:
-        """Validate sample ids or build one distinct id per reference row.
+        batch_sample_idx: torch.Tensor | None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Validate sample ids or build one independent id per row.
 
         Args:
             num_references: Number of reference rows.
             num_queries: Number of query rows.
             sample_idx: Optional sample id per reference row.
-            query_sample_idx: Optional sample id per query row.
+            batch_sample_idx: Optional sample id per query row.
 
         Returns:
-            Reference ids, and query ids. When both arguments are omitted,
-            reference ids are `0 .. num_references - 1` and query ids are `None`.
-            The tool then assigns each query an id in that reference range.
+            Reference ids and query ids. When both arguments are omitted, each
+            row is its own sample: reference ids are `0 .. num_references - 1`
+            and query ids are `0 .. num_queries - 1`. Those two tensors can
+            carry the same values when the counts match. A tool can replace
+            the query ids with another index in the reference range before
+            masking, without a second scoring path.
 
         Raises:
             ValueError: If exactly one id tensor is omitted, or a provided tensor
@@ -147,24 +151,24 @@ class GoldDensityWeighingTool(ABC):
         sample_idx = validate_integer_tensor(
             sample_idx, 1, num_references, "sample_idx", allow_none=True
         )
-        query_sample_idx = validate_integer_tensor(
-            query_sample_idx,
+        batch_sample_idx = validate_integer_tensor(
+            batch_sample_idx,
             1,
             num_queries,
-            "query_sample_idx",
+            "batch_sample_idx",
             allow_none=True,
         )
-        if sample_idx is None and query_sample_idx is None:
-            return torch.arange(num_references), None
+        if sample_idx is None and batch_sample_idx is None:
+            return torch.arange(num_references), torch.arange(num_queries)
         if sample_idx is None:
             raise ValueError(
-                "sample_idx is required when query_sample_idx is provided."
+                "sample_idx is required when batch_sample_idx is provided."
             )
-        if query_sample_idx is None:
+        if batch_sample_idx is None:
             raise ValueError(
-                "query_sample_idx is required when sample_idx is provided."
+                "batch_sample_idx is required when sample_idx is provided."
             )
-        return sample_idx, query_sample_idx
+        return sample_idx, batch_sample_idx
 
 
 class GoldKnnDensityWeighingTool(GoldDensityWeighingTool):
@@ -175,19 +179,20 @@ class GoldKnnDensityWeighingTool(GoldDensityWeighingTool):
     indicate sparser neighborhoods when `power` is positive. `eps` floors the
     mean distance, including for identical vectors. One code path masks
     references whose sample id equals the query id, then keeps the `k` nearest
-    remaining references. When sample ids are omitted, reference ids are
-    `0 .. n - 1` and each query is given the id of its nearest reference, so the
-    mask drops that one nearest entry and the population needs at least `k + 2`
-    vectors. When sample ids are provided, every reference that shares the query
-    sample id is ineligible and each query needs `k` references from other
-    samples. Identical vectors from different samples stay eligible. The tool is
+    remaining references. When sample ids are omitted, every row is independent:
+    reference ids are `0 .. n - 1` and each query takes the id of its nearest
+    reference, so the same mask drops that one neighbor. That population needs
+    at least `k + 2` vectors. When sample ids are provided, every reference that
+    shares the query sample id is ineligible, the population needs at least
+    `k + 1` vectors, and each query needs `k` references from other samples.
+    Identical vectors from different samples stay eligible. The tool is
     deterministic and has no random state.
 
     Attributes:
         k: Positive number of neighbors retained per row. Defaults to `5`.
             Omitted sample ids drop one nearest reference and require at least
-            `k + 2` vectors. Provided sample ids keep the `k` nearest references
-            from other samples.
+            `k + 2` vectors. Provided sample ids require at least `k + 1`
+            vectors and keep the `k` nearest references from other samples.
         power: Finite nonnegative exponent applied to the mean neighbor
             distance. Defaults to `0.5`.
         distance_func: Pairwise distance callable selected by `distance`.
@@ -215,8 +220,9 @@ class GoldKnnDensityWeighingTool(GoldDensityWeighingTool):
             k: Positive integer number of neighbors per query. Omitted sample ids
                 assign each query the index of its nearest reference and drop
                 that entry, which requires at least `k + 2` reference vectors.
-                Provided sample ids choose the `k` neighbors after removing every
-                reference with the query sample id. Defaults to `5`.
+                Provided sample ids require at least `k + 1` reference vectors
+                and choose the `k` neighbors after removing every reference with
+                the query sample id. Defaults to `5`.
             power: Finite nonnegative exponent applied after flooring the mean
                 neighbor distance. Defaults to `0.5`.
             distance: Distance metric used to compare vectors. Defaults to Euclidean.
@@ -272,7 +278,7 @@ class GoldKnnDensityWeighingTool(GoldDensityWeighingTool):
                 than `k` eligible neighbors.
         """
         return self.weigh_batch(
-            x, x, sample_idx=sample_idx, query_sample_idx=sample_idx
+            x, x, sample_idx=sample_idx, batch_sample_idx=sample_idx
         )
 
     def weigh_batch(
@@ -280,29 +286,30 @@ class GoldKnnDensityWeighingTool(GoldDensityWeighingTool):
         x: torch.Tensor,
         batch: torch.Tensor,
         sample_idx: torch.Tensor | None = None,
-        query_sample_idx: torch.Tensor | None = None,
+        batch_sample_idx: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """Score query rows using the reference rows as potential neighbors.
 
         Each score is `max(mean_neighbor_distance, eps) ** power`. References
         whose sample id equals the query id are ineligible, and the `k` nearest
-        eligible references are kept. When both id arguments are omitted,
-        reference ids are `0 .. num_vectors - 1` and each query receives the id
-        of its nearest reference, which drops that one nearest entry and keeps
-        other identical vectors. Provided ids drop every reference from the
-        query sample. Identical vectors from different samples remain eligible.
-        Distances are computed in `torch.float64` on the configured device.
+        eligible references are kept. When both id arguments are omitted, every
+        row is independent: reference ids are `0 .. num_vectors - 1` and each
+        query receives the id of its nearest reference. The same mask then drops
+        that one neighbor and keeps other identical vectors. Provided ids drop
+        every reference from the query sample. The two id tensors may be equal.
+        Identical vectors from different samples remain eligible. Distances are
+        computed in `torch.float64` on the configured device.
 
         Args:
             x: Finite floating reference tensor shaped `(num_vectors, feature_dim)`,
                 with positive feature width. Omitted sample ids require at least
-                `k + 2` rows. Provided sample ids require at least `k` rows.
+                `k + 2` rows. Provided sample ids require at least `k + 1` rows.
             batch: Finite floating query tensor shaped `(batch_size, feature_dim)`.
                 Queries are rows scored against `x`; membership is not checked.
                 Order and duplicates are preserved, and feature width must match `x`.
             sample_idx: Sample id for each reference row, shaped `(num_vectors,)`.
-                Provide it together with `query_sample_idx`.
-            query_sample_idx: Sample id for each query row, shaped `(batch_size,)`,
+                Provide it together with `batch_sample_idx`.
+            batch_sample_idx: Sample id for each query row, shaped `(batch_size,)`,
                 including repeated query rows.
 
         Returns:
@@ -322,15 +329,16 @@ class GoldKnnDensityWeighingTool(GoldDensityWeighingTool):
         if batch.shape[1] != x.shape[1]:
             raise ValueError("batch must have the same feature width as x.")
 
-        reference_ids, query_ids = self.resolve_sample_indices(
-            len(x), len(batch), sample_idx, query_sample_idx
+        omitted = sample_idx is None and batch_sample_idx is None
+        reference_ids, batch_ids = self._resolve_sample_indices(
+            len(x), len(batch), sample_idx, batch_sample_idx
         )
-        if query_ids is None:
+        if omitted:
             minimum = self.k + 2
             minimum_label = "k + 2"
         else:
-            minimum = self.k
-            minimum_label = "k"
+            minimum = self.k + 1
+            minimum_label = "k + 1"
         if len(x) < minimum:
             raise ValueError(
                 f"x must contain at least {minimum_label} ({minimum}) vectors; "
@@ -340,20 +348,17 @@ class GoldKnnDensityWeighingTool(GoldDensityWeighingTool):
         reference = x.to(device=self.device, dtype=torch.float64)
         queries = batch.to(device=self.device, dtype=torch.float64)
         reference_ids = reference_ids.to(device=self.device)
+        if not omitted:
+            batch_ids = batch_ids.to(device=self.device)
         means = []
         query_parts = queries.split(self.distance_batch_size)
-        if query_ids is None:
-            id_parts: tuple[torch.Tensor | None, ...] = tuple(None for _ in query_parts)
-        else:
-            id_parts = tuple(query_ids.split(self.distance_batch_size))
+        id_parts = tuple(batch_ids.split(self.distance_batch_size))
 
         offset = 0
         for query, query_id_part in zip(query_parts, id_parts, strict=True):
             distances = self.distance_func(query, reference)
-            if query_id_part is None:
+            if omitted:
                 query_id_part = distances.argmin(dim=1)
-            else:
-                query_id_part = query_id_part.to(device=self.device)
             means.append(
                 self._mean_eligible_distances(
                     distances, reference_ids, query_id_part, offset
@@ -428,8 +433,7 @@ class GoldDensityWeigher(GoldDoerWithTable):
     it is true, the weigher reads the `idx` stored for each `idx_vector` and
     passes that pair through reduction, chunking, and query batching in the
     vector row order. A reducer must keep that order; the weigher checks the
-    row count. The weighing tool raises when a scored population is too small
-    or a query does not have enough eligible references.
+    row count.
 
     Attributes:
         table_path: Path to the PixelTable table where weighing results will be stored locally.
@@ -622,10 +626,9 @@ class GoldDensityWeigher(GoldDoerWithTable):
         Raises:
             ValueError: If `allow_existing` is False and the result table exists,
                 required result columns or its primary key are missing, the source
-                vector column is missing, reducer or scoring outputs are malformed, or
-                same-sample exclusion leaves a query with fewer than `k` eligible
-                references. Other invalid
-                inputs may raise errors from collation, tensor operations, or PixelTable.
+                vector column is missing, or reducer or scoring outputs are malformed.
+                Other invalid inputs may raise errors from collation, tensor
+                operations, or PixelTable.
         """
         weighing_table = self.setup_weighing_table(to_weigh)
 
@@ -1160,8 +1163,9 @@ class GoldDensityWeigher(GoldDoerWithTable):
 
         Args:
             vectors: Input vectors to weigh, shaped `(num_vectors, feature_dim)`.
-            sample_idx: Optional sample id per input row. Passed to the weighing
-                tool when `exclude_same_sample` is true, split with the query batches.
+            sample_idx: Optional sample id per input row. Forwarded when
+                `exclude_same_sample` is true, and omitted otherwise. The tool
+                treats omitted ids as independent rows.
 
         Returns:
             A tensor shaped `(num_vectors,)` containing weighing score
@@ -1194,37 +1198,30 @@ class GoldDensityWeigher(GoldDoerWithTable):
             raise ValueError("sample_idx is required when exclude_same_sample is True.")
         if self.weighing_batch_size is None:
             batches = [vectors]
-            query_ids: list[torch.Tensor | None] = [sample_idx]
         else:
             batches = list(vectors.split(self.weighing_batch_size))
-            query_ids = (
-                list(sample_idx.split(self.weighing_batch_size))
-                if sample_idx is not None
-                else [None] * len(batches)
+        batch_ids = (
+            None
+            if sample_idx is None
+            else (
+                [sample_idx]
+                if self.weighing_batch_size is None
+                else list(sample_idx.split(self.weighing_batch_size))
             )
+        )
         results = []
-        for batch, batch_ids in zip(batches, query_ids, strict=True):
-            if self.exclude_same_sample:
-                if batch_ids is None:
-                    raise ValueError(
-                        "sample_idx is required when exclude_same_sample is True."
-                    )
-                scores = (
-                    self.weigher.weigh(vectors, sample_idx=sample_idx)
-                    if self.weighing_batch_size is None
-                    else self.weigher.weigh_batch(
-                        vectors,
-                        batch,
-                        sample_idx=sample_idx,
-                        query_sample_idx=batch_ids,
-                    )
+        for index, batch in enumerate(batches):
+            one_batch_ids = None if batch_ids is None else batch_ids[index]
+            scores = (
+                self.weigher.weigh(vectors, sample_idx=sample_idx)
+                if self.weighing_batch_size is None
+                else self.weigher.weigh_batch(
+                    vectors,
+                    batch,
+                    sample_idx=sample_idx,
+                    batch_sample_idx=one_batch_ids,
                 )
-            else:
-                scores = (
-                    self.weigher.weigh(vectors)
-                    if self.weighing_batch_size is None
-                    else self.weigher.weigh_batch(vectors, batch)
-                )
+            )
             if (
                 not isinstance(scores, torch.Tensor)
                 or scores.shape != (len(batch),)

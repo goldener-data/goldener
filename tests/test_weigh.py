@@ -38,7 +38,7 @@ class CountingWeigher(GoldDensityWeighingTool):
         self.calls = 0
         self.batch_shapes = []
 
-    def weigh_batch(self, x, batch, sample_idx=None, query_sample_idx=None):
+    def weigh_batch(self, x, batch, sample_idx=None, batch_sample_idx=None):
         self.batch_shapes.append((len(x), len(batch)))
         return self.weigh(batch, sample_idx=sample_idx)
 
@@ -80,7 +80,7 @@ class FixedScoreWeigher(GoldDensityWeighingTool):
         super().__init__()
         self.values = values
 
-    def weigh_batch(self, x, batch, sample_idx=None, query_sample_idx=None):
+    def weigh_batch(self, x, batch, sample_idx=None, batch_sample_idx=None):
         scores = self.weigh(x, sample_idx=sample_idx)
         if scores.shape != (len(x),):
             return scores
@@ -320,14 +320,14 @@ class TestGoldKnnDensityWeighingTool:
             x,
             x[query_rows],
             sample_idx=sample_idx,
-            query_sample_idx=sample_idx[query_rows],
+            batch_sample_idx=sample_idx[query_rows],
         )
         torch.testing.assert_close(repeated, one_batch[query_rows])
         empty = tool.weigh_batch(
             x,
             x[:0],
             sample_idx=sample_idx,
-            query_sample_idx=sample_idx[:0],
+            batch_sample_idx=sample_idx[:0],
         )
         assert empty.shape == (0,)
         assert empty.dtype == x.dtype
@@ -340,18 +340,27 @@ class TestGoldKnnDensityWeighingTool:
             GoldKnnDensityWeighingTool(k=1).weigh(distinct, sample_idx=distinct_idx),
             torch.tensor([2.0, 2.0]),
         )
+        with pytest.raises(ValueError, match=r"at least k \+ 1"):
+            GoldKnnDensityWeighingTool(k=2).weigh(distinct, sample_idx=distinct_idx)
+        three = torch.tensor([[0.0], [4.0], [9.0]])
+        torch.testing.assert_close(
+            GoldKnnDensityWeighingTool(k=2).weigh(
+                three, sample_idx=torch.tensor([0, 1, 2])
+            ),
+            torch.tensor([6.5, 4.5, 7.0]).sqrt(),
+        )
 
     @pytest.mark.parametrize(
         "call,match",
         [
             pytest.param(
-                lambda tool, x, ids: tool.weigh_batch(x, x, query_sample_idx=ids),
+                lambda tool, x, ids: tool.weigh_batch(x, x, batch_sample_idx=ids),
                 "sample_idx is required",
                 id="missing-sample-idx",
             ),
             pytest.param(
                 lambda tool, x, ids: tool.weigh_batch(x, x, sample_idx=ids),
-                "query_sample_idx is required",
+                "batch_sample_idx is required",
                 id="missing-query-sample-idx",
             ),
             pytest.param(
