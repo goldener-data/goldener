@@ -184,11 +184,6 @@ class GoldSKLearnClusteringTool(GoldClusteringTool):
 
     Attributes:
         tool: The wrapped scikit-learn clustering estimator.
-        random_state: Snapshot of the estimator `RandomState` state, as returned by
-            `numpy.random.RandomState.get_state(legacy=False)`, or None when the
-            estimator randomness is not controlled by this tool.
-        _random_state: The `RandomState` shared with the estimator, or None when the
-            estimator randomness is not controlled by this tool.
     """
 
     def __init__(
