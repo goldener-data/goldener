@@ -70,9 +70,9 @@ class GoldDoerWithTable(GoldDoer):
 
     Note:
         This is the base class for features instantiating data orchestration that
-        populate an intermediate table.  `_MINIMAL_SCHEMA` defines the minimal 
-        expected columns in the intermediary table. Each subclass should adapt it if needed. 
-        `idx_vector` stays reserved through `_RESERVED_KEYS` when a subclass schema 
+        populate an intermediate table.  `_MINIMAL_SCHEMA` defines the minimal
+        expected columns in the intermediary table. Each subclass should adapt it if needed.
+        `idx_vector` stays reserved through `_RESERVED_KEYS` when a subclass schema
         does not list it.
     """
 
