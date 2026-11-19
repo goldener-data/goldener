@@ -101,13 +101,31 @@ print(multi_sample_weights)
 
 [Goldener](https://github.com/goldener-data/goldener) provides a default weighing algorithm implemented by [GoldKnnDensityWeighingTool](https://github.com/goldener-data/goldener/blob/main/goldener/weigh.py). However, the user can provide new weighing tools following the API defined in `GoldDensityWeighingTool`.
 
-In `GoldKnnDensityWeighingTool`, for vector `x_i`, let `N_k(i)` contain its `k` nearest neighbors after excluding one occurrence of the query itself. Its score is:
+In `GoldKnnDensityWeighingTool`, for vector `x_i`, let `N_k(i)` contain its `k` nearest eligible neighbors. By default, eligibility drops one nearest entry. When the query is in the reference population, that entry is the query. Its score is:
 
 $$
 s_i = \left[\max\left(\frac{1}{k}\sum_{j \in N_k(i)}d(x_i,x_j),\ \varepsilon\right)\right]^p.
 $$
 
-The tool retrieves the nearest `k + 1` entries and discards one nearest entry. Other identical vectors remain valid neighbors. Defaults are `k=5`, Euclidean distance, `eps=1e-12`, and `power=0.5`. The current implementation requires **at least `k + 2` vectors in every scored population**, including every label-specific chunk.
+By default, the tool retrieves the nearest `k + 1` entries and discards one nearest entry. Other identical vectors remain valid neighbors, including other vectors from the same sample. Defaults are `k=5`, Euclidean distance, `eps=1e-12`, `power=0.5`, and `exclude_same_sample=False`. That default mode requires **at least `k + 2` vectors in every scored population**, including every label-specific chunk. Same-sample exclusion does not use the `k + 1` retrieval.
+
+Set `exclude_same_sample=True` to ignore every reference vector whose sample `idx` equals the query's, then keep the `k` nearest remaining references. Other vectors of the same sample become ineligible. An identical vector from a different sample stays eligible. Pass reference identities as `sample_idx` and, for `weigh_batch`, query identities as `query_sample_idx`. Both arguments are checked at runtime: each must be a 1D integer tensor with one id per row. `GoldDensityWeigher` reads the `idx` stored for each `idx_vector` and passes that pair through reduction, chunking, and query batching in the vector row order. A reducer must keep that order; the weigher checks the row count. Callers do not pass those tensors into `weigh_in_table`. Each query needs at least `k` eligible references from other samples. A population can be larger than `k + 2` and still fail when too many vectors share the query sample, and a population smaller than `k + 2` can succeed when the other samples supply `k` neighbors.
+
+```python
+import torch
+
+from goldener import GoldKnnDensityWeighingTool
+
+same_sample_vectors = torch.tensor([[0.0], [0.1], [0.2], [5.0]])
+same_sample_idx = torch.tensor([0, 0, 1, 2])
+same_sample_tool = GoldKnnDensityWeighingTool(
+    k=1, exclude_same_sample=True,
+)
+same_sample_scores = same_sample_tool.weigh(
+    same_sample_vectors, sample_idx=same_sample_idx,
+)
+print(same_sample_scores)
+```
 
 For positive `power`, larger neighbor distances produce larger scores. The default square root compresses distance contrasts; increasing the exponent accentuates them. `power=0` produces uniform scores. The positive distance floor handles coincident vectors before exponentiation. This is a distance-based sparsity score, not a normalized probability density or a calibrated inverse-density estimate.
 
@@ -191,7 +209,7 @@ There are three distinct controls for batching and chunking:
 | `GoldDensityWeigher.weighing_batch_size` and the tool's `distance_batch_size` | Query batching and pairwise-distance memory | Each query still sees its full chunk |
 | `GoldDensityWeigher.chunk` | Random partition into independently scored chunks | Restricted to each chunk; scores can change |
 
-Without chunking, exact pairwise search has quadratic distance work in the population size. Query batching reduces the temporary distance matrix size but still requires the reference vectors in memory. Chunking reduces the reference population at the cost of changing the score's meaning. Every resulting chunk must satisfy the `k + 2` minimum; a small remainder can make a configuration invalid. `random_state` controls random chunk assignment. An optional `reducer` transforms vectors before scoring; fittable reducers fit independently per chunk, also changing the geometry.
+Without chunking, exact pairwise search has quadratic distance work in the population size. Query batching reduces the temporary distance matrix size but still requires the reference vectors in memory. Chunking reduces the reference population at the cost of changing the score's meaning. When `chunk` is smaller than the pending count `n`, a balanced label sequence is shuffled and each id keeps its position's label. That makes `ceil(n / chunk)` groups, and the smallest has `n // ceil(n / chunk)` vectors, which can be well below `chunk`. In the default mode that smallest group must still contain at least `k + 2` vectors. For example, 9 vectors with `chunk=4` make three groups of 3, which fails for `k=2`. With `exclude_same_sample=True`, the `k + 2` count is not the check: each query needs `k` references from other samples inside its own group. `random_state` controls that assignment. A fittable reducer is applied with `fit_transform` on each chunk; a transform-only reducer is applied with `transform`. Either way the geometry can change. Sample ids stay in the input row order. The reducer must return rows in that order; the weigher checks the row count and writes each score back to the original `idx_vector`.
 
 For a larger population of 20,000 vectors, the following configuration creates two independent chunks of 10,000 vectors. Within each chunk, queries are scored 256 at a time against all 10,000 reference vectors. Set `chunk=None` to retain a single reference population while keeping query batching.
 

@@ -5,6 +5,7 @@ import pixeltable as pxt
 import torch
 from torch.utils.data import Dataset
 
+from goldener.clusterize import get_random_chunk_assignment
 from goldener.reduce import GoldReductionTool, GoldReductionToolWithFit
 from goldener.distance import DistanceType
 from goldener.torch_utils import collate_keeping_sequences_as_sequences
@@ -235,6 +236,16 @@ class TestGoldKnnDensityWeighingTool:
             pytest.param(
                 {"eps": True}, "eps must be finite and positive", id="boolean-eps"
             ),
+            pytest.param(
+                {"exclude_same_sample": 1},
+                "exclude_same_sample must be a boolean",
+                id="integer-exclude-same-sample",
+            ),
+            pytest.param(
+                {"exclude_same_sample": "yes"},
+                "exclude_same_sample must be a boolean",
+                id="string-exclude-same-sample",
+            ),
         ],
     )
     def test_knn_density_rejects_invalid_configuration(self, kwargs, match):
@@ -289,6 +300,122 @@ class TestGoldKnnDensityWeighingTool:
         scores = GoldKnnDensityWeighingTool(k=1, distance=DistanceType.COSINE).weigh(x)
 
         assert scores[-1] > scores[0]
+
+    def test_same_sample_exclusion_selects_other_samples_and_matches_batches(self):
+        x = torch.tensor([[0.0], [0.0], [0.0], [3.0], [10.0]])
+        sample_idx = torch.tensor([0, 0, 1, 2, 2])
+        expected = torch.tensor([1e-6, 1e-6, 1e-6, 3.0**0.5, 10.0**0.5])
+        tool = GoldKnnDensityWeighingTool(k=1, exclude_same_sample=True)
+        one_batch = tool.weigh(x, sample_idx=sample_idx)
+        small_batches = GoldKnnDensityWeighingTool(
+            k=1, distance_batch_size=1, exclude_same_sample=True
+        ).weigh(x, sample_idx=sample_idx)
+
+        torch.testing.assert_close(one_batch, expected)
+        torch.testing.assert_close(small_batches, one_batch)
+        assert one_batch.dtype == x.dtype
+        assert one_batch.device == x.device
+
+        default = GoldKnnDensityWeighingTool(k=1)
+        default_scores = default.weigh(x)
+        torch.testing.assert_close(
+            default.weigh(x, sample_idx=sample_idx), default_scores
+        )
+        assert default_scores[0].item() == pytest.approx(1e-6)
+        assert default_scores[4].item() == pytest.approx(7.0**0.5)
+        assert one_batch[4].item() == pytest.approx(10.0**0.5)
+
+        query_rows = torch.tensor([4, 4, 0])
+        repeated = tool.weigh_batch(
+            x,
+            x[query_rows],
+            sample_idx=sample_idx,
+            query_sample_idx=sample_idx[query_rows],
+        )
+        torch.testing.assert_close(repeated, one_batch[query_rows])
+        empty = tool.weigh_batch(
+            x,
+            x[:0],
+            sample_idx=sample_idx,
+            query_sample_idx=sample_idx[:0],
+        )
+        assert empty.shape == (0,)
+        assert empty.dtype == x.dtype
+
+        distinct = torch.tensor([[0.0], [4.0]])
+        distinct_idx = torch.tensor([0, 1])
+        with pytest.raises(ValueError, match=r"at least k \+ 2"):
+            GoldKnnDensityWeighingTool(k=1).weigh(distinct)
+        torch.testing.assert_close(
+            GoldKnnDensityWeighingTool(k=1, exclude_same_sample=True).weigh(
+                distinct, sample_idx=distinct_idx
+            ),
+            torch.tensor([2.0, 2.0]),
+        )
+
+    @pytest.mark.parametrize(
+        "call,match",
+        [
+            pytest.param(
+                lambda tool, x, ids: tool.weigh(x),
+                "sample_idx is required",
+                id="missing-sample-idx",
+            ),
+            pytest.param(
+                lambda tool, x, ids: tool.weigh_batch(x, x, sample_idx=ids),
+                "query_sample_idx is required",
+                id="missing-query-sample-idx",
+            ),
+            pytest.param(
+                lambda tool, x, ids: tool.weigh(x, sample_idx=ids[:-1]),
+                "one sample idx per row",
+                id="short-sample-idx",
+            ),
+            pytest.param(
+                lambda tool, x, ids: tool.weigh(x, sample_idx=ids[:, None]),
+                "1D integer tensor",
+                id="sample-idx-rank",
+            ),
+            pytest.param(
+                lambda tool, x, ids: tool.weigh(x, sample_idx=ids.to(torch.float32)),
+                "1D integer tensor",
+                id="float-sample-idx",
+            ),
+            pytest.param(
+                lambda tool, x, ids: tool.weigh(x, sample_idx=ids.bool()),
+                "1D integer tensor",
+                id="bool-sample-idx",
+            ),
+            pytest.param(
+                lambda tool, x, ids: tool.weigh(x, sample_idx=ids.tolist()),
+                "1D integer tensor",
+                id="list-sample-idx",
+            ),
+            pytest.param(
+                lambda tool, x, ids: tool.weigh(
+                    x[:3], sample_idx=torch.tensor([0, 0, 1])
+                ),
+                "eligible reference",
+                id="too-few-eligible",
+            ),
+            pytest.param(
+                lambda tool, x, ids: GoldKnnDensityWeighingTool(
+                    k=2, distance_batch_size=1, exclude_same_sample=True
+                ).weigh(
+                    torch.tensor([[0.0], [1.0], [2.0]]),
+                    sample_idx=torch.tensor([1, 0, 0]),
+                ),
+                "query row 1 has 1",
+                id="later-batch-shortfall",
+            ),
+        ],
+    )
+    def test_same_sample_exclusion_rejects_invalid_identities(self, call, match):
+        x = torch.tensor([[0.0], [0.1], [5.0], [8.0]])
+        sample_idx = torch.tensor([0, 0, 1, 1])
+        tool = GoldKnnDensityWeighingTool(k=2, exclude_same_sample=True)
+        with pytest.raises(ValueError, match=match):
+            call(tool, x, sample_idx)
 
 
 class TestGoldDensityWeigherConfiguration:
@@ -982,3 +1109,117 @@ class TestGoldDensityWeigher:
         assert all(
             row["weight"] is None for row in pxt.get_table(weigher.table_path).collect()
         )
+
+    def test_same_sample_exclusion_scores_below_the_default_population_minimum(self):
+        source = VectorDataset(
+            [
+                {"idx": 0, "idx_vector": 4, "vectorized": torch.tensor([0.0])},
+                {"idx": 1, "idx_vector": 9, "vectorized": torch.tensor([4.0])},
+            ]
+        )
+        weigher = GoldDensityWeigher(
+            "unit_test.same_sample_minimum",
+            weigher=GoldKnnDensityWeighingTool(k=1, exclude_same_sample=True),
+        )
+        result = weigher.weigh_in_table(source)
+        assert weigher.get_weights_per_idx(
+            result, idx_key="idx_vector", normalize=False
+        ) == pytest.approx({4: 2.0, 9: 2.0})
+
+    @pytest.mark.parametrize("source_type", ["dataset", "table"])
+    def test_same_sample_exclusion_rejects_short_orchestration_populations(
+        self, source_type
+    ):
+        samples = [
+            {"idx": 0, "idx_vector": 1, "vectorized": torch.tensor([0.0])},
+            {"idx": 0, "idx_vector": 2, "vectorized": torch.tensor([0.1])},
+            {"idx": 1, "idx_vector": 3, "vectorized": torch.tensor([4.0])},
+        ]
+        source = _vector_source(samples, source_type, "unit_test.same_sample_short_src")
+        weigher = GoldDensityWeigher(
+            "unit_test.same_sample_short",
+            weigher=GoldKnnDensityWeighingTool(k=2, exclude_same_sample=True),
+        )
+        with pytest.raises(ValueError, match="eligible reference"):
+            weigher.weigh_in_table(source)
+        assert all(
+            row["weight"] is None for row in pxt.get_table(weigher.table_path).collect()
+        )
+
+    @pytest.mark.parametrize("source_type", ["dataset", "table"])
+    @pytest.mark.parametrize("weighing_batch_size", [None, 1])
+    @pytest.mark.parametrize("use_reducer", [False, True])
+    def test_same_sample_exclusion_keeps_idx_aligned_through_orchestration(
+        self, source_type, weighing_batch_size, use_reducer
+    ):
+        samples = [
+            {
+                "idx": sample,
+                "idx_vector": idx_vector,
+                "vectorized": torch.tensor([value]),
+            }
+            for idx_vector, sample, value in (
+                (10, 0, 0.0),
+                (11, 0, 0.1),
+                (20, 1, 10.0),
+                (21, 1, 10.1),
+                (30, 2, 20.0),
+                (31, 2, 20.1),
+            )
+        ]
+        source = _vector_source(samples, source_type, "unit_test.same_sample_vectors")
+        weigher = GoldDensityWeigher(
+            "unit_test.same_sample_weights",
+            weigher=GoldKnnDensityWeighingTool(k=1, exclude_same_sample=True),
+            chunk=3,
+            random_state=1,
+            weighing_batch_size=weighing_batch_size,
+            reducer=TrackingReducer() if use_reducer else None,
+            include_vectorized_in_table=False,
+            batch_size=2,
+        )
+        result = weigher.weigh_in_table(source)
+        assert len(weigher.weigh_in_dataset(source)) == len(samples)
+        stored = weigher.get_weights_per_idx(
+            result, idx_key="idx_vector", normalize=False
+        )
+        assert stored == pytest.approx(
+            _expected_same_sample_scores(samples, reduced=use_reducer)
+        )
+        repeated = weigher.get_weights_per_idx(
+            weigher.weigh_in_table(source), idx_key="idx_vector", normalize=False
+        )
+        assert repeated == pytest.approx(stored)
+
+
+def _vector_source(samples, source_type, table_path):
+    if source_type == "dataset":
+        return VectorDataset(samples)
+    return pxt.create_table(
+        table_path,
+        source=[
+            {**sample, "vectorized": sample["vectorized"].numpy()} for sample in samples
+        ],
+        primary_key="idx_vector",
+    )
+
+
+def _expected_same_sample_scores(samples, reduced):
+    by_vector = {
+        sample["idx_vector"]: (sample["vectorized"], sample["idx"])
+        for sample in samples
+    }
+    chunks = get_random_chunk_assignment(
+        sorted(by_vector), max_chunk_size=3, random_state=1
+    )
+    tool = GoldKnnDensityWeighingTool(k=1, exclude_same_sample=True)
+    expected = {}
+    for group in chunks:
+        rows = [by_vector[idx] for idx in group]
+        vectors = torch.stack([row[0] for row in rows])
+        if reduced:
+            vectors = vectors[:, :1] * 2
+        scores = tool.weigh(vectors, sample_idx=torch.tensor([row[1] for row in rows]))
+        for idx_vector, score in zip(group, scores):
+            expected[idx_vector] = float(score)
+    return expected
