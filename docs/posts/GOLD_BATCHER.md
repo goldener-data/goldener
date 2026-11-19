@@ -131,6 +131,7 @@ description_table = gold_descriptor.describe_in_table(my_dataset)
 ### 2.2. Data clustering
 
 The main entry point in the code is [GoldClusterizer](https://github.com/goldener-data/goldener/blob/main/goldener/clusterize.py).
+How to inspect clusters, relate them to the original samples, and read chunked or per-label fits is described in [Clustering embeddings to define annotation guidelines](GOLD_CLUSTERIZER.md).
 
 Multiple algorithms exist to cluster data based on the `Description` (vectors) of the samples. To remain provider-agnostic, [Goldener](https://github.com/goldener-data/goldener) requires them to be encapsulated within a GoldClusteringTool class. Currently, Goldener natively provides GoldSKLearnClusteringTool, which grants easy access to any Scikit-Learn clustering algorithm.
 
