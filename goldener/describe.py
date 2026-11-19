@@ -167,9 +167,10 @@ class GoldDescriptor(GoldDoerWithTable):
             ValueError: If a customizable key uses `idx` or `idx_vector`, collides
                 with an identity column, or shares its value with another key, or
                 if `to_keep_schema` uses one of those columns (see `GoldDoerWithTable`).
-                `idx_vector` is reserved here even though `_MINIMAL_SCHEMA` lists
-                only `idx`; the table gains an `idx_vector` column only when a
-                vectorizer is set.
+                `idx_vector` is in `_RESERVED_KEYS` and is merged with the schema
+                keys, so it raises the identity-column error even though
+                `_MINIMAL_SCHEMA` lists only `idx`. The table gains an
+                `idx_vector` column only when a vectorizer is set.
         """
         self.embedder = embedder
         self.vectorizer = vectorizer

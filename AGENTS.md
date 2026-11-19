@@ -231,17 +231,15 @@ intermediate results so operations can resume without recomputing completed work
 - `GoldDescriptor`, `GoldVectorizer`, `GoldClusterizer`, and `GoldSelector` derive
   from `GoldDoerWithTable`; `GoldSplitter` derives from `GoldDoer` and composes stages.
   Put shared initialization in the appropriate base and forward options via `super()`.
-- `idx` and `idx_vector` (`GoldDoer.RESERVED_KEYS`) are reserved on every
-  `GoldDoer`, including a doer whose `_MINIMAL_SCHEMA` does not list both.
-  Initialization rejects a string attribute whose name contains `key` when its
-  value is one of those names. When that name is also an identity column of the
-  instance, the error names the identity collision; otherwise it names the
-  reserved key. A doer without `_MINIMAL_SCHEMA` reports both names as reserved.
-  `GoldDoerWithTable` also rejects duplicate key values, a `to_keep_schema`
-  entry that redefines an identity column, and a reserved name in
-  `to_keep_schema` that is not in the schema. `label_key` is checked after it
-  is assigned in `GoldDoerWithTable.__init__`. Children set their own attributes
-  before `super().__init__()`. Name new column attributes `*_key` and declare
+- `idx` and `idx_vector` are `GoldDoerWithTable._RESERVED_KEYS`. They are
+  reserved only when a doer uses an intermediate table, not on a plain
+  `GoldDoer`. Collision checks use `_RESERVED_KEYS` merged with the keys of
+  `_MINIMAL_SCHEMA`, and a hit raises the identity-column error, including
+  `idx_vector` when the schema lists only `idx`. `GoldDoerWithTable` also
+  rejects duplicate key values and a `to_keep_schema` entry that redefines a
+  name in that merged set. `label_key` is checked after it is assigned in
+  `GoldDoerWithTable.__init__`. Children set their own attributes before
+  `super().__init__()`. Name new column attributes `*_key` and declare
   additional identity columns in `_MINIMAL_SCHEMA`. Do not add `idx_vector` to
   a schema that does not store that column.
 - Preserve paired entry points: `describe_in_*`, `vectorize_in_*`, `cluster_in_*`,
