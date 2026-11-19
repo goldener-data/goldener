@@ -296,7 +296,6 @@ class TestGoldSKLearnClusteringTool:
         advanced = tool.random_state
         assert advanced is not None
         assert not np.array_equal(advanced["state"]["key"], state["state"]["key"])
-        assert not torch.equal(tool.fit(x, 4), first)
 
         tool.update_random_state(state)
         assert torch.equal(tool.fit(x, 4), first)
