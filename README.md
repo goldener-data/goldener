@@ -430,19 +430,40 @@ workflow manually from the Actions tab of the repository, on the branch or tag t
       </a>
     </td>
     <td align="center">
+      <a href="https://github.com/bfs2021">
+        <img src="https://avatars.githubusercontent.com/u/101915083?v=4" width="100" alt="bfs2021"/>
+        <br />
+        <sub><b>bfs2021</b></sub>
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
       <a href="https://github.com/CyberKun">
         <img src="https://avatars.githubusercontent.com/u/186809931?v=4" width="100" alt="CyberKun"/>
         <br />
         <sub><b>CyberKun</b></sub>
       </a>
     </td>
-  </tr>
-  <tr>
     <td align="center">
       <a href="https://github.com/Dhruv06000">
         <img src="https://avatars.githubusercontent.com/u/196720010?v=4" width="100" alt="Dhruv06000"/>
         <br />
         <sub><b>Dhruv06000</b></sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/emreocell">
+        <img src="https://avatars.githubusercontent.com/u/73295089?v=4" width="100" alt="emreocell"/>
+        <br />
+        <sub><b>emreocell</b></sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/Golden007-prog">
+        <img src="https://avatars.githubusercontent.com/u/140976895?v=4" width="100" alt="Golden007-prog"/>
+        <br />
+        <sub><b>Golden007-prog</b></sub>
       </a>
     </td>
     <td align="center">
@@ -452,6 +473,15 @@ workflow manually from the Actions tab of the repository, on the branch or tag t
         <sub><b>HafidIdrissi</b></sub>
       </a>
     </td>
+    <td align="center">
+      <a href="https://github.com/inverteum">
+        <img src="https://avatars.githubusercontent.com/u/11546520?v=4" width="100" alt="inverteum"/>
+        <br />
+        <sub><b>inverteum</b></sub>
+      </a>
+    </td>
+  </tr>
+  <tr>
     <td align="center">
       <a href="https://github.com/jason-scheffel">
         <img src="https://avatars.githubusercontent.com/u/80598885?v=4" width="100" alt="jason-scheffel"/>
@@ -464,6 +494,13 @@ workflow manually from the Actions tab of the repository, on the branch or tag t
         <img src="https://avatars.githubusercontent.com/u/170109140?v=4" width="100" alt="Josequevedov08"/>
         <br />
         <sub><b>Josequevedov08</b></sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/Julianovak">
+        <img src="https://avatars.githubusercontent.com/u/166062739?v=4" width="100" alt="Julianovak"/>
+        <br />
+        <sub><b>Julianovak</b></sub>
       </a>
     </td>
     <td align="center">
@@ -480,8 +517,6 @@ workflow manually from the Actions tab of the repository, on the branch or tag t
         <sub><b>mangomac</b></sub>
       </a>
     </td>
-  </tr>
-  <tr>
     <td align="center">
       <a href="https://github.com/Mr-Neutr0n">
         <img src="https://avatars.githubusercontent.com/u/64578610?v=4" width="100" alt="Mr-Neutr0n"/>
@@ -489,6 +524,8 @@ workflow manually from the Actions tab of the repository, on the branch or tag t
         <sub><b>Mr-Neutr0n</b></sub>
       </a>
     </td>
+  </tr>
+  <tr>
     <td align="center">
       <a href="https://github.com/panosfrantzolas">
         <img src="https://avatars.githubusercontent.com/u/182676512?v=4" width="100" alt="panosfrantzolas"/>
@@ -524,8 +561,6 @@ workflow manually from the Actions tab of the repository, on the branch or tag t
         <sub><b>TaniaW777</b></sub>
       </a>
     </td>
-  </tr>
-  <tr>
     <td align="center">
       <a href="https://github.com/Yann-CV">
         <img src="https://avatars.githubusercontent.com/u/54800486?v=4" width="100" alt="Yann-CV"/>
