@@ -1,4 +1,3 @@
-import copy
 import re
 
 import numpy as np
@@ -35,6 +34,13 @@ class DummyDataset(Dataset):
         )
 
 
+def _same_random_state(left: dict, right: dict) -> bool:
+    return bool(
+        np.array_equal(left["state"]["key"], right["state"]["key"])
+        and left["state"]["pos"] == right["state"]["pos"]
+    )
+
+
 class TestGoldRandomClusteringTool:
     def test_fit(self):
         n_clusters = 2
@@ -51,6 +57,32 @@ class TestGoldRandomClusteringTool:
     def test_predict(self):
         with pytest.raises(NotImplementedError):
             GoldRandomClusteringTool(42).predict(torch.randn(10, 3))
+
+    def test_constructor_seeds_or_reuses_random_state(self):
+        seeded = GoldRandomClusteringTool(42)
+        expected = np.random.RandomState(42).get_state(legacy=False)
+        assert _same_random_state(seeded.random_state, expected)
+        again = seeded.random_state
+        assert _same_random_state(seeded.random_state, again)
+
+        caller = np.random.RandomState(3)
+        shared = GoldRandomClusteringTool(caller)
+        before = shared.random_state
+        caller.random()
+        assert not _same_random_state(shared.random_state, before)
+
+        fresh = GoldRandomClusteringTool(None)
+        first_read = fresh.random_state
+        assert _same_random_state(fresh.random_state, first_read)
+
+        with pytest.raises(
+            ValueError,
+            match=re.escape(
+                "The random state must be a NumPy RandomState, an integer or None, "
+                "got Generator."
+            ),
+        ):
+            GoldRandomClusteringTool(np.random.default_rng(0))
 
     @pytest.mark.parametrize(
         ("x", "n_clusters", "message"),
@@ -80,55 +112,54 @@ class TestGoldRandomClusteringTool:
             ),
         ],
     )
-    def test_rejected_fit_does_not_advance_generator(self, x, n_clusters, message):
+    def test_rejected_fit_does_not_advance_random_state(self, x, n_clusters, message):
         tool = GoldRandomClusteringTool(42)
-        state = tool.generator_state
+        state = tool.random_state
         with pytest.raises(ValueError, match=re.escape(message)):
             tool.fit(x, n_clusters)
-        assert tool.generator_state == state
+        assert _same_random_state(tool.random_state, state)
 
-    def test_fit_consumes_generator_and_restore_replays(self):
+    def test_fit_consumes_random_state_and_restore_replays(self):
         x = torch.randn(10, 3)
         n_clusters = 2
         tool = GoldRandomClusteringTool(42)
-        initial = tool.generator_state
-        assert tool.random_state == 42
-        assert tool.generator_state == initial
+        initial = tool.random_state
 
         first = tool.fit(x, n_clusters)
-        advanced = tool.generator_state
-        assert advanced != initial
+        advanced = tool.random_state
+        assert not _same_random_state(advanced, initial)
         second = tool.fit(x, n_clusters)
-        assert tool.generator_state != advanced
+        assert not _same_random_state(tool.random_state, advanced)
 
         replay = GoldRandomClusteringTool(42)
         assert torch.equal(replay.fit(x, n_clusters), first)
         assert torch.equal(replay.fit(x, n_clusters), second)
 
-        returned = tool.generator_state
-        untouched = copy.deepcopy(returned)
-        returned["state"]["state"] = 0
-        assert tool.generator_state == untouched
+        returned = tool.random_state
+        held = tool.random_state
+        returned["state"]["key"][0] = 0
+        assert _same_random_state(tool.random_state, held)
 
-        tool.update_generator_state(initial)
-        assert tool.random_state == 42
+        tool.update_random_state(initial)
+        assert _same_random_state(tool.random_state, initial)
         assert torch.equal(tool.fit(x, n_clusters), first)
-        assert initial == GoldRandomClusteringTool(42).generator_state
+        assert _same_random_state(initial, GoldRandomClusteringTool(42).random_state)
 
-        held = GoldRandomClusteringTool(None)
-        held_state = held.generator_state
-        position = held_state["state"]["state"]
-        held_first = held.fit(x, n_clusters)
-        held.update_generator_state(held_state)
-        assert torch.equal(held.fit(x, n_clusters), held_first)
-        assert held_state["state"]["state"] == position
+        held_tool = GoldRandomClusteringTool(None)
+        before = held_tool.random_state
+        held_first = held_tool.fit(x, n_clusters)
+        after = held_tool.random_state
+        assert not _same_random_state(after, before)
+        held_tool.update_random_state(before)
+        assert torch.equal(held_tool.fit(x, n_clusters), held_first)
+        assert _same_random_state(held_tool.random_state, after)
 
         single = GoldRandomClusteringTool(42)
-        before_single = single.generator_state
+        before_single = single.random_state
         single_labels = single.fit(x, 1)
         assert single_labels.dtype == torch.int64
         assert torch.equal(single_labels, torch.zeros(10, dtype=torch.int64))
-        assert single.generator_state != before_single
+        assert not _same_random_state(single.random_state, before_single)
 
         uneven = GoldRandomClusteringTool(42).fit(torch.randn(10, 3), 3)
         assert [uneven.tolist().count(cluster_id) for cluster_id in range(3)] == [
@@ -137,44 +168,49 @@ class TestGoldRandomClusteringTool:
             3,
         ]
 
-    def test_one_row_fit_advances_generator(self):
+    def test_one_row_fit_advances_random_state(self):
         one_row = torch.tensor([[0.0, 1.0, -1.0]])
         tool = GoldRandomClusteringTool(42)
-        before = tool.generator_state
+        before = tool.random_state
         labels = tool.fit(one_row, 1)
-        after = tool.generator_state
+        after = tool.random_state
         assert labels.dtype == torch.int64
         assert torch.equal(labels, torch.zeros(1, dtype=torch.int64))
-        assert after != before
+        assert not _same_random_state(after, before)
 
-        tool.update_generator_state(before)
+        tool.update_random_state(before)
         assert torch.equal(tool.fit(one_row, 1), torch.zeros(1, dtype=torch.int64))
-        assert tool.generator_state == after
+        assert _same_random_state(tool.random_state, after)
 
     @pytest.mark.parametrize(
         ("state", "exc", "message"),
         [
-            pytest.param(1, TypeError, "state must be a dict", id="not_a_dict"),
+            pytest.param(
+                1,
+                TypeError,
+                "state must be a dict or a tuple.",
+                id="not_a_dict",
+            ),
             pytest.param(
                 {},
                 ValueError,
-                "state must be for a PCG64 RNG",
+                "state dictionary is not valid.",
                 id="empty_dict",
             ),
             pytest.param(
-                {"bit_generator": "PCG64"},
-                KeyError,
-                "'state'",
-                id="missing_state",
+                {"bit_generator": "MT19937"},
+                ValueError,
+                "state dictionary is not valid.",
+                id="incomplete_dict",
             ),
         ],
     )
-    def test_rejected_state_does_not_replace_generator(self, state, exc, message):
+    def test_rejected_state_does_not_replace_random_state(self, state, exc, message):
         tool = GoldRandomClusteringTool(42)
-        before = tool.generator_state
+        before = tool.random_state
         with pytest.raises(exc, match=re.escape(message)):
-            tool.update_generator_state(state)
-        assert tool.generator_state == before
+            tool.update_random_state(state)
+        assert _same_random_state(tool.random_state, before)
 
 
 class TestGetRandomChunkAssignment:

@@ -11,11 +11,10 @@ when selecting or splitting it, and to balance the batches during training (`gol
   assignments locally (one per vector by default, a sample with multiple vectors can then have multiple clusters).
 """
 
-import copy
 import math
 from abc import ABC, abstractmethod
 from logging import getLogger
-from typing import Callable, Any, cast
+from typing import Callable, Any
 
 import numpy as np
 import pixeltable as pxt
@@ -84,82 +83,88 @@ class GoldRandomClusteringTool(GoldClusteringTool):
     """Chunk data randomly into clusters of almost equal size.
 
     A successful `fit` labels row `i` with `i % n_clusters`, then shuffles those
-    labels with the NumPy generator created in `__init__`. For `num_rows` rows,
-    cluster sizes differ by at most one. When `num_rows % n_clusters` is `r` and
-    `r` is not zero, cluster ids `0` through `r - 1` each receive one more row
-    than the other ids. The shuffle changes which rows receive which ids and
-    leaves those sizes unchanged.
+    labels with this tool's NumPy `RandomState`. For `num_rows` rows, cluster
+    sizes differ by at most one. When `num_rows % n_clusters` is `r` and `r` is
+    not zero, cluster ids `0` through `r - 1` each receive one more row than the
+    other ids. The shuffle changes which rows receive which ids and leaves those
+    sizes unchanged.
 
-    The generator is `numpy.random.default_rng(random_state)`. Each successful
+    The tool always owns a `RandomState`. An integer seeds a new one. None draws
+    entropy. A passed `RandomState` is used as that instance. Each successful
     `fit` of one or more rows consumes it, so a later `fit` on the same instance
-    does not repeat the shuffle drawn from the original seed. A one-row fit
-    leaves its only label in place. `Generator.shuffle` draws nothing for a
-    one-element sequence, so that fit draws one value with `Generator.random()`
-    and still advances the generator. `random_state` keeps the seed passed to
-    `__init__`. It is not updated by `fit`, and it is not a snapshot of the
-    generator. `generator_state` returns that snapshot. `update_generator_state`
-    restores it. Later fits read `_generator`, not the `random_state` attribute.
+    does not repeat the shuffle drawn from the original state. A one-row fit
+    leaves its only label in place. `RandomState.shuffle` draws nothing for a
+    one-element sequence, so that fit draws one value with `RandomState.random()`
+    and still advances the random state. `random_state` returns a snapshot from
+    `RandomState.get_state(legacy=False)`. It is updated by use of the random
+    state. It is not the constructor seed. `update_random_state` restores that
+    snapshot. Later fits read `_random_state`.
 
     `predict` is not supported. A fit does not store centroids or another mapping
     that could label new rows.
 
     Attributes:
-        random_state: Seed passed to `__init__`. An integer seeds the generator.
-            None lets NumPy draw entropy. This is the constructor input, not the
-            generator state after `fit`.
-        _generator: NumPy `Generator` consumed by each successful `fit`.
+        _random_state: NumPy `RandomState` consumed by each successful `fit`.
     """
 
-    def __init__(self, random_state: int | None = None) -> None:
-        """Build the NumPy generator consumed by later fits.
+    def __init__(self, random_state: np.random.RandomState | int | None = None) -> None:
+        """Build the NumPy `RandomState` consumed by later fits.
 
         Args:
-            random_state: Seed for `numpy.random.default_rng`. None draws
-                entropy. Stored on `random_state`. This seed is not a snapshot
-                of the generator after `fit`.
-        """
-        self.random_state = random_state
-        self._generator = np.random.default_rng(random_state)
-
-    @property
-    def generator_state(self) -> dict[str, Any]:
-        """Return an independent snapshot of the NumPy generator.
-
-        Reading this property does not advance the generator. The result is a
-        copy of `Generator.bit_generator.state` for the generator built in
-        `__init__`. It is not `random_state`.
-
-        Returns:
-            A detached copy of the bit-generator state.
-        """
-        return copy.deepcopy(cast(dict[str, Any], self._generator.bit_generator.state))
-
-    def update_generator_state(self, state: dict[str, Any]) -> None:
-        """Restore the NumPy generator from a previous snapshot.
-
-        The next successful `fit` uses the restored generator. `random_state`
-        is left unchanged. A copy of `state` is installed so a later `fit` does
-        not mutate the caller's dictionary.
-
-        Args:
-            state: Bit-generator state, as returned by `generator_state`.
+            random_state: Seed or random state for the assignments. An integer
+                seeds a new `RandomState`. None draws entropy. A `RandomState`
+                is used as this tool's own random state.
 
         Raises:
-            TypeError: If `state` is not a dictionary.
-            ValueError: If `state` is not a state for this generator's bit
-                generator.
-            KeyError: If `state` omits a key that bit generator requires.
+            ValueError: If `random_state` is not a `RandomState`, an integer,
+                or None.
         """
-        self._generator.bit_generator.state = copy.deepcopy(state)
+        if random_state is not None and not isinstance(
+            random_state, int | np.random.RandomState
+        ):
+            raise ValueError(
+                "The random state must be a NumPy RandomState, an integer or None, "
+                f"got {type(random_state).__name__}."
+            )
+        if isinstance(random_state, int) or random_state is None:
+            random_state = np.random.RandomState(random_state)
+        self._random_state = random_state
+
+    @property
+    def random_state(self) -> dict[str, Any]:
+        """Return a snapshot of this tool's random state.
+
+        Reading this property does not advance the random state. The result is
+        the state returned by `RandomState.get_state(legacy=False)`. It is not
+        the seed passed to `__init__`.
+
+        Returns:
+            A snapshot of the current `RandomState`.
+        """
+        return self._random_state.get_state(legacy=False)
+
+    def update_random_state(self, state: dict[str, Any]) -> None:
+        """Restore this tool's random state from a previous snapshot.
+
+        The next successful `fit` uses the restored state.
+
+        Args:
+            state: Random state, as returned by `random_state`.
+
+        Raises:
+            TypeError: If `state` is not a dictionary or a tuple.
+            ValueError: If `state` is not a valid `RandomState` state.
+        """
+        self._random_state.set_state(state)
 
     def fit(self, x: torch.Tensor, n_clusters: int) -> torch.Tensor:
         """Randomly assign each input vector to clusters of roughly the same size.
 
         Labels row `i` with `i % n_clusters`, then shuffles those labels with
-        this tool's NumPy generator. A one-row fit does not call `shuffle`.
-        `Generator.shuffle` draws nothing for a one-element sequence, so that
-        fit draws one value with `Generator.random()` and leaves its only label
-        in place. A successful call of one or more rows advances the generator.
+        this tool's NumPy `RandomState`. A one-row fit does not call `shuffle`.
+        `RandomState.shuffle` draws nothing for a one-element sequence, so that
+        fit draws one value with `RandomState.random()` and leaves its only label
+        in place. A successful call of one or more rows advances the random state.
         A call that raises does not.
 
         Args:
@@ -186,9 +191,9 @@ class GoldRandomClusteringTool(GoldClusteringTool):
 
         cluster_assignment = [i % n_clusters for i in range(total)]
         if len(cluster_assignment) == 1:
-            self._generator.random()
+            self._random_state.random()
         else:
-            self._generator.shuffle(cluster_assignment)
+            self._random_state.shuffle(cluster_assignment)
 
         return torch.tensor(
             cluster_assignment,
