@@ -7,9 +7,12 @@ from goldener.torch_utils import collate_keeping_sequences_as_sequences
 
 
 class GoldDoer:
-    """Shared initialization for Goldener's data orchestration tools.
+    """Shared initialization for data-orchestration features.
 
-    Args:
+    Note:
+        This is the base class for features instantiating data orchestration.
+
+    Attributes:
         allow_existing: Whether to allow using existing tables. Defaults to True.
         drop_table: Whether to drop intermediate tables. Defaults to False.
         max_batches: Optional maximum number of batches to process.
@@ -21,13 +24,20 @@ class GoldDoer:
         drop_table: bool = False,
         max_batches: int | None = None,
     ) -> None:
+        """Initialize the GoldDoer.
+
+        Args:
+            allow_existing: Whether to allow using existing tables. Defaults to True.
+            drop_table: Whether to drop intermediate tables. Defaults to False.
+            max_batches: Optional maximum number of batches to process.
+        """
         self.allow_existing = allow_existing
         self.drop_table = drop_table
         self.max_batches = max_batches
 
 
 class GoldDoerWithTable(GoldDoer):
-    """Shared initialization for GoldDoers that populate intermediate tables.
+    """Shared initialization for data-orchestration features that populate intermediate tables.
 
     The column names of the table are validated at initialization.
     `_RESERVED_KEYS` holds `idx` and `idx_vector`. Those names are merged with
@@ -38,7 +48,7 @@ class GoldDoerWithTable(GoldDoer):
     Child classes must set their own attributes before calling
     `super().__init__()`.
 
-    Args:
+    Attributes:
         table_path: Path to the PixelTable table where results are stored.
         allow_existing: Whether to allow using existing tables. Defaults to True.
         drop_table: Whether to drop intermediate tables. Defaults to False.
@@ -59,10 +69,11 @@ class GoldDoerWithTable(GoldDoer):
             names.
 
     Note:
-        `_MINIMAL_SCHEMA` defines the minimal expected columns in the intermediary
-        table. Each subclass should adapt it if needed. `idx_vector` stays
-        reserved through `_RESERVED_KEYS` when a subclass schema does not list
-        it.
+        This is the base class for features instantiating data orchestration that
+        populate an intermediate table.  `_MINIMAL_SCHEMA` defines the minimal 
+        expected columns in the intermediary table. Each subclass should adapt it if needed. 
+        `idx_vector` stays reserved through `_RESERVED_KEYS` when a subclass schema 
+        does not list it.
     """
 
     _RESERVED_KEYS: frozenset[str] = frozenset({"idx", "idx_vector"})
@@ -83,6 +94,27 @@ class GoldDoerWithTable(GoldDoer):
         num_workers: int = 0,
         label_key: str | None = None,
     ) -> None:
+        """Initialize the GoldDoerWithTable.
+
+        Args:
+            table_path: Path to the PixelTable table where results are stored.
+            allow_existing: Whether to allow using existing tables. Defaults to True.
+            drop_table: Whether to drop intermediate tables. Defaults to False.
+            max_batches: Optional maximum number of batches to process.
+            collate_fn: Function to collate dataset samples into batches. If None,
+                `collate_keeping_sequences_as_sequences` is used.
+            to_keep_schema: Optional schema for additional columns to preserve.
+            min_pxt_insert_size: Minimum number of rows to accumulate before inserting
+                into PixelTable. Defaults to 100.
+            batch_size: Batch size used when iterating over the data. Defaults to 1.
+            num_workers: Number of workers for the PyTorch DataLoader. Defaults to 0.
+            label_key: Optional key for label stratification.
+
+        Raises:
+            ValueError: If a key attribute is named after an identity column, if key
+                attributes share the same value, or if `to_keep_schema` defines an
+                identity column.
+        """
         super().__init__(
             allow_existing=allow_existing,
             drop_table=drop_table,

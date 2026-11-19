@@ -172,9 +172,40 @@ def get_random_chunk_assignment(
 
 
 class GoldSKLearnClusteringTool(GoldClusteringTool):
-    """Cluster data using a wrapped scikit-learn clustering estimator."""
+    """Cluster data using a wrapped scikit-learn clustering estimator.
 
-    def __init__(self, tool: ClusterMixin) -> None:
+    The tool controls the randomness of stochastic estimators (such as KMeans) when
+    it holds a NumPy `RandomState`: one given or seeded by `random_state`, one
+    already set on the estimator, or one created by `update_random_state`. Its state
+    can then be inspected with `random_state` and restored with `update_random_state`
+    to replay the same random choices. Otherwise, the estimator randomness is left
+    untouched. Estimators without a `random_state` parameter (such as Birch) do not
+    support these controls.
+
+    Attributes:
+        tool: The wrapped scikit-learn clustering estimator.
+    """
+
+    def __init__(
+        self,
+        tool: ClusterMixin,
+        random_state: np.random.RandomState | int | None = None,
+    ) -> None:
+        """Initialize the GoldSKLearnClusteringTool.
+
+        Args:
+            tool: A scikit-learn clustering estimator providing `predict` and `n_clusters`.
+            random_state: Optional random state overriding the `random_state` of the estimator.
+                An integer is used as seed of a new `RandomState`. When None, a `RandomState`
+                already set on the estimator is reused; otherwise the estimator randomness is
+                left untouched.
+
+        Raises:
+            ValueError: If `tool` has no `predict` method, if `random_state` is not a
+                `RandomState`, an integer or None, or if `random_state` is not None
+                while `tool` has no `random_state` parameter.
+            NotImplementedError: If `tool` does not allow specifying `n_clusters`.
+        """
         if not hasattr(tool, "predict"):
             raise ValueError(
                 f"The clustering tool {tool} must provide a predict method."
@@ -186,6 +217,64 @@ class GoldSKLearnClusteringTool(GoldClusteringTool):
             )
 
         self.tool = tool
+
+        if random_state is not None:
+            if not isinstance(random_state, int | np.random.RandomState):
+                raise ValueError(
+                    "The random state must be a NumPy RandomState, an integer or None, "
+                    f"got {type(random_state).__name__}."
+                )
+            self._check_random_state_support()
+
+        if isinstance(random_state, int):
+            random_state = np.random.RandomState(random_state)
+        elif random_state is None:
+            tool_random_state = getattr(tool, "random_state", None)
+            if isinstance(tool_random_state, np.random.RandomState):
+                random_state = tool_random_state
+
+        self._random_state = random_state
+        if random_state is not None:
+            self.tool.random_state = random_state
+
+    def _check_random_state_support(self) -> None:
+        """Raise a ValueError if the wrapped estimator has no `random_state` parameter."""
+        if not hasattr(self.tool, "random_state"):
+            raise ValueError(
+                f"The clustering tool {self.tool} has no `random_state` parameter, "
+                "its random state cannot be set."
+            )
+
+    @property
+    def random_state(self) -> dict[str, Any] | None:
+        """Return a snapshot of the estimator random state.
+
+        Returns:
+            An independent copy of the `RandomState` state, as returned by
+            `numpy.random.RandomState.get_state(legacy=False)`, or None when the
+            estimator randomness is not controlled by this tool.
+        """
+        if self._random_state is None:
+            return None
+        return self._random_state.get_state(legacy=False)
+
+    def update_random_state(self, state: dict[str, Any]) -> None:
+        """Restore the estimator random state.
+
+        When the tool has no `RandomState` yet, a new one is created and set on the
+        estimator, overriding its previous `random_state`.
+
+        Args:
+            state: Random state, as returned by `random_state`.
+
+        Raises:
+            ValueError: If the estimator has no `random_state` parameter.
+        """
+        if self._random_state is None:
+            self._check_random_state_support()
+            self._random_state = np.random.RandomState()
+            self.tool.random_state = self._random_state
+        self._random_state.set_state(state)
 
     def fit(self, x: torch.Tensor, n_clusters: int) -> torch.Tensor:
         """Fit the scikit-learn clustering tool on the input vectors and return cluster assignments.
