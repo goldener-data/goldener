@@ -223,6 +223,9 @@ reducer = GoldSKLearnReductionTool(PCA(n_components=2))
 x_reduced = reducer.fit_transform(x)  # shape: (50, 2)
 ```
 
+See [Reducing the dimensionality of embeddings](docs/posts/GOLD_REDUCTION.md)
+for the reduction API, fitting versus transforming new rows, and which estimators can map new vectors.
+
 ## Balancing batches during training
 
 When training with randomly sampled batches, the content distribution within each batch can vary a lot —
