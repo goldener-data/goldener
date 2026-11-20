@@ -176,6 +176,8 @@ Depending on the clustering algorithm, the size of the clusters can be different
 
 As the PyTorch batch sampler, `GoldClusterizedBatchSampler` can be provided to a Pytorch DataLoader in order to iterate over the dataset during the training of the model.
 
+The number of batches of an epoch depends on the size of the clusters, the `strategy` and the shuffling. To know the length of the training before it starts (for instance, to configure a learning rate scheduler), `get_sampling_details` runs the sampling for a number of epochs or steps. It returns the number of steps of each epoch and the number of samples of each step. It requires a `generator` that only the sampler uses, and it restores the state of this `generator` afterwards, so that the training reproduces these epochs.
+
 ```python
 gold_descriptor = GoldDescriptor(...) # descriptor with vectorizer included
 gold_clusterizer = GoldClusterizer(...)
@@ -193,6 +195,10 @@ batch_sampler = GoldClusterizedBatchSampler(
     strategy=ExhaustedClusterStrategy.EXCLUDE,
 )
 
+# Get the number of steps of the training
+details = batch_sampler.get_sampling_details(n_epochs=n_epochs)
+total_steps = sum(details["steps_per_epoch"])
+
 # Iterate over the dataset
 dataloader = DataLoader(
     dataset=my_dataset,
@@ -200,13 +206,6 @@ dataloader = DataLoader(
 )
 for batch in dataloader:
   # do something with the batch
-```
-
-The number of batches of an epoch depends on the size of the clusters, the `strategy` and the shuffling. To know the length of the training before it starts (for instance, to configure a learning rate scheduler), `get_sampling_details` runs the sampling for a number of epochs or steps. It returns the number of steps of each epoch and the number of samples of each step. It requires a `generator` that only the sampler uses, and it restores the state of this `generator` afterwards, so that the training reproduces these epochs.
-
-```python
-details = batch_sampler.get_sampling_details(n_epochs=n_epochs)
-total_steps = sum(details["steps_per_epoch"])
 ```
 
 
