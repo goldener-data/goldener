@@ -1,6 +1,11 @@
 import torch
 import pytest
+import numpy as np
 from goldener.utils import (
+    validate_positive_number,
+    validate_positive_integer,
+    validate_integer_tensor,
+    validate_vectorized_input,
     check_x_and_y_shapes,
     get_size_and_sampling_count_per_chunk,
     get_ratio_list_sum,
@@ -15,6 +20,74 @@ from goldener.utils import (
     get_sampling_count_from_ratios,
     transform_batch_from_multilabel_to_independent_labels,
 )
+
+
+@pytest.mark.parametrize("value", [0, 1, 5, 10**1000, None])
+@pytest.mark.parametrize("allow_none", [False, True])
+@pytest.mark.parametrize("allow_zero", [False, True])
+def test_validate_positive_integer_valid_values(value, allow_none, allow_zero):
+    kwargs = {"allow_none": allow_none, "allow_zero": allow_zero}
+    if (value is None and not allow_none) or (value == 0 and not allow_zero):
+        requirement = "nonnegative" if allow_zero else "positive"
+        with pytest.raises(ValueError, match=f"count must be a {requirement} integer"):
+            validate_positive_integer(value, "count", **kwargs)
+    else:
+        validate_positive_integer(value, "count", **kwargs)
+
+
+@pytest.mark.parametrize("value", [True, False, -1, 1.0, "1", torch.tensor(1)])
+@pytest.mark.parametrize("allow_none", [False, True])
+@pytest.mark.parametrize("allow_zero", [False, True])
+def test_validate_positive_integer_rejects_invalid_values(
+    value, allow_none, allow_zero
+):
+    suffix = " or None" if allow_none else ""
+    requirement = "nonnegative" if allow_zero else "positive"
+    with pytest.raises(
+        ValueError, match=f"count must be a {requirement} integer{suffix}\\."
+    ):
+        validate_positive_integer(
+            value, "count", allow_none=allow_none, allow_zero=allow_zero
+        )
+
+
+@pytest.mark.parametrize("value", [1, 0.5, np.float32(0.5)])
+@pytest.mark.parametrize("allow_zero", [False, True])
+def test_validate_positive_number_accepts_positive_values(value, allow_zero):
+    validate_positive_number(value, "score", allow_zero=allow_zero)
+
+
+@pytest.mark.parametrize("value", [0, 0.0, -0.0])
+@pytest.mark.parametrize("allow_zero", [False, True])
+def test_validate_positive_number_zero_boundary(value, allow_zero):
+    if allow_zero:
+        validate_positive_number(value, "score", allow_zero=True)
+    else:
+        with pytest.raises(ValueError, match="score must be finite and positive"):
+            validate_positive_number(value, "score")
+
+
+@pytest.mark.parametrize(
+    "value",
+    [-1, float("nan"), float("inf"), -float("inf"), True, False, None, "1", 1j],
+)
+@pytest.mark.parametrize("allow_zero", [False, True])
+def test_validate_positive_number_rejects_invalid_values(value, allow_zero):
+    requirement = "nonnegative" if allow_zero else "positive"
+    with pytest.raises(ValueError, match=f"score must be finite and {requirement}"):
+        validate_positive_number(value, "score", allow_zero=allow_zero)
+
+
+@pytest.mark.parametrize("allow_zero", [False, True])
+def test_validate_positive_number_none_only_when_allowed(allow_zero):
+    validate_positive_number(None, "score", allow_none=True, allow_zero=allow_zero)
+    requirement = "nonnegative" if allow_zero else "positive"
+    with pytest.raises(ValueError, match=rf"score must be finite and {requirement}\."):
+        validate_positive_number(None, "score", allow_zero=allow_zero)
+    with pytest.raises(
+        ValueError, match=f"score must be finite and {requirement} or None"
+    ):
+        validate_positive_number(-1, "score", allow_none=True, allow_zero=allow_zero)
 
 
 class TestCheckXAndYShapes:
@@ -812,3 +885,83 @@ class TestTransformBatchFromMultilabelToBinaryLabels:
         assert torch.equal(x_out, expected_x)
         assert sorted(out["label"]) == expected_labels
         assert out["other"] == expected_other
+
+
+def test_validate_integer_tensor_accepts_integer_rows():
+    values = torch.tensor([3, 4], dtype=torch.int64)
+    assert validate_integer_tensor(values, 1, 2, "sample_idx") is values
+    assert validate_integer_tensor(None, 1, 2, "sample_idx", allow_none=True) is None
+
+
+@pytest.mark.parametrize("name", ["uint16", "uint32", "uint64"])
+def test_validate_integer_tensor_accepts_optional_unsigned_dtypes(name):
+    dtype = getattr(torch, name, None)
+    if dtype is None:
+        pytest.skip(f"torch.{name} is not available")
+    values = torch.tensor([3, 4], dtype=dtype)
+    assert validate_integer_tensor(values, 1, 2, "sample_idx") is values
+
+
+def test_integer_dtypes_skip_unsigned_widths_missing_from_torch(monkeypatch):
+    import builtins
+    import importlib
+
+    import goldener.utils as utils
+
+    hidden = {"uint16", "uint32", "uint64"}
+    real_hasattr = builtins.hasattr
+
+    def hiding_hasattr(obj, name):
+        if obj is torch and name in hidden:
+            return False
+        return real_hasattr(obj, name)
+
+    monkeypatch.setattr(builtins, "hasattr", hiding_hasattr)
+    importlib.reload(utils)
+    try:
+        for name in hidden:
+            dtype = getattr(torch, name, None)
+            if dtype is not None:
+                assert dtype not in utils._INTEGER_DTYPES
+        assert torch.int8 in utils._INTEGER_DTYPES
+        assert torch.int16 in utils._INTEGER_DTYPES
+        assert torch.int32 in utils._INTEGER_DTYPES
+        assert torch.int64 in utils._INTEGER_DTYPES
+        assert torch.uint8 in utils._INTEGER_DTYPES
+        values = torch.tensor([1, 2], dtype=torch.int32)
+        assert utils.validate_integer_tensor(values, 1, 2, "sample_idx") is values
+        with pytest.raises(ValueError, match="integer tensor"):
+            utils.validate_integer_tensor(
+                torch.tensor([True, False]), 1, 2, "sample_idx"
+            )
+    finally:
+        monkeypatch.undo()
+        importlib.reload(utils)
+
+
+@pytest.mark.parametrize(
+    "tensor,dim,batch_size,allow_none,match",
+    [
+        (None, 1, 2, False, "sample_idx is required"),
+        (torch.tensor([1.0, 2.0]), 1, 2, False, "1D integer tensor"),
+        (torch.tensor([True, False]), 1, 2, False, "1D integer tensor"),
+        (torch.tensor([[1, 2]]), 1, 1, False, "1D integer tensor"),
+        (torch.tensor([1, 2, 3]), 1, 2, False, "one entry per row"),
+        ([1, 2], 1, 2, False, "1D integer tensor"),
+    ],
+)
+def test_validate_integer_tensor_rejects_invalid_values(
+    tensor, dim, batch_size, allow_none, match
+):
+    with pytest.raises(ValueError, match=match):
+        validate_integer_tensor(
+            tensor, dim, batch_size, "sample_idx", allow_none=allow_none
+        )
+
+
+@pytest.mark.parametrize(
+    "dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64]
+)
+@pytest.mark.parametrize("rows", [0, 2], ids=["empty", "nonempty"])
+def test_validate_vectorized_input_accepts_floating_matrices(dtype, rows):
+    validate_vectorized_input(torch.ones(rows, 3, dtype=dtype), "TestTool")

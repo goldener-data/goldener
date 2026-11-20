@@ -11,30 +11,23 @@ used to choose the data to annotate and, by the `goldener.split.GoldSplitter`, t
 """
 
 import math
+import sys
 from abc import ABC, abstractmethod
-from enum import Enum
 from logging import getLogger
-from typing import Callable, Any
-from typing_extensions import assert_never
+from typing import TYPE_CHECKING, Callable, Any
 
-import jax
 import numpy as np
 import pixeltable as pxt
 from pixeltable import Error, Query
 from pixeltable.catalog import Table
 
 import torch
-import jax.numpy as jnp
-
-from coreax import SupervisedData, ScalarValuedKernel
-from coreax.kernels import LinearKernel
-from coreax.solvers import GreedyKernelPoints
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 
 from goldener.clusterize import get_random_chunk_assignment
 from goldener.do import GoldDoerWithTable
-from goldener.distance import cosine_distance
+from goldener.distance import DistanceType
 from goldener.pxt_utils import (
     set_value_to_idx_rows,
     GoldPxtTorchDataset,
@@ -47,6 +40,8 @@ from goldener.pxt_utils import (
 from goldener.reduce import GoldReductionTool, GoldReductionToolWithFit
 from goldener.torch_utils import get_dataset_sample_dict
 from goldener.utils import (
+    validate_positive_integer,
+    validate_vectorized_input,
     filter_batch_from_indices,
     get_indices_with_labels,
     split_sampling_among_chunks,
@@ -55,21 +50,19 @@ from goldener.utils import (
     force_non_zero_count,
 )
 
+if TYPE_CHECKING or sys.platform != "win32":
+    import jax
+    import jax.numpy as jnp
+    from coreax import SupervisedData, ScalarValuedKernel
+    from coreax.kernels import LinearKernel
+    from coreax.solvers import GreedyKernelPoints
+
 logger = getLogger(__name__)
 
 
-class DistanceType(Enum):
-    EUCLIDEAN = "euclidean"
-    COSINE = "cosine"
-
-    @property
-    def distance_function(self) -> Callable[[torch.Tensor, torch.Tensor], torch.Tensor]:
-        if self is DistanceType.EUCLIDEAN:
-            return torch.cdist
-        elif self is DistanceType.COSINE:
-            return cosine_distance
-        else:
-            assert_never(self)
+def _coreax_is_available() -> bool:
+    """Return whether Coreax can be used, which is not the case on Windows where it is not installed."""
+    return sys.platform != "win32"
 
 
 class GoldSelectionTool(ABC):
@@ -83,21 +76,6 @@ class GoldSelectionTool(ABC):
     def __init__(self, distance: DistanceType = DistanceType.EUCLIDEAN) -> None:
         self.distance_func = distance.distance_function
 
-    def _validate_input(self, x: torch.Tensor) -> None:
-        """Validate that input is already vectorized (2D torch.Tensor).
-
-        Args:
-            x: Input tensor to validate.
-
-        Raises:
-            ValueError: If input is not a 2D tensor.
-        """
-        if x.ndim != 2:
-            raise ValueError(
-                f"GoldSelectionTool only accepts 2D tensors (num_vectors, feature_dim). "
-                f"Got shape {x.shape}. Please ensure your input is already vectorized."
-            )
-
     @abstractmethod
     def select(
         self,
@@ -108,14 +86,15 @@ class GoldSelectionTool(ABC):
         """Select a subset of data points from the input data.
 
         Args:
-            x: A 2D torch.Tensor where each row represents a data point.
+            x: Finite floating tensor shaped `(num_vectors, feature_dim)` with
+                positive feature width. Each row represents one vector.
             k: The number of data points to select.
             anchors: Optional 2D torch.Tensor of anchor points to consider during selection.
                 The shape should be (num_anchors, feature_dim). If provided, the selection will be performed
                 with respect to these anchor points and it will affect the selection process.
 
         Returns:
-            A list of indices corresponding to the selected data points.
+            A list of row positions in `x`, not original dataset IDs.
         """
 
 
@@ -126,6 +105,9 @@ class GoldGreedyKernelPointsSelectionTool(GoldSelectionTool):
 
     With this method, the anchors are not used for the selection process.
 
+    This tool is not available on Windows, where Coreax is not installed because its dependencies
+    do not support Windows.
+
     Attributes:
         feature_kernel: The kernel to use for the GreedyKernelPoints solver.
         random_key: Random key for reproducibility in the GreedyKernelPoints solver.
@@ -134,7 +116,7 @@ class GoldGreedyKernelPointsSelectionTool(GoldSelectionTool):
 
     def __init__(
         self,
-        feature_kernel: ScalarValuedKernel,
+        feature_kernel: "ScalarValuedKernel",
         random_key: int = 42,
         distance: DistanceType = DistanceType.EUCLIDEAN,
     ) -> None:
@@ -144,7 +126,16 @@ class GoldGreedyKernelPointsSelectionTool(GoldSelectionTool):
             feature_kernel: The kernel to use for the GreedyKernelPoints solver.
             random_key: Random key for reproducibility in the GreedyKernelPoints solver. Default is 42.
             distance: Not used in this selection tool, included for compatibility with the base class.
+
+        Raises:
+            RuntimeError: If called on Windows, where Coreax is not available.
         """
+        if not _coreax_is_available():
+            raise RuntimeError(
+                "GoldGreedyKernelPointsSelectionTool is not available on Windows because it relies on "
+                "Coreax, which is not installed there. Use another GoldSelectionTool instead."
+            )
+
         super().__init__(distance=distance)
 
         self.random_key = random_key
@@ -161,17 +152,17 @@ class GoldGreedyKernelPointsSelectionTool(GoldSelectionTool):
         With this method, the anchors are not used for the selection process.
 
         Args:
-            x: A 2D torch.Tensor where each row represents a data point.
+            x: Finite floating tensor shaped `(num_vectors, feature_dim)` with
+                positive feature width. Each row represents one vector.
             k: The number of data points to select.
             anchors: Not used in this selection tool, included for compatibility with the base class.
 
         Returns:
-            A list of indices corresponding to the selected data points.
+            A list of row positions in `x`, not original dataset IDs.
 
         Raises:
-            ValueError: If x is not a 2D tensor.
+            ValueError: If `x` is not a finite floating 2D tensor with positive feature width.
                 If `k` is greater than the number of data points in `x`.
-
         """
         if anchors is not None:
             logger.info(
@@ -179,7 +170,7 @@ class GoldGreedyKernelPointsSelectionTool(GoldSelectionTool):
                 "The selection will be performed without considering the anchors."
             )
 
-        self._validate_input(x)
+        validate_vectorized_input(x, "GoldGreedyKernelPointsSelectionTool")
         x_len = len(x)
         if k > x_len:
             raise ValueError("k cannot be greater than the number of data points in x.")
@@ -235,21 +226,22 @@ class GoldGreedyKCenterSelectionTool(GoldSelectionTool):
         with the farthest nearest neighbors among the not selected points.
 
         Args:
-            x: A 2D torch.Tensor where each row represents a data point.
+            x: Finite floating tensor shaped `(num_vectors, feature_dim)` with
+                positive feature width. Each row represents one vector.
             k: The number of data points to select.
             anchors: Optional 2D torch.Tensor of anchor points to consider during selection.
                 The shape should be (num_anchors, feature_dim). If provided, the selection
                 will be performed with respect to these anchor points and it will affect the selection process.
 
         Returns:
-            A list of indices corresponding to the selected data points.
+            A list of row positions in `x`, not original dataset IDs.
 
         Raises:
             ValueError:
-                If x is not a 2D tensor.
+                If `x` is not a finite floating 2D tensor with positive feature width.
                 If `k` is greater than the number of data points in `x`.
         """
-        self._validate_input(x)
+        validate_vectorized_input(x, "GoldGreedyKCenterSelectionTool")
         x_len = len(x)
         if k > x_len:
             raise ValueError("k cannot be greater than the number of data points in x.")
@@ -346,16 +338,17 @@ class GoldGreedyClosestPointSelectionTool(GoldSelectionTool):
         with the closest nearest neighbors among the not selected points.
 
         Args:
-            x: A 2D torch.Tensor where each row represents a data point.
+            x: Finite floating tensor shaped `(num_vectors, feature_dim)` with
+                positive feature width. Each row represents one vector.
             k: The number of data points to select.
             anchors: Not used in this selection tool, included for compatibility with the base class.
 
         Returns:
-            A list of indices corresponding to the selected data points.
+            A list of row positions in `x`, not original dataset IDs.
 
         Raises:
             ValueError:
-                If x is not a 2D tensor.
+                If `x` is not a finite floating 2D tensor with positive feature width.
                 If `k` is greater than the number of data points in `x`.
         """
         if anchors is not None:
@@ -364,7 +357,7 @@ class GoldGreedyClosestPointSelectionTool(GoldSelectionTool):
                 "The selection will be performed without considering the anchors."
             )
 
-        self._validate_input(x)
+        validate_vectorized_input(x, "GoldGreedyClosestPointSelectionTool")
         x_len = len(x)
         if k > x_len:
             raise ValueError("k cannot be greater than the number of data points in x.")
@@ -436,16 +429,17 @@ class GoldGreedyFarthestPointSelectionTool(GoldSelectionTool):
         with the farthest nearest neighbors among the not selected points.
 
         Args:
-            x: A 2D torch.Tensor where each row represents a data point.
+            x: Finite floating tensor shaped `(num_vectors, feature_dim)` with
+                positive feature width. Each row represents one vector.
             k: The number of data points to select.
             anchors: Not used in this selection tool, included for compatibility with the base class.
 
         Returns:
-            A list of indices corresponding to the selected data points.
+            A list of row positions in `x`, not original dataset IDs.
 
         Raises:
             ValueError:
-                If x is not a 2D tensor.
+                If `x` is not a finite floating 2D tensor with positive feature width.
                 If `k` is greater than the number of data points in `x`.
         """
         if anchors is not None:
@@ -454,7 +448,7 @@ class GoldGreedyFarthestPointSelectionTool(GoldSelectionTool):
                 "The selection will be performed without considering the anchors."
             )
 
-        self._validate_input(x)
+        validate_vectorized_input(x, "GoldGreedyFarthestPointSelectionTool")
         x_len = len(x)
         if k > x_len:
             raise ValueError("k cannot be greater than the number of data points in x.")
@@ -536,12 +530,10 @@ class GoldZCoreSelectionTool(GoldSelectionTool):
         super().__init__(distance=distance)
 
         self.device = device
-        if n_dim_for_score <= 0:
-            raise ValueError("n_dim_for_score must be a positive integer.")
+        validate_positive_integer(n_dim_for_score, "n_dim_for_score")
         self.n_dim_for_score = n_dim_for_score
 
-        if n_random_anchors <= 0:
-            raise ValueError("n_random_anchors must be a positive integer.")
+        validate_positive_integer(n_random_anchors, "n_random_anchors")
         self.n_random_anchors = n_random_anchors
         self.n_redundancy = n_redundancy
         self.redundancy_scale = redundancy_scale
@@ -560,20 +552,21 @@ class GoldZCoreSelectionTool(GoldSelectionTool):
         """Select a subset of data points from the ZCore algorithm.
 
         Args:
-            x: A 2D torch.Tensor where each row represents a data point.
+            x: Finite floating tensor shaped `(num_vectors, feature_dim)` with
+                positive feature width. Each row represents one vector.
             k: The number of data points to select.
             anchors: This selection tool does not use anchors, included for compatibility with the base class.
 
         Returns:
-            A list of indices corresponding to the selected data points.
+            A list of row positions in `x`, not original dataset IDs.
 
         Raises:
             ValueError:
-                If x is not a 2D tensor.
+                If `x` is not a finite floating 2D tensor with positive feature width.
                 If `k` is greater than the number of data points in `x`.
                 if `n_dim_for_score` is greater than the number of dimensions in `x`.
         """
-        self._validate_input(x)
+        validate_vectorized_input(x, "GoldZCoreSelectionTool")
         x_len = len(x)
         if k > x_len:
             raise ValueError("k cannot be greater than the number of data points in x.")
@@ -693,9 +686,7 @@ class GoldSelector(GoldDoerWithTable):
     def __init__(
         self,
         table_path: str,
-        selection_tool: GoldSelectionTool = GoldGreedyKernelPointsSelectionTool(
-            feature_kernel=LinearKernel(output_scale=1, constant=0)
-        ),
+        selection_tool: GoldSelectionTool | None = None,
         reducer: GoldReductionTool | None = None,
         chunk: int | None = None,
         collate_fn: Callable | None = None,
@@ -718,7 +709,9 @@ class GoldSelector(GoldDoerWithTable):
 
         Args:
             table_path: Path to store the PixelTable table.
-            selection_tool: The GoldSelectionTool implementing the selection algorithm.
+            selection_tool: The GoldSelectionTool implementing the selection algorithm. If None, a
+                `GoldGreedyKernelPointsSelectionTool` with a linear kernel is used, which is not available
+                on Windows.
             reducer: Optional GoldReductionTool instance for dimensionality reduction before selection.
             chunk: Optional chunk size for processing data in chunks.
             collate_fn: Optional collate function for the DataLoader.
@@ -740,20 +733,23 @@ class GoldSelector(GoldDoerWithTable):
             random_state: Optional random state for reproducibility during chunk assignment. Default is None.
 
         Raises:
+            RuntimeError: If `selection_tool` is None on Windows, where the default
+                `GoldGreedyKernelPointsSelectionTool` is not available.
             ValueError: If `exclude_labels` is provided but `label_key` is None.
             NotImplementedError: If `distribute` is True.
+            ValueError: If a customizable key uses `idx` or `idx_vector`, collides
+                with an identity column, or shares its value with another key, or
+                if `to_keep_schema` uses one of those columns (see `GoldDoerWithTable`).
         """
-        super().__init__(
-            allow_existing=allow_existing,
-            drop_table=drop_table,
-            max_batches=max_batches,
-            collate_fn=collate_fn,
-            to_keep_schema=to_keep_schema,
-            min_pxt_insert_size=min_pxt_insert_size,
-            batch_size=batch_size,
-            num_workers=num_workers,
-        )
-        self.table_path = table_path
+        if selection_tool is None:
+            if not _coreax_is_available():
+                raise RuntimeError(
+                    "GoldSelector needs an explicit selection_tool on Windows: the default "
+                    "GoldGreedyKernelPointsSelectionTool relies on Coreax, which is not installed there."
+                )
+            selection_tool = GoldGreedyKernelPointsSelectionTool(
+                feature_kernel=LinearKernel(output_scale=1, constant=0)
+            )
         self.selection_tool = selection_tool
         self.reducer = reducer
         self.chunk = chunk
@@ -764,7 +760,6 @@ class GoldSelector(GoldDoerWithTable):
             raise ValueError(
                 "If exclude_labels is provided, label_key must also be provided."
             )
-        self.label_key = label_key
         self.exclude_labels = exclude_labels
         if distribute:
             raise NotImplementedError(
@@ -772,6 +767,18 @@ class GoldSelector(GoldDoerWithTable):
             )
         self._distribute = distribute
         self.random_state = random_state
+        super().__init__(
+            allow_existing=allow_existing,
+            drop_table=drop_table,
+            max_batches=max_batches,
+            collate_fn=collate_fn,
+            to_keep_schema=to_keep_schema,
+            min_pxt_insert_size=min_pxt_insert_size,
+            batch_size=batch_size,
+            num_workers=num_workers,
+            table_path=table_path,
+            label_key=label_key,
+        )
 
     @property
     def distribute(self) -> bool:
@@ -817,14 +824,14 @@ class GoldSelector(GoldDoerWithTable):
             logger.info(f"No existing selection table from {self.table_path}")
             old_selection_table = None
 
-        # selection table are expected to have a primary key allowing to idempotent updates
+        # selection table is expected to have a primary key allowing to idempotent updates
         if old_selection_table is not None:
-            check_pxt_table_has_primary_key(old_selection_table, set(["idx_vector"]))
+            check_pxt_table_has_primary_key(old_selection_table, {"idx_vector"})
 
         if not self.allow_existing and old_selection_table is not None:
             raise ValueError(
-                f"Table at path {self.table_path} already exists and "
-                "allow_existing is set to False."
+                f"Table at path {self.table_path} already exists while "
+                "allow_existing is False."
             )
 
         if isinstance(select_from, Table):
@@ -893,7 +900,7 @@ class GoldSelector(GoldDoerWithTable):
         self,
         select_from: Dataset | Table,
         select_size: int | float,
-        value: str | None,
+        value: str,
         restrict_to: set[int] | None = None,
         restriction_idx_key: str = "idx_vector",
     ) -> Table:
@@ -912,7 +919,8 @@ class GoldSelector(GoldDoerWithTable):
             select_from: Dataset or Table to select from. If a Dataset is provided, each item should be a
                 dictionary with at least the `vectorized_key` and `idx` keys after applying the collate_fn.
                 If a Table is provided, it should contain at least the `vectorized_key`, `idx` and `idx_vector` columns.
-            select_size: Number or ratio (between 0 and 1) of data points to select.
+            select_size: Positive integer count or floating ratio in `(0, 1]` of
+                data points to select. Booleans are not accepted.
             value: Value to set in the `selection_key` column for selected samples.
             restrict_to: Optional set of indices to restrict the search to.
                 If provided, only the selected indices in `restriction_idx_key` will be used for the selection.
@@ -923,9 +931,15 @@ class GoldSelector(GoldDoerWithTable):
                 and `idx` (index of the sample) and `idx_vector` (index of the vector) columns as well.
 
         Raises:
+            TypeError: If `value` is not a non-null string.
             ValueError: If `restriction_idx_key` is not `"idx"` or `"idx_vector"`,
-                or if select_size is a float not in the range ]0.0, 1.0].
+                or `select_size` is neither a positive integer nor a float in `(0, 1]`.
         """
+        if not isinstance(value, str):
+            raise TypeError(
+                f"value must be a non-null string, got {type(value).__name__}."
+            )
+
         if restriction_idx_key not in ("idx", "idx_vector"):
             raise ValueError(
                 "restriction_idx_key must be either 'idx' or 'idx_vector'."
@@ -937,8 +951,7 @@ class GoldSelector(GoldDoerWithTable):
                     "When select_size is a float, it must be in the range ]0.0, 1.0]."
                 )
         else:
-            if select_size <= 0:
-                raise ValueError("select_size must be a positive integer.")
+            validate_positive_integer(select_size, "select_size")
 
         selection_table = self.setup_selection_table(select_from)
         if isinstance(select_from, Dataset):
@@ -1716,10 +1729,12 @@ class GoldSelector(GoldDoerWithTable):
         # Then, the same data point can be selected multiple times if it has multiple vectors selected.
         # To achieve select_count of unique data points, we loop until we have enough unique data points selected.
         available_query = selection_col == None  # noqa: E711
+        selection_scope = f"value '{value}'"
         if label_value is not None:
             assert self.label_key is not None
             label_col = get_expr_from_column_name(selection_table, self.label_key)
             available_query = available_query & (label_col == label_value)  # noqa: E712 E711
+            selection_scope += f" and label '{label_value}'"
 
         if restrict_to is not None:
             restricted_idx_col = get_expr_from_column_name(
@@ -1729,7 +1744,7 @@ class GoldSelector(GoldDoerWithTable):
 
         while current_selected_count < select_count:
             logger.info(
-                f"Starting coresubset selection for value '{value}' and label '{label_value}'"
+                f"Starting coresubset selection for {selection_scope}"
                 f" with target count {select_count} and already selected count {already_selected_count}"
             )
             loop_start = (
@@ -1754,14 +1769,14 @@ class GoldSelector(GoldDoerWithTable):
             loop_select_count = select_count - current_selected_count
             if loop_select_count != select_count:
                 logger.info(
-                    f"{current_selected_count} samples have already been selected for value '{value}' and label '{label_value}'. "
+                    f"{current_selected_count} samples have already been selected for {selection_scope}. "
                     f"Selecting the remaining {loop_select_count} samples to reach the target count {select_count}"
                 )
 
             if loop_select_count == still_selectable:
                 logger.info(
-                    f"Selecting all the remaining {still_selectable} samples for value"
-                    f" '{value}' and label '{label_value}' to reach the target count {select_count}"
+                    f"Selecting all the remaining {still_selectable} samples for "
+                    f"{selection_scope} to reach the target count {select_count}"
                 )
                 set_value_to_idx_rows(
                     table=selection_table,
@@ -1800,8 +1815,8 @@ class GoldSelector(GoldDoerWithTable):
                     continue
 
                 logger.info(
-                    f"Selecting {chunk_select_count} samples for value '{value}' and "
-                    f"label '{label_value}' from a chunk of {len(chunk_indices)} vectors"
+                    f"Selecting {chunk_select_count} samples for {selection_scope} "
+                    f"from a chunk of {len(chunk_indices)} vectors"
                 )
 
                 # update the vector available for selection because the selection from previous chunks
@@ -1819,7 +1834,7 @@ class GoldSelector(GoldDoerWithTable):
                 if len(chunk_vector_indices_not_selected) == 0:
                     logger.info(
                         f"No more vector available for selection in the current "
-                        f"chunk for value '{value}' and label '{label_value}', skipping the chunk"
+                        f"chunk for {selection_scope}, skipping the chunk"
                     )
                     continue
 
@@ -1919,12 +1934,12 @@ class GoldSelector(GoldDoerWithTable):
 
                 logger.info(
                     f"Selected {current_selected_count} samples "
-                    f"after the current chunk for value '{value}' and label '{label_value}'. "
+                    f"after the current chunk for {selection_scope}. "
                 )
 
             logger.info(
                 f"Selected {current_selected_count} samples in the current loop "
-                f"for value '{value}' and label '{label_value}'."
+                f"for {selection_scope}."
             )
 
             if current_selected_count == loop_start:

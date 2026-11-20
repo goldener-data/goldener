@@ -91,6 +91,7 @@ from goldener import (
     GoldTensorVectorizationTool,
 )
 
+# my_model, my_layers, and dataset are user-supplied.
 gd = GoldDescriptor(
     table_path="my_table_for_description",
     embedder=GoldTorchEmbeddingTool(
@@ -99,17 +100,35 @@ gd = GoldDescriptor(
             layers=my_layers,
         )
     ),
-    vectorizer=GoldTensorVectorizationTool()
+    vectorizer=GoldTensorVectorizationTool(),
 )
 
+# Descriptor stores vectors under description_key (default "embeddings").
 gs = GoldSelector(
-    table_path="my_table_for_selection", selection_key="selection"
+    table_path="my_table_for_selection",
+    vectorized_key=gd.description_key,
 )
 
 description = gd.describe_in_table(dataset)
 selection_table = gs.select_in_table(description, 100, "to_annotate")
-selected = GoldSelector.get_selection_indices(selection_table, "to_annotate", "selection")
+selected = GoldSelector.get_selection_indices(
+    selection_table,
+    value="to_annotate",
+)
 
+```
+
+By default, `GoldSelector` uses `GoldGreedyKernelPointsSelectionTool`, which relies on Coreax. Coreax is not
+installed on Windows, so on Windows replace the `GoldSelector` above with one that uses another selection tool:
+
+```python
+from goldener import GoldGreedyKCenterSelectionTool
+
+gs = GoldSelector(
+    table_path="my_table_for_selection",
+    vectorized_key=gd.description_key,
+    selection_tool=GoldGreedyKCenterSelectionTool(device="cpu"),
+)
 ```
 
 ## Scoring novel vectors against a reference
@@ -173,8 +192,13 @@ from goldener import (
     GoldSelector,
 )
 
-gd = GoldDescriptor(...) # reuse the descriptor used for smart sampling
-gselector = GoldSelector(...)
+# Reuse the descriptor from smart sampling (vectorizer included).
+# dataset is user-supplied. The selector must read the descriptor output column.
+gd = GoldDescriptor(...)
+gselector = GoldSelector(
+    table_path="my_table_for_selection",
+    vectorized_key=gd.description_key,
+)
 gs = GoldSplitter(
     sets=[GoldSet("train", 0.7), GoldSet("val", 0.3)],
     descriptor=gd,
@@ -182,7 +206,7 @@ gs = GoldSplitter(
 )
 
 split_table = gs.split_in_table(dataset)
-splits = gs.get_split_indices(
+splits = GoldSplitter.get_split_indices(
     split_table, selection_key="selected", idx_key="idx"
 )
 train_indices = splits["train"]
@@ -201,24 +225,30 @@ from goldener import (
     GoldClusterizer,
     GoldSKLearnClusteringTool,
     GoldDescriptor,
-    GoldTorchEmbeddingTool,
-    GoldTorchEmbeddingToolConfig,
-    GoldTensorVectorizationTool,
 )
 from sklearn.cluster import KMeans
 
-gd = GoldDescriptor(...) # reuse the descriptor used for smart sampling
+# Reuse the descriptor from smart sampling (vectorizer included).
+# dataset is user-supplied.
+gd = GoldDescriptor(...)
+n_clusters = 10
 gcluster = GoldClusterizer(
     table_path="my_table_for_clusterization",
-    clustering_tool=GoldSKLearnClusteringTool(KMeans(n_clusters=10)),
+    clustering_tool=GoldSKLearnClusteringTool(KMeans(n_clusters=n_clusters)),
     cluster_key="cluster",
+    vectorized_key=gd.description_key,
 )
 
 description = gd.describe_in_table(dataset)
-clustered_table = gcluster.clusterize_in_table(description)
+clustered_table = gcluster.cluster_in_table(description, n_clusters=n_clusters)
 
-for cluster_id in range(10):
-    cluster_indices = get_cluster_indices(clustered_table, "cluster", cluster_id)
+for cluster_id in range(n_clusters):
+    cluster_indices = GoldClusterizer.get_cluster_indices(
+        clustered_table,
+        cluster_key="cluster",
+        cluster_idx=cluster_id,
+        idx_key="idx",
+    )
 
     # sample few samples and use them to define annotation guidelines for this cluster
 
@@ -240,6 +270,9 @@ reducer = GoldSKLearnReductionTool(PCA(n_components=2))
 x_reduced = reducer.fit_transform(x)  # shape: (50, 2)
 ```
 
+See [Reducing the dimensionality of embeddings](docs/posts/GOLD_REDUCTION.md)
+for the reduction API, fitting versus transforming new rows, and which estimators can map new vectors.
+
 ## Balancing batches during training
 
 When training with randomly sampled batches, the content distribution within each batch can vary a lot —
@@ -249,12 +282,13 @@ can hurt how well a model learns to recognize the underrepresented cases.
 Goldener proposes a batch sampler grouping data into groups of similar content, and then drawing samples so each batch is spread across clusters as evenly as possible.
 
 ```python
-from goldener.organize import GoldClusterizedBatchSampler
-from goldener import GoldClusterizer, GoldDescriptor, GoldSKLearnClusteringTool
-from sklearn.cluster import KMeans
+from goldener import GoldClusterizedBatchSampler, GoldClusterizer, GoldDescriptor
 
-gd = GoldDescriptor(...)  # reuse the descriptor used for smart sampling
-gc = GoldClusterizer(...)  # reuse the clusterizer used for annotation guidelines
+# Reuse the descriptor and clusterizer from earlier examples.
+# Keep vectorized_key aligned with gd.description_key on the clusterizer.
+# my_dataset is user-supplied.
+gd = GoldDescriptor(...)
+gc = GoldClusterizer(...)
 
 batch_sampler = GoldClusterizedBatchSampler(
     dataset=my_dataset,
@@ -263,6 +297,38 @@ batch_sampler = GoldClusterizedBatchSampler(
     descriptor=gd,
     n_clusters=10,
 )
+```
+
+## Weighting samples by embedding density
+
+`GoldDensityWeigher` gives larger scores to samples in sparse embedding neighborhoods.
+Use it to explore loss weighting or sampling policies that emphasize underrepresented
+patterns, including variation within a class. Sparsity is a representation-based
+signal, not a calibrated measure of model difficulty or a guarantee of better generalization.
+
+See [Weighting training samples by embedding density](docs/posts/GOLD_DENSITY_WEIGHING.md)
+for a runnable example, the kNN scoring formula, training integration, and chunking
+and restart limitations. Raw scores are stored per vector; retrieval defaults to
+averaging by sample `idx`, then dividing by the maximum returned score.
+
+```python
+from goldener import (
+    GoldDensityWeigher,
+    GoldDescriptor,
+    GoldTensorVectorizationTool,
+    GoldVectorizer,
+)
+
+# Explicit vectorization stage: descriptor embeddings -> vectorized column.
+# dataset, and embedder settings inside GoldDescriptor(...), are user-supplied.
+described = GoldDescriptor(...).describe_in_table(dataset)
+vectors = GoldVectorizer(
+    table_path="my_table_for_vectorization",
+    vectorizer=GoldTensorVectorizationTool(),
+).vectorize_in_table(described)
+weigher = GoldDensityWeigher(table_path="my_table_for_weights")
+weighted = weigher.weigh_in_table(vectors)
+sample_weights = GoldDensityWeigher.get_weights_per_idx(weighted)
 ```
 
 # Installation
@@ -310,7 +376,7 @@ uv sync --all-extras  # Install all dependencies including development dependenc
 
 4. Run tests:
 ```bash
-uv run pytest .
+uv run pytest tests/
 ```
 
 5. Run type checking with mypy:
@@ -339,9 +405,8 @@ uv run pre-commit run --all-files
 The pre-commit hooks will automatically run:
 - mypy for type checking
 - ruff for linting and formatting
-- pytest for tests
 
-whenever you make a commit.
+whenever you make a commit. Run tests separately with `uv run pytest tests/`.
 
 8. Generate the developer API documentation:
 ```bash
@@ -375,125 +440,181 @@ workflow manually from the Actions tab of the repository, on the branch or tag t
 
 <!-- readme: contributors -start -->
 <table>
-	<tbody>
-		<tr>
-            <td align="center">
-                <a href="https://github.com/Yann-CV">
-                    <img src="https://avatars.githubusercontent.com/u/54800486?v=4" width="100;" alt="Yann-CV"/>
-                    <br />
-                    <sub><b>Yann Chéné</b></sub>
-                </a>
-            </td>
-            <td align="center">
-                <a href="https://github.com/AshleyAHuang">
-                    <img src="https://avatars.githubusercontent.com/u/125787623?v=4" width="100;" alt="AshleyAHuang"/>
-                    <br />
-                    <sub><b>Ashley Huang</b></sub>
-                </a>
-            </td>
-            <td align="center">
-                <a href="https://github.com/jason-scheffel">
-                    <img src="https://avatars.githubusercontent.com/u/80598885?v=4" width="100;" alt="jason-scheffel"/>
-                    <br />
-                    <sub><b>Jason Scheffel</b></sub>
-                </a>
-            </td>
-            <td align="center">
-                <a href="https://github.com/TaniaW777">
-                    <img src="https://avatars.githubusercontent.com/u/200526578?v=4" width="100;" alt="TaniaW777"/>
-                    <br />
-                    <sub><b>Wendtoin Filomène Tania ZABRE</b></sub>
-                </a>
-            </td>
-            <td align="center">
-                <a href="https://github.com/abhiramvsmg">
-                    <img src="https://avatars.githubusercontent.com/u/141956198?v=4" width="100;" alt="abhiramvsmg"/>
-                    <br />
-                    <sub><b>Abhiram V</b></sub>
-                </a>
-            </td>
-            <td align="center">
-                <a href="https://github.com/AnayGarodia">
-                    <img src="https://avatars.githubusercontent.com/u/76836303?v=4" width="100;" alt="AnayGarodia"/>
-                    <br />
-                    <sub><b>Anay Garodia</b></sub>
-                </a>
-            </td>
-		</tr>
-		<tr>
-            <td align="center">
-                <a href="https://github.com/HafidIdrissi">
-                    <img src="https://avatars.githubusercontent.com/u/57899900?v=4" width="100;" alt="HafidIdrissi"/>
-                    <br />
-                    <sub><b>Hafid Idrissi</b></sub>
-                </a>
-            </td>
-            <td align="center">
-                <a href="https://github.com/Mr-Neutr0n">
-                    <img src="https://avatars.githubusercontent.com/u/64578610?v=4" width="100;" alt="Mr-Neutr0n"/>
-                    <br />
-                    <sub><b>hari</b></sub>
-                </a>
-            </td>
-            <td align="center">
-                <a href="https://github.com/pre765">
-                    <img src="https://avatars.githubusercontent.com/u/199960263?v=4" width="100;" alt="pre765"/>
-                    <br />
-                    <sub><b>pre765</b></sub>
-                </a>
-            </td>
-            <td align="center">
-                <a href="https://github.com/AhmadBilalDSA">
-                    <img src="https://avatars.githubusercontent.com/u/315737484?v=4" width="100;" alt="AhmadBilalDSA"/>
-                    <br />
-                    <sub><b>Ahmad Bilal</b></sub>
-                </a>
-            </td>
-            <td align="center">
-                <a href="https://github.com/LyViolz">
-                    <img src="https://avatars.githubusercontent.com/u/67195096?v=4" width="100;" alt="LyViolz"/>
-                    <br />
-                    <sub><b>Ali Berke Kahraman</b></sub>
-                </a>
-            </td>
-            <td align="center">
-                <a href="https://github.com/Dhruv06000">
-                    <img src="https://avatars.githubusercontent.com/u/196720010?v=4" width="100;" alt="Dhruv06000"/>
-                    <br />
-                    <sub><b>Dhruv Kumar</b></sub>
-                </a>
-            </td>
-		</tr>
-		<tr>
-            <td align="center">
-                <a href="https://github.com/Josequevedov08">
-                    <img src="https://avatars.githubusercontent.com/u/170109140?v=4" width="100;" alt="Josequevedov08"/>
-                    <br />
-                    <sub><b>Jose Quevedo</b></sub>
-                </a>
-            </td>
-            <td align="center">
-                <a href="https://github.com/panosfrantzolas">
-                    <img src="https://avatars.githubusercontent.com/u/182676512?v=4" width="100;" alt="panosfrantzolas"/>
-                    <br />
-                    <sub><b>Panos Frantzolas</b></sub>
-                </a>
-            </td>
-            <td align="center">
-                <a href="https://github.com/SHEKHAR-Y">
-                    <img src="https://avatars.githubusercontent.com/u/242377436?v=4" width="100;" alt="SHEKHAR-Y"/>
-                    <br />
-                    <sub><b>Shekhar</b></sub>
-                </a>
-            </td>
-            <td align="center">
-                <a href="https://github.com/ariktadas144">
-                    <img src="https://avatars.githubusercontent.com/u/198923810?v=4" width="100;" alt="ariktadas144"/>
-                    <br />
-                    <sub><b>ariktadas144</b></sub>
-                </a>
-            </td>
-		</tr>
-	<tbody>
+  <tr>
+    <td align="center">
+      <a href="https://github.com/abhiramvsmg">
+        <img src="https://avatars.githubusercontent.com/u/141956198?v=4" width="100" alt="abhiramvsmg"/>
+        <br />
+        <sub><b>abhiramvsmg</b></sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/AhmadBilalDSA">
+        <img src="https://avatars.githubusercontent.com/u/315737484?v=4" width="100" alt="AhmadBilalDSA"/>
+        <br />
+        <sub><b>AhmadBilalDSA</b></sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/AnayGarodia">
+        <img src="https://avatars.githubusercontent.com/u/76836303?v=4" width="100" alt="AnayGarodia"/>
+        <br />
+        <sub><b>AnayGarodia</b></sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/ariktadas144">
+        <img src="https://avatars.githubusercontent.com/u/198923810?v=4" width="100" alt="ariktadas144"/>
+        <br />
+        <sub><b>ariktadas144</b></sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/AshleyAHuang">
+        <img src="https://avatars.githubusercontent.com/u/125787623?v=4" width="100" alt="AshleyAHuang"/>
+        <br />
+        <sub><b>AshleyAHuang</b></sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/bfs2021">
+        <img src="https://avatars.githubusercontent.com/u/101915083?v=4" width="100" alt="bfs2021"/>
+        <br />
+        <sub><b>bfs2021</b></sub>
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <a href="https://github.com/CyberKun">
+        <img src="https://avatars.githubusercontent.com/u/186809931?v=4" width="100" alt="CyberKun"/>
+        <br />
+        <sub><b>CyberKun</b></sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/Dhruv06000">
+        <img src="https://avatars.githubusercontent.com/u/196720010?v=4" width="100" alt="Dhruv06000"/>
+        <br />
+        <sub><b>Dhruv06000</b></sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/emreocell">
+        <img src="https://avatars.githubusercontent.com/u/73295089?v=4" width="100" alt="emreocell"/>
+        <br />
+        <sub><b>emreocell</b></sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/Golden007-prog">
+        <img src="https://avatars.githubusercontent.com/u/140976895?v=4" width="100" alt="Golden007-prog"/>
+        <br />
+        <sub><b>Golden007-prog</b></sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/HafidIdrissi">
+        <img src="https://avatars.githubusercontent.com/u/57899900?v=4" width="100" alt="HafidIdrissi"/>
+        <br />
+        <sub><b>HafidIdrissi</b></sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/inverteum">
+        <img src="https://avatars.githubusercontent.com/u/11546520?v=4" width="100" alt="inverteum"/>
+        <br />
+        <sub><b>inverteum</b></sub>
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <a href="https://github.com/jason-scheffel">
+        <img src="https://avatars.githubusercontent.com/u/80598885?v=4" width="100" alt="jason-scheffel"/>
+        <br />
+        <sub><b>jason-scheffel</b></sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/Josequevedov08">
+        <img src="https://avatars.githubusercontent.com/u/170109140?v=4" width="100" alt="Josequevedov08"/>
+        <br />
+        <sub><b>Josequevedov08</b></sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/Julianovak">
+        <img src="https://avatars.githubusercontent.com/u/166062739?v=4" width="100" alt="Julianovak"/>
+        <br />
+        <sub><b>Julianovak</b></sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/LyViolz">
+        <img src="https://avatars.githubusercontent.com/u/67195096?v=4" width="100" alt="LyViolz"/>
+        <br />
+        <sub><b>LyViolz</b></sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/mangomac">
+        <img src="https://avatars.githubusercontent.com/u/333602023?v=4" width="100" alt="mangomac"/>
+        <br />
+        <sub><b>mangomac</b></sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/Mr-Neutr0n">
+        <img src="https://avatars.githubusercontent.com/u/64578610?v=4" width="100" alt="Mr-Neutr0n"/>
+        <br />
+        <sub><b>Mr-Neutr0n</b></sub>
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <a href="https://github.com/panosfrantzolas">
+        <img src="https://avatars.githubusercontent.com/u/182676512?v=4" width="100" alt="panosfrantzolas"/>
+        <br />
+        <sub><b>panosfrantzolas</b></sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/pre765">
+        <img src="https://avatars.githubusercontent.com/u/199960263?v=4" width="100" alt="pre765"/>
+        <br />
+        <sub><b>pre765</b></sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/Sahilkumar-r">
+        <img src="https://avatars.githubusercontent.com/u/324497447?v=4" width="100" alt="Sahilkumar-r"/>
+        <br />
+        <sub><b>Sahilkumar-r</b></sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/SHEKHAR-Y">
+        <img src="https://avatars.githubusercontent.com/u/242377436?v=4" width="100" alt="SHEKHAR-Y"/>
+        <br />
+        <sub><b>SHEKHAR-Y</b></sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/TaniaW777">
+        <img src="https://avatars.githubusercontent.com/u/200526578?v=4" width="100" alt="TaniaW777"/>
+        <br />
+        <sub><b>TaniaW777</b></sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/Yann-CV">
+        <img src="https://avatars.githubusercontent.com/u/54800486?v=4" width="100" alt="Yann-CV"/>
+        <br />
+        <sub><b>Yann-CV</b></sub>
+      </a>
+    </td>
+  </tr>
 </table>
 <!-- readme: contributors -end -->

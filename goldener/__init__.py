@@ -15,6 +15,7 @@ already done:
 - `goldener.select`: select the most representative subset of samples.
 - `goldener.split`: split a dataset in multiple sets (train, validation, test, ...).
 - `goldener.organize`: balance the batches with the clusters of the data during training.
+- `goldener.weigh`: compute per-sample weights from embedding-space density.
 
 Most of the main classes are re-exported at the root of the package, e.g. `from goldener import GoldSplitter`.
 """
@@ -64,6 +65,12 @@ from goldener.vectorize import (
     FilterLocation,
     Vectorized,
     GoldTensorVectorizationTool,
+    GoldVectorizer,
+)
+from goldener.weigh import (
+    GoldDensityWeighingTool,
+    GoldKnnDensityWeighingTool,
+    GoldDensityWeigher,
 )
 
 
@@ -101,4 +108,8 @@ __all__ = (
     "FilterLocation",
     "Vectorized",
     "GoldTensorVectorizationTool",
+    "GoldVectorizer",
+    "GoldDensityWeighingTool",
+    "GoldKnnDensityWeighingTool",
+    "GoldDensityWeigher",
 )

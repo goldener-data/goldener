@@ -1,3 +1,5 @@
+import sys
+
 import numpy as np
 import pytest
 import torch
@@ -13,6 +15,9 @@ from goldener.torch_utils import collate_keeping_sequences_as_sequences
 from goldener.split import GoldSplitter, GoldSet, check_sets_validity
 from goldener.vectorize import GoldTensorVectorizationTool, GoldVectorizer
 from goldener.select import GoldSelector
+
+COREAX_SKIP_REASON = "GoldSelector's default selection tool needs coreax, which is not installed on Windows"
+requires_coreax = pytest.mark.skipif(sys.platform == "win32", reason=COREAX_SKIP_REASON)
 
 
 class DummyModel(torch.nn.Module):
@@ -60,6 +65,8 @@ def descriptor(embedder):
 
 @pytest.fixture(scope="function")
 def selector():
+    if sys.platform == "win32":
+        pytest.skip(COREAX_SKIP_REASON)
     return GoldSelector(
         table_path="unit_test.selector_split",
         to_keep_schema={"label": pxt.String},
@@ -289,6 +296,7 @@ class TestGoldSplitter:
         assert len(splitted["train"]) == 5
         assert len(splitted["val"]) == 5
 
+    @requires_coreax
     def test_split_with_excluded_labels(self, descriptor, vectorizer, embedder):
         sets = [
             GoldSet(name="train", size=0.5),
@@ -726,6 +734,7 @@ class TestGoldSplitter:
             assert len(indices) == 5
             assert set_name in ["train", "val"]
 
+    @requires_coreax
     def test_with_descriptor_including_vectorizer(self, embedder):
         descriptor = GoldDescriptor(
             table_path="unit_test.descriptor_split",
@@ -938,7 +947,8 @@ class TestGoldSplitter:
                 in_described_table=False,
             )
 
-    def test_split_with_clusterizer(self, selector):
+    @pytest.mark.parametrize("source_type", ["dataset", "table"])
+    def test_split_with_clusterizer(self, selector, source_type):
         # Build a simple vectorized table first, then let the splitter handle clustering
         sets = [GoldSet(name="train", size=0.5), GoldSet(name="val", size=0.5)]
 
@@ -972,10 +982,19 @@ class TestGoldSplitter:
                 for idx_vector in range(120)
             ]
         )
+        to_split = dataset
+        if source_type == "table":
+            to_split = pxt.create_table(
+                "unit_test.clusterizer_split_source",
+                source=[
+                    {**dataset[i], "vectorized": dataset[i]["vectorized"].numpy()}
+                    for i in range(len(dataset))
+                ],
+            )
 
         # validate using clustering and then restart while already done
-        splitter.split_in_table(to_split=dataset)
-        split_table = splitter.split_in_table(to_split=dataset)
+        splitter.split_in_table(to_split=to_split)
+        split_table = splitter.split_in_table(to_split=to_split)
 
         splitted = splitter.get_split_indices(
             split_table,
@@ -998,6 +1017,12 @@ class TestGoldSplitter:
         ]
         # Since we requested 2 clusters, resulting cluster ids should be a subset of {0,1}
         assert set(distinct_clusters).issubset({0, 1})
+
+
+class TestGoldSet:
+    def test_name_cannot_be_none(self):
+        with pytest.raises(TypeError, match="name must be a non-null string"):
+            GoldSet(name=None, size=0.5)
 
 
 class TestCheckSetsValidity:

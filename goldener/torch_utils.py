@@ -31,9 +31,15 @@ def collate_keeping_sequences_as_sequences(
 
     Raises:
         KeyError: If a sample is missing a key present in the first sample.
+        ValueError: If a sample is not a dictionary.
     """
     if not batch:
         return {}
+
+    if any(not isinstance(sample, dict) for sample in batch):
+        raise ValueError(
+            "Sample must be a dictionary when using the default collate_fn."
+        )
 
     values_by_key = {key: [value] for key, value in batch[0].items()}
     for sample_idx, sample in enumerate(batch[1:], start=1):

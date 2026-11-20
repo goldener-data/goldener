@@ -7,6 +7,8 @@ used to filter the token vectors during the vectorization (see `goldener.vectori
 from typing import Any
 
 import torch
+
+from goldener.utils import validate_positive_integer
 from torchvision.transforms.v2 import Transform
 
 
@@ -14,14 +16,27 @@ class PatchifyImageMask(Transform):
     """Patchify a binary mask in order to align it with the tokens of a ViT model.
 
     Attributes:
-        patch_size: The size of the patches to create.
-        match_ratio: The ratio of non zero pixels in a patch to consider it as a valid token for the class.
+        patch_size: Positive integer side length of each square patch. Defaults to 16.
+        match_ratio: Threshold in `[0, 1]` for the fraction of nonzero pixels in a
+            patch. A patch is selected only when its fraction exceeds this value.
+            Defaults to 0.5.
     """
 
     def __init__(self, patch_size: int = 16, match_ratio: float = 0.5) -> None:
+        """Configure the mask patch size and selection threshold.
+
+        Args:
+            patch_size: Positive integer side length of each square patch. Defaults
+                to 16. Input height and width must be divisible by this value.
+            match_ratio: Threshold in `[0, 1]` for the fraction of nonzero pixels
+                required to select a patch. The comparison is strict. Defaults to 0.5.
+
+        Raises:
+            ValueError: If `patch_size` is not a positive integer or `match_ratio`
+                is outside `[0, 1]`. Boolean patch sizes are not accepted.
+        """
         super().__init__()
-        if patch_size <= 0:
-            raise ValueError("patch_size must be a positive integer")
+        validate_positive_integer(patch_size, "patch_size")
         self.patch_size = patch_size
 
         if not 0.0 <= match_ratio <= 1.0:

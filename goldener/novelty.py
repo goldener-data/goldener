@@ -21,6 +21,7 @@ from pixeltable.type_system import ColumnType
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
+from goldener.distance import DistanceType
 from goldener.do import GoldDoerWithTable
 from goldener.pxt_utils import (
     GoldPxtTorchDataset,
@@ -30,7 +31,6 @@ from goldener.pxt_utils import (
     make_batch_ready_for_table,
 )
 from goldener.reduce import GoldReductionToolWithFit
-from goldener.select import DistanceType
 from goldener.torch_utils import get_dataset_sample_dict
 from goldener.utils import filter_batch_from_indices
 
@@ -329,16 +329,6 @@ class GoldNoveltyScorer(GoldDoerWithTable):
             ValueError: If sizes are invalid, names collide, or a score column is reserved.
             NotImplementedError: If `distribute` is True.
         """
-        super().__init__(
-            allow_existing=allow_existing,
-            drop_table=drop_table,
-            max_batches=max_batches,
-            collate_fn=collate_fn,
-            to_keep_schema=to_keep_schema,
-            min_pxt_insert_size=min_pxt_insert_size,
-            batch_size=batch_size,
-            num_workers=num_workers,
-        )
         if chunk is not None and (
             not isinstance(chunk, int) or isinstance(chunk, bool) or chunk <= 0
         ):
@@ -354,14 +344,6 @@ class GoldNoveltyScorer(GoldDoerWithTable):
             raise ValueError(
                 "batch_size and min_pxt_insert_size must be positive integers."
             )
-        if score_key in {"idx", "idx_vector"}:
-            raise ValueError("score_key cannot be a reserved index column.")
-        if score_key == vectorized_key:
-            raise ValueError("score_key and vectorized_key must be different.")
-        if vectorized_key in {"idx", "idx_vector"}:
-            raise ValueError("vectorized_key cannot be a reserved index column.")
-        if {"idx", "idx_vector"}.intersection(to_keep_schema or {}):
-            raise ValueError("to_keep_schema cannot redefine reserved index columns.")
         if {score_key, vectorized_key}.intersection(to_keep_schema or {}):
             raise ValueError("to_keep_schema cannot redefine score or vector columns.")
         if (
@@ -376,7 +358,6 @@ class GoldNoveltyScorer(GoldDoerWithTable):
             or max_batches < 0
         ):
             raise ValueError("max_batches must be a non-negative integer or None.")
-        self.table_path = table_path
         self.scorer = (
             scorer if scorer is not None else GoldNearestNeighborNoveltyScoringTool()
         )
@@ -390,6 +371,17 @@ class GoldNoveltyScorer(GoldDoerWithTable):
                 "Distributed processing is not implemented for GoldNoveltyScorer."
             )
         self._distribute = False
+        super().__init__(
+            table_path=table_path,
+            allow_existing=allow_existing,
+            drop_table=drop_table,
+            max_batches=max_batches,
+            collate_fn=collate_fn,
+            to_keep_schema=to_keep_schema,
+            min_pxt_insert_size=min_pxt_insert_size,
+            batch_size=batch_size,
+            num_workers=num_workers,
+        )
 
     @property
     def distribute(self) -> bool:

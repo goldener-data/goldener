@@ -25,6 +25,7 @@ from goldener.do import GoldDoerWithTable
 from goldener.embed import GoldEmbeddingTool
 from goldener.pxt_utils import (
     GoldPxtTorchDataset,
+    count_computed_elements,
     get_expr_from_column_name,
     get_sample_row_from_idx,
     get_valid_table,
@@ -36,7 +37,7 @@ from goldener.torch_utils import (
     collate_keeping_sequences_as_sequences,
     get_dataset_sample_dict,
 )
-from goldener.utils import filter_batch_from_indices
+from goldener.utils import validate_positive_integer, filter_batch_from_indices
 from goldener.vectorize import (
     GoldTensorVectorizationTool,
     vectorize_and_unwrap_in_batch,
@@ -101,10 +102,6 @@ class GoldDescriptor(GoldDoerWithTable):
             computation time. Default is 2.
     """
 
-    _MINIMAL_SCHEMA: dict[str, type] = {
-        "idx": pxt.Required[pxt.Int],
-    }
-
     def __init__(
         self,
         table_path: str,
@@ -167,24 +164,19 @@ class GoldDescriptor(GoldDoerWithTable):
         Raises:
             NotImplementedError: If `distribute` is True.
             ValueError: If `estimation_time_batch_count` is not a positive integer.
+            ValueError: If a customizable key uses `idx` or `idx_vector`, collides
+                with an identity column, or shares its value with another key, or
+                if `to_keep_schema` uses one of those columns (see `GoldDoerWithTable`).
+                `idx_vector` is in `_RESERVED_KEYS` and is merged with the schema
+                keys, so it raises the identity-column error even though
+                `_MINIMAL_SCHEMA` lists only `idx`. The table gains an
+                `idx_vector` column only when a vectorizer is set.
         """
-        super().__init__(
-            allow_existing=allow_existing,
-            drop_table=drop_table,
-            max_batches=max_batches,
-            collate_fn=collate_fn,
-            to_keep_schema=to_keep_schema,
-            min_pxt_insert_size=min_pxt_insert_size,
-            batch_size=batch_size,
-            num_workers=num_workers,
-        )
-        self.table_path = table_path
         self.embedder = embedder
         self.vectorizer = vectorizer
         self.transform = transform
         self.data_key = data_key
         self.target_key = target_key
-        self.label_key = label_key
         self.target_to_label = target_to_label
         self.exclude_full_zero_target = exclude_full_zero_target
         self.merge_multilabels = merge_multilabels
@@ -196,16 +188,26 @@ class GoldDescriptor(GoldDoerWithTable):
                 "Distributed processing is not implemented for GoldDescriptor."
             )
         self._distribute = distribute
-        if (
-            not isinstance(estimation_time_batch_count, int)
-            or estimation_time_batch_count <= 0
-        ):
-            raise ValueError("estimation_time_batch_count must be a positive integer.")
+        validate_positive_integer(
+            estimation_time_batch_count, "estimation_time_batch_count"
+        )
         self.estimation_time_batch_count = estimation_time_batch_count
 
         if device is None:
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.device = device
+        super().__init__(
+            allow_existing=allow_existing,
+            drop_table=drop_table,
+            max_batches=max_batches,
+            collate_fn=collate_fn,
+            to_keep_schema=to_keep_schema,
+            min_pxt_insert_size=min_pxt_insert_size,
+            batch_size=batch_size,
+            num_workers=num_workers,
+            table_path=table_path,
+            label_key=label_key,
+        )
 
     @property
     def distribute(self) -> bool:
@@ -716,14 +718,16 @@ class GoldDescriptor(GoldDoerWithTable):
         return description_table
 
     def estimate_computation_time(self, dataset: Dataset | Table) -> float | None:
-        """Estimate the total computation time for describing a dataset.
+        """Estimate the remaining computation time for describing a dataset.
 
         Times `self.estimation_time_batch_count` initial batches — including data loading,
         preprocessing, embedding and optional vectorization — running the exact same steps as
         `_sequential_describe` (via `_compute_batch`), then extrapolates if the dataset's
-        size is known. The estimate is extrapolated from the first batches only, so later
-        batches can make the real description slower than estimated; and with `restrict_to`
-        or an already partly filled description table, the real description can be faster.
+        size is known. Samples already stored in the description table at `self.table_path`
+        are not counted, as `_sequential_describe` skips them when resuming. The estimate is
+        extrapolated from the first batches only, so later batches can make the real
+        description slower than estimated; and with `restrict_to` the real description can be
+        faster.
 
         Args:
             dataset: The Dataset or PixelTable Table to estimate the description time
@@ -731,9 +735,9 @@ class GoldDescriptor(GoldDoerWithTable):
                 as in `describe_in_table`.
 
         Returns:
-            The estimated total computation time in seconds, or None when no estimate
-                is possible: an empty dataset returns None, and a dataset of unknown
-                size returns None after logging its average time per batch.
+            The estimated remaining computation time in seconds, or None when no
+                estimate is possible: an empty dataset returns None, and a dataset of
+                unknown size returns None after logging its average time per batch.
         """
         if isinstance(dataset, Table):
             dataset = GoldPxtTorchDataset(dataset)
@@ -762,7 +766,16 @@ class GoldDescriptor(GoldDoerWithTable):
         avg_time_per_batch = elapsed / batches_measured
 
         if hasattr(dataset, "__len__"):
-            total_batches = math.ceil(len(dataset) / self.batch_size)
+            table = pxt.get_table(self.table_path, if_not_exists="ignore")
+            already_computed = 0
+            if table is not None and self.description_key in table.columns():
+                already_computed = count_computed_elements(
+                    table,
+                    get_expr_from_column_name(table, self.description_key),
+                    table.idx,
+                )
+            remaining = max(len(dataset) - already_computed, 0)
+            total_batches = math.ceil(remaining / self.batch_size)
             return avg_time_per_batch * total_batches
 
         logger.info(

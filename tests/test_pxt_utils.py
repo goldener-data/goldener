@@ -16,11 +16,13 @@ from goldener.pxt_utils import (
     get_column_distinct_ratios,
     get_array_column_shapes_from_table,
     get_sample_row_from_idx,
+    sample_idx_for_vectors,
     get_valid_table,
     make_batch_ready_for_table,
     get_pxt_table_primary_keys,
     check_pxt_table_has_primary_key,
     get_max_value_in_column,
+    count_computed_elements,
 )
 
 
@@ -35,6 +37,26 @@ def test_table():
     yield table
 
     pxt.drop_dir("test_pxt_utils", force=True)
+
+
+def test_sample_idx_for_vectors_preserves_requested_order():
+    pxt.create_dir("test_pxt_utils_idx", if_exists="ignore")
+    table = pxt.create_table(
+        "test_pxt_utils_idx.vectors",
+        source=[
+            {"idx": 4, "idx_vector": 10},
+            {"idx": 7, "idx_vector": 3},
+            {"idx": 4, "idx_vector": 11},
+        ],
+        if_exists="replace_force",
+    )
+    try:
+        ids = sample_idx_for_vectors(table, [11, 10, 3])
+        assert torch.equal(ids, torch.tensor([4, 4, 7]))
+        with pytest.raises(ValueError, match="missing sample idx"):
+            sample_idx_for_vectors(table, [11, 99])
+    finally:
+        pxt.drop_dir("test_pxt_utils_idx", force=True)
 
 
 class TestCreatePxtTableFromSample:
@@ -462,3 +484,25 @@ class TestGetMaxValueInColumn:
             get_max_value_in_column(table, col_expr)
 
         pxt.drop_dir("test_max_value", force=True)
+
+
+class TestCountComputedElements:
+    def setup_method(self):
+        pxt.drop_dir("unit_test", force=True)
+        pxt.create_dir("unit_test", if_exists="ignore")
+
+    def teardown_method(self):
+        pxt.drop_dir("unit_test", force=True)
+
+    def test_counts_distinct_samples_with_a_value(self):
+        table = pxt.create_table(
+            "unit_test.table",
+            source=[
+                {"idx": 0, "value": 1.0},
+                {"idx": 1, "value": None},
+                {"idx": 2, "value": 2.0},
+                {"idx": 2, "value": 3.0},
+            ],
+        )
+
+        assert count_computed_elements(table, table.value, table.idx) == 2

@@ -328,6 +328,58 @@ def get_sample_row_from_idx(
     return sample
 
 
+def sample_idx_for_vectors(table: Table, idx_vectors: list[int]) -> torch.Tensor:
+    """Return sample ids in the same order as `idx_vectors`.
+
+    Args:
+        table: Table whose `idx` and `idx_vector` columns associate each vector
+            with its source sample.
+        idx_vectors: Vector ids in the row order of the vectors about to be scored.
+
+    Returns:
+        An int64 tensor shaped `(len(idx_vectors),)`.
+
+    Raises:
+        ValueError: If the table has no sample idx for a vector id.
+    """
+    rows = (
+        table.where(table.idx_vector.isin(idx_vectors))
+        .select(table.idx_vector, table.idx)
+        .collect()
+    )
+    idx_by_vector = {int(row["idx_vector"]): int(row["idx"]) for row in rows}
+    missing = [idx for idx in idx_vectors if idx not in idx_by_vector]
+    if missing:
+        raise ValueError(
+            f"Weighing table is missing sample idx for vector indices {missing}."
+        )
+    return torch.tensor([idx_by_vector[idx] for idx in idx_vectors], dtype=torch.long)
+
+
+def count_computed_elements(table: Table, col_expr: Expr, idx_col: Expr) -> int:
+    """Count the distinct samples that already have a computed element in a table.
+
+    A sample counts as computed when its `col_expr` value is set, the same rule the
+    sequential describe and vectorize steps use to skip samples when resuming. Distinct
+    `idx_col` values are counted, so a sample stored as several rows (e.g. one per vector)
+    is counted once.
+
+    Args:
+        table: The PixelTable table holding the results.
+        col_expr: Expression of the column holding the computed element.
+        idx_col: Expression of the column holding the sample index.
+
+    Returns:
+        The number of distinct samples with a computed element.
+    """
+    return (
+        table.where(col_expr != None)  # noqa: E711
+        .select(idx_col)
+        .distinct()
+        .count()
+    )
+
+
 def get_valid_table(
     table: Table | str,
     minimal_schema: dict[str, type],

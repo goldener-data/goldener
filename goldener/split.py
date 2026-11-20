@@ -45,21 +45,26 @@ class GoldSet:
     """Configuration for a gold set used for splitting.
 
     Attributes:
-        name: Name of the gold set (None if the set is for not selected data).
+        name: Non-null name of the gold set.
         size: Size (ratio or actual number) of samples to assign to this set (between 0 and 1). If a ratio, this value
         cannot be one of 0 or 1 (goal is to select a subset of the full dataset). If a number, it must be strictly
         positive and less than the total number of samples in the dataset.
     """
 
-    name: str | None
+    name: str
     size: float | int
 
     def __post_init__(self) -> None:
         """Validate the GoldSet configuration after initialization.
 
         Raises:
+            TypeError: If `name` is not a non-null string.
             ValueError: If ratio is not between 0 and 1 (exclusive).
         """
+        if not isinstance(self.name, str):
+            raise TypeError(
+                f"name must be a non-null string, got {type(self.name).__name__}."
+            )
         if isinstance(self.size, float) and not (0 < self.size < 1):
             raise ValueError("Size as float must be between 0 and 1.")
         elif isinstance(self.size, int) and self.size <= 0:
@@ -201,9 +206,10 @@ class GoldSplitter(GoldDoer):
                 )
 
             clusterizer.include_vectorized_in_table = True
+            selector.include_vectorized_in_table = True
             logger.info(
-                "Clusterizer's include_vectorized_in_table is set to True to keep the "
-                "vectorized embeddings in the table for the selection step. "
+                "Clusterizer's and selector's include_vectorized_in_table are set to True "
+                "to keep the vectorized embeddings in their tables for the selection step. "
                 "This is necessary to perform cluster-wise selection. "
             )
 

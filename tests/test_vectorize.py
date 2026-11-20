@@ -1,15 +1,16 @@
 from collections import defaultdict
+from types import SimpleNamespace
 
 import pixeltable as pxt
 import pytest
 import torch
 
+from goldener import GoldVectorizer
 from goldener.torch_utils import collate_keeping_sequences_as_sequences
 from goldener.vectorize import (
     Filter2DWithCount,
     FilterLocation,
     GoldTensorVectorizationTool,
-    GoldVectorizer,
     Vectorized,
     unwrap_vectors_in_batch,
     vectorize_and_unwrap_in_batch,
@@ -523,6 +524,34 @@ class TestGoldVectorizer:
         with pytest.raises(NotImplementedError, match=error):
             vectorizer.distribute = True
         assert vectorizer.distribute is False
+
+    @pytest.mark.parametrize(
+        "kwargs, match",
+        [
+            pytest.param(
+                {"vectorized_key": "idx_vector"},
+                r"vectorized_key='idx_vector' collides with the identity column",
+                id="key_is_identity",
+            ),
+            pytest.param(
+                {"vectorized_key": "embeddings"},
+                r"share the same column name: 'embeddings'",
+                id="duplicate_keys",
+            ),
+            pytest.param(
+                {"to_keep_schema": {"idx_vector": pxt.Int}},
+                r"cannot redefine the identity columns \['idx_vector'\]",
+                id="kept_identity",
+            ),
+        ],
+    )
+    def test_rejects_column_name_collisions(self, kwargs, match):
+        with pytest.raises(ValueError, match=match):
+            GoldVectorizer(
+                table_path="unit_test.test_collisions",
+                vectorizer=GoldTensorVectorizationTool(),
+                **kwargs,
+            )
 
     def test_estimation_time_batch_count_must_be_positive(self):
         with pytest.raises(
@@ -1289,19 +1318,6 @@ class TestEstimateComputationTime:
     def teardown_method(self):
         pxt.drop_dir("unit_test", force=True)
 
-    def test_returns_estimate_when_dataset_size_known(self):
-        gv = GoldVectorizer(
-            table_path="unit_test.vectorize_estimate",
-            vectorizer=GoldTensorVectorizationTool(),
-            batch_size=2,
-        )
-        dataset = DummyDataset(dataset_len=10)
-
-        estimate = gv.estimate_computation_time(dataset)
-
-        assert estimate is not None
-        assert estimate > 0
-
     def test_returns_none_when_dataset_size_unknown(self):
         from torch.utils.data import IterableDataset
 
@@ -1336,6 +1352,34 @@ class TestEstimateComputationTime:
         estimate = gv.estimate_computation_time(dataset)
 
         assert estimate is None
+
+    @pytest.mark.parametrize(
+        ("max_batches", "remaining_batches"),
+        [(None, 5), (2, 3)],
+        ids=["no_table_yet", "partly_vectorized"],
+    )
+    def test_returns_estimate_when_dataset_size_known(
+        self, monkeypatch, max_batches, remaining_batches
+    ):
+        gv = GoldVectorizer(
+            table_path="unit_test.vectorize_estimate_already_computed",
+            vectorizer=GoldTensorVectorizationTool(),
+            batch_size=2,
+            max_batches=max_batches,
+        )
+        if max_batches is not None:
+            gv.vectorize_in_dataset(DummyDataset(dataset_len=10))
+
+        ticks = iter([0.0, 1.0])
+        monkeypatch.setattr(
+            "goldener.vectorize.time",
+            SimpleNamespace(perf_counter=lambda: next(ticks)),
+        )
+        estimate = gv.estimate_computation_time(DummyDataset(dataset_len=10))
+
+        assert estimate == pytest.approx(
+            remaining_batches / gv.estimation_time_batch_count
+        )
 
     def test_estimate_preserves_random_filter_selection(self):
         def make_tool() -> GoldTensorVectorizationTool:

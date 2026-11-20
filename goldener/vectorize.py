@@ -37,6 +37,7 @@ from goldener.embed import EmbeddingFusionStrategy, GoldEmbeddingFusionTool
 from goldener.select import GoldSelectionTool
 from goldener.pxt_utils import (
     GoldPxtTorchDataset,
+    count_computed_elements,
     get_valid_table,
     get_sample_row_from_idx,
     get_expr_from_column_name,
@@ -50,6 +51,7 @@ from goldener.torch_utils import (
     make_2d_tensor,
 )
 from goldener.utils import (
+    validate_positive_integer,
     check_x_and_y_shapes,
     filter_batch_from_indices,
     transform_batch_from_multiple_to_binarized_targets,
@@ -613,22 +615,13 @@ class GoldVectorizer(GoldDoerWithTable):
         Raises:
             NotImplementedError: If `distribute` is True.
             ValueError: If `estimation_time_batch_count` is not a positive integer.
+            ValueError: If a customizable key uses `idx` or `idx_vector`, collides
+                with an identity column, or shares its value with another key, or
+                if `to_keep_schema` uses one of those columns (see `GoldDoerWithTable`).
         """
-        super().__init__(
-            allow_existing=allow_existing,
-            drop_table=drop_table,
-            max_batches=max_batches,
-            collate_fn=collate_fn,
-            to_keep_schema=to_keep_schema,
-            min_pxt_insert_size=min_pxt_insert_size,
-            batch_size=batch_size,
-            num_workers=num_workers,
-        )
-        self.table_path = table_path
         self.vectorizer = vectorizer
         self.data_key = data_key
         self.target_key = target_key
-        self.label_key = label_key
         self.target_to_label = target_to_label
         self.exclude_labels = exclude_labels
         self.exclude_full_zero_target = exclude_full_zero_target
@@ -639,12 +632,22 @@ class GoldVectorizer(GoldDoerWithTable):
                 "Distributed processing is not implemented for GoldVectorizer."
             )
         self._distribute = distribute
-        if (
-            not isinstance(estimation_time_batch_count, int)
-            or estimation_time_batch_count <= 0
-        ):
-            raise ValueError("estimation_time_batch_count must be a positive integer.")
+        validate_positive_integer(
+            estimation_time_batch_count, "estimation_time_batch_count"
+        )
         self.estimation_time_batch_count = estimation_time_batch_count
+        super().__init__(
+            allow_existing=allow_existing,
+            drop_table=drop_table,
+            max_batches=max_batches,
+            collate_fn=collate_fn,
+            to_keep_schema=to_keep_schema,
+            min_pxt_insert_size=min_pxt_insert_size,
+            batch_size=batch_size,
+            num_workers=num_workers,
+            table_path=table_path,
+            label_key=label_key,
+        )
 
     @property
     def distribute(self) -> bool:
@@ -901,7 +904,7 @@ class GoldVectorizer(GoldDoerWithTable):
         return vectorized_table
 
     def _get_vectorized_valid_table(self, old_vectorized_table: Table | None) -> Table:
-        minimal_schema = self._MINIMAL_SCHEMA
+        minimal_schema = self._MINIMAL_SCHEMA.copy()
         if self.to_keep_schema is not None:
             minimal_schema |= self.to_keep_schema
 
@@ -1087,15 +1090,25 @@ class GoldVectorizer(GoldDoerWithTable):
         return vectorized_table
 
     def estimate_computation_time(self, dataset: Dataset) -> float | None:
-        """Estimate the total computation time for vectorizing a dataset.
+        """Estimate the remaining computation time for vectorizing a dataset.
 
         Times `self.estimation_time_batch_count` initial batches — including data loading,
         preprocessing, and vectorization — running the exact same steps as
         `_sequential_vectorize` (via `_compute_batch`), then extrapolates if the dataset's
-        size is known.
+        size is known. Samples already stored in the vectorized table at `self.table_path`
+        are not counted, as `_sequential_vectorize` skips them when resuming.
 
         When the vectorizer includes a random filter, its generator state is restored
         afterwards so the timed batches do not change later vector selection.
+
+        Args:
+            dataset: The Dataset to estimate the vectorization time for.
+
+        Returns:
+            The estimated remaining computation time in seconds, or None when no
+                estimate is possible: an empty dataset returns None, and a dataset of
+                unknown size returns None after logging its average time per batch.
+
         """
         random_filter = self.vectorizer.random
         generator_state = (
@@ -1128,7 +1141,16 @@ class GoldVectorizer(GoldDoerWithTable):
             avg_time_per_batch = elapsed / batches_measured
 
             if hasattr(dataset, "__len__"):
-                total_batches = math.ceil(len(dataset) / self.batch_size)
+                table = pxt.get_table(self.table_path, if_not_exists="ignore")
+                already_computed = 0
+                if table is not None and self.vectorized_key in table.columns():
+                    already_computed = count_computed_elements(
+                        table,
+                        get_expr_from_column_name(table, self.vectorized_key),
+                        table.idx,
+                    )
+                remaining = max(len(dataset) - already_computed, 0)
+                total_batches = math.ceil(remaining / self.batch_size)
                 return avg_time_per_batch * total_batches
 
             logger.info(

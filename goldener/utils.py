@@ -7,11 +7,153 @@ or splitting multilabel samples into independent labels).
 
 import math
 from collections import defaultdict
+from numbers import Real
 from typing import Iterable, Any, TypeVar
 
 import torch
 
 from goldener.torch_utils import get_unique_values_in_tensor
+
+
+def validate_positive_integer(
+    value: object, name: str, *, allow_none: bool = False, allow_zero: bool = False
+) -> None:
+    """Validate a Python integer, optionally accepting zero or `None`.
+
+    Args:
+        value: Value to validate. Integer-valued floats are not accepted.
+        name: Parameter name included in the error message.
+        allow_none: Whether `None` is also valid. Defaults to `False`.
+        allow_zero: Whether zero is valid. Defaults to `False`.
+
+    Raises:
+        ValueError: If the value is not an integer in the permitted range or
+            an allowed `None`. Booleans are not accepted.
+    """
+    if value is None and allow_none:
+        return
+    requirement = "nonnegative" if allow_zero else "positive"
+    suffix = " or None" if allow_none else ""
+    message = f"{name} must be a {requirement} integer{suffix}."
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(message)
+    if value < 0 if allow_zero else value <= 0:
+        raise ValueError(message)
+
+
+def validate_positive_number(
+    value: object, name: str, *, allow_none: bool = False, allow_zero: bool = False
+) -> None:
+    """Validate a finite positive real number, optionally accepting zero or `None`.
+
+    Args:
+        value: Real scalar to validate. Booleans are not accepted.
+        name: Parameter name included in the error message.
+        allow_none: Whether `None` is also valid. Defaults to `False`.
+        allow_zero: Whether zero is valid. Defaults to `False`.
+
+    Raises:
+        ValueError: If the value is not finite, is not a real scalar, or is
+            outside the permitted range, and is not an allowed `None`.
+    """
+    if value is None and allow_none:
+        return
+    requirement = "nonnegative" if allow_zero else "positive"
+    suffix = " or None" if allow_none else ""
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, Real)
+        or not math.isfinite(value)
+        or (value < 0 if allow_zero else value <= 0)
+    ):
+        raise ValueError(f"{name} must be finite and {requirement}{suffix}.")
+
+
+def validate_vectorized_input(x: torch.Tensor, tool_name: str) -> None:
+    """Validate finite floating vectors with positive feature width.
+
+    Args:
+        x: Floating tensor with shape (num_vectors, feature_dim), finite
+            values and positive feature width. Zero rows are allowed.
+        tool_name: Tool name included in shape and feature width error messages.
+
+    Raises:
+        ValueError: If the input is not a 2D tensor with positive feature
+            width, or contains non-floating or nonfinite values.
+    """
+    if not isinstance(x, torch.Tensor) or x.ndim != 2:
+        shape = getattr(x, "shape", None)
+        raise ValueError(
+            f"{tool_name} only accepts 2D tensors (num_vectors, feature_dim). "
+            f"Got shape {shape}. Please ensure your input is already vectorized."
+        )
+    if x.shape[1] == 0:
+        raise ValueError(f"{tool_name} requires positive feature width.")
+    if not x.is_floating_point() or not torch.isfinite(x).all():
+        raise ValueError("x must contain only finite floating point values.")
+
+
+_INTEGER_DTYPES = (
+    torch.int8,
+    torch.int16,
+    torch.int32,
+    torch.int64,
+    torch.uint8,
+    *(
+        getattr(torch, dtype)
+        for dtype in ("uint16", "uint32", "uint64")
+        if hasattr(torch, dtype)
+    ),
+)
+
+
+def validate_integer_tensor(
+    tensor: torch.Tensor | None,
+    dim: int,
+    batch_size: int,
+    name: str,
+    *,
+    allow_none: bool = False,
+) -> torch.Tensor | None:
+    """Validate an integer tensor with a fixed rank and leading size.
+
+    Args:
+        tensor: Tensor to validate. Booleans are not integer tensors.
+        dim: Required number of dimensions.
+        batch_size: Required size of dimension 0.
+        name: Argument name included in the error message.
+        allow_none: Whether `None` is returned unchanged. Defaults to `False`.
+
+    Returns:
+        The validated tensor, or `None` when `tensor` is `None` and `allow_none`
+        is true.
+
+    Raises:
+        ValueError: If the value is missing when `None` is not allowed, or is not
+            an integer tensor of rank `dim` whose first dimension equals
+            `batch_size`.
+    """
+    if tensor is None:
+        if allow_none:
+            return None
+        raise ValueError(f"{name} is required.")
+    if (
+        not isinstance(tensor, torch.Tensor)
+        or tensor.ndim != dim
+        or tensor.dtype not in _INTEGER_DTYPES
+    ):
+        shape = getattr(tensor, "shape", None)
+        dtype = getattr(tensor, "dtype", type(tensor).__name__)
+        raise ValueError(
+            f"{name} must be a {dim}D integer tensor with one entry per row; "
+            f"got shape {shape} and dtype {dtype}."
+        )
+    if tensor.shape[0] != batch_size:
+        raise ValueError(
+            f"{name} must contain one entry per row; "
+            f"got {tensor.shape[0]} entries for {batch_size} rows."
+        )
+    return tensor
 
 
 def check_x_and_y_shapes(x_shape: tuple[int, ...], y_shape: tuple[int, ...]) -> None:

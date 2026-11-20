@@ -1,5 +1,6 @@
 import logging
 from collections import defaultdict
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -93,6 +94,38 @@ class TestGoldDescriptor:
         with pytest.raises(NotImplementedError, match=error):
             descriptor.distribute = True
         assert descriptor.distribute is False
+
+    @pytest.mark.parametrize(
+        "kwargs, match",
+        [
+            pytest.param(
+                {"description_key": "idx"},
+                r"description_key='idx' collides with the identity column",
+                id="key_is_identity",
+            ),
+            pytest.param(
+                {"description_key": "idx_vector"},
+                r"description_key='idx_vector' collides with the identity column "
+                r"'idx_vector'\.",
+                id="reserved_idx_vector_merged_with_schema",
+            ),
+            pytest.param(
+                {"data_key": "embeddings"},
+                r"share the same column name: 'embeddings'",
+                id="duplicate_keys",
+            ),
+            pytest.param(
+                {"to_keep_schema": {"idx": pxt.Int}},
+                r"cannot redefine the identity columns \['idx'\]",
+                id="kept_identity",
+            ),
+        ],
+    )
+    def test_rejects_column_name_collisions(self, embedder, kwargs, match):
+        with pytest.raises(ValueError, match=match):
+            GoldDescriptor(
+                table_path="unit_test.test_collisions", embedder=embedder, **kwargs
+            )
 
     def test_estimation_time_batch_count_must_be_positive(self, embedder):
         with pytest.raises(
@@ -922,19 +955,6 @@ class TestEstimateComputationTime:
     def teardown_method(self):
         pxt.drop_dir("unit_test", force=True)
 
-    def test_returns_estimate_when_dataset_size_known(self, embedder):
-        desc = GoldDescriptor(
-            table_path="unit_test.describe_estimate",
-            embedder=embedder,
-            batch_size=2,
-        )
-        dataset = DummyDataset(dataset_len=10)
-
-        estimate = desc.estimate_computation_time(dataset)
-
-        assert estimate is not None
-        assert estimate > 0
-
     def test_returns_none_when_dataset_size_unknown(self, embedder, caplog):
         from torch.utils.data import IterableDataset
 
@@ -968,6 +988,34 @@ class TestEstimateComputationTime:
         estimate = desc.estimate_computation_time(dataset)
 
         assert estimate is None
+
+    @pytest.mark.parametrize(
+        ("max_batches", "remaining_batches"),
+        [(None, 5), (2, 3)],
+        ids=["no_table_yet", "partly_described"],
+    )
+    def test_returns_estimate_when_dataset_size_known(
+        self, embedder, monkeypatch, max_batches, remaining_batches
+    ):
+        desc = GoldDescriptor(
+            table_path="unit_test.describe_estimate_already_computed",
+            embedder=embedder,
+            batch_size=2,
+            max_batches=max_batches,
+        )
+        if max_batches is not None:
+            desc.describe_in_dataset(DummyDataset(dataset_len=10))
+
+        ticks = iter([0.0, 1.0])
+        monkeypatch.setattr(
+            "goldener.describe.time",
+            SimpleNamespace(perf_counter=lambda: next(ticks)),
+        )
+        estimate = desc.estimate_computation_time(DummyDataset(dataset_len=10))
+
+        assert estimate == pytest.approx(
+            remaining_batches / desc.estimation_time_batch_count
+        )
 
     def test_returns_estimate_from_table_input(self, embedder):
         sample = [

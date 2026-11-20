@@ -5,12 +5,12 @@ import pixeltable as pxt
 from pixeltable import Error
 from torch.utils.data import Dataset
 
+from goldener.distance import DistanceType
 from goldener.novelty import (
     GoldNearestNeighborNoveltyScoringTool,
     GoldNoveltyScorer,
 )
 from goldener.reduce import GoldReductionToolWithFit
-from goldener.select import DistanceType
 
 
 @pytest.fixture

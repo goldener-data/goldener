@@ -22,6 +22,8 @@ from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 from sklearn.random_projection import GaussianRandomProjection
 
+from goldener.utils import validate_vectorized_input
+
 
 logger = logging.getLogger(__name__)
 
@@ -38,27 +40,13 @@ class GoldReductionTool(ABC):
         """Whether this reducer can transform new rows using a fitted mapping."""
         return True
 
-    def _validate_input(self, x: torch.Tensor) -> None:
-        """Validate that input is already vectorized (2D torch.Tensor).
-
-        Args:
-            x: Input tensor to validate.
-
-        Raises:
-            ValueError: If input is not a 2D tensor.
-        """
-        if x.ndim != 2:
-            raise ValueError(
-                f"GoldReductionTool only accepts 2D tensors (num_vectors, feature_dim). "
-                f"Got shape {x.shape}. Please ensure your input is already vectorized."
-            )
-
     @abstractmethod
     def transform(self, x: torch.Tensor) -> torch.Tensor:
         """Transform the 2D vectors using the dimensionality reduction tool.
 
         Args:
-            x: Already vectorized 2D input tensor of shape (num_vectors, feature_dim) to transform.
+            x: Finite floating tensor shaped `(num_vectors, feature_dim)` with
+                positive feature width. Each row represents one vector.
 
         Returns:
             Transformed tensor with reduced dimensionality.
@@ -76,7 +64,8 @@ class GoldReductionToolWithFit(GoldReductionTool):
         """Fit the dimensionality reduction tool to the data.
 
         Args:
-            x: Already vectorized 2D input tensor of shape (num_vectors, feature_dim) to fit the model on.
+            x: Finite floating tensor shaped `(num_vectors, feature_dim)` with
+                positive feature width. Each row represents one vector.
         """
 
     @abstractmethod
@@ -84,7 +73,8 @@ class GoldReductionToolWithFit(GoldReductionTool):
         """Fit the dimensionality reduction tool to the 2D vectors and transform it.
 
         Args:
-            x: Already vectorized 2D input tensor of shape (num_vectors, feature_dim) to fit and transform.
+            x: Finite floating tensor shaped `(num_vectors, feature_dim)` with
+                positive feature width. Each row represents one vector.
 
         Returns:
             Transformed tensor with reduced dimensionality.
@@ -110,12 +100,17 @@ class GoldTorchModuleReductionTool(GoldReductionTool):
         """Transform the 2D vectors using the fitted dimensionality reduction model.
 
         Args:
-            x: Already vectorized 2D input tensor of shape (num_vectors, feature_dim) to transform.
+            x: Finite floating tensor shaped `(num_vectors, feature_dim)` with
+                positive feature width. Each row represents one vector.
 
         Returns:
             Transformed tensor with reduced dimensionality.
+
+        Raises:
+            ValueError: If `x` is not a finite floating 2D tensor with positive
+                feature width.
         """
-        self._validate_input(x)
+        validate_vectorized_input(x, "GoldTorchModuleReductionTool")
         return self.reducer(x)
 
 
@@ -197,12 +192,13 @@ class GoldSKLearnReductionTool(GoldReductionToolWithFit):
         """Fit the dimensionality reduction model to the 2D vectors.
 
         Args:
-            x: Already vectorized 2D input tensor of shape (num_vectors, feature_dim) to fit the model on.
+            x: Finite floating tensor shaped `(num_vectors, feature_dim)` with
+                positive feature width. Each row represents one vector.
 
         Raises:
-            ValueError: If input is not a 2D tensor.
+            ValueError: If input is not a finite floating 2D tensor with positive feature width.
         """
-        self._validate_input(x)
+        validate_vectorized_input(x, "GoldSKLearnReductionTool")
         x_np = x.detach().cpu().numpy()
         self._reducer.fit(x_np)
 
@@ -210,15 +206,17 @@ class GoldSKLearnReductionTool(GoldReductionToolWithFit):
         """Fit the dimensionality reduction model to the 2D vectors and transform it.
 
         Args:
-            x: Already vectorized 2D input tensor of shape (num_vectors, feature_dim) to fit and transform.
+            x: Finite floating tensor shaped `(num_vectors, feature_dim)` with
+                positive feature width. Each row represents one vector.
 
         Returns:
-            Transformed tensor with reduced dimensionality.
+            Transformed tensor shaped `(num_vectors, reduced_dim)`, preserving input
+            row correspondence, dtype, and device.
 
         Raises:
-            ValueError: If input is not a 2D tensor.
+            ValueError: If input is not a finite floating 2D tensor with positive feature width.
         """
-        self._validate_input(x)
+        validate_vectorized_input(x, "GoldSKLearnReductionTool")
         x_np = x.detach().cpu().numpy()
         transformed = self._reducer.fit_transform(x_np)
         return torch.from_numpy(transformed).to(device=x.device, dtype=x.dtype)
@@ -230,13 +228,15 @@ class GoldSKLearnReductionTool(GoldReductionToolWithFit):
         using fit_transform.
 
         Args:
-            x: Already vectorized 2D input tensor of shape (num_vectors, feature_dim) to transform.
+            x: Finite floating tensor shaped `(num_vectors, feature_dim)` with
+                positive feature width. Each row represents one vector.
 
         Returns:
-            Transformed tensor with reduced dimensionality.
+            Transformed tensor shaped `(num_vectors, reduced_dim)`, preserving input
+            row correspondence, dtype, and device.
 
         Raises:
-            ValueError: If input is not a 2D tensor.
+            ValueError: If input is not a finite floating 2D tensor with positive feature width.
         """
         if not self._has_transform:
             logger.warning(
@@ -245,7 +245,7 @@ class GoldSKLearnReductionTool(GoldReductionToolWithFit):
             )
             return self.fit_transform(x)
 
-        self._validate_input(x)
+        validate_vectorized_input(x, "GoldSKLearnReductionTool")
         x_np = x.detach().cpu().numpy()
         transformed = self._reducer.transform(x_np)
         return torch.from_numpy(transformed).to(device=x.device, dtype=x.dtype)

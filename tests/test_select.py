@@ -1,23 +1,25 @@
+import sys
 from time import sleep
+from typing import TYPE_CHECKING
+from unittest.mock import Mock
 
 import numpy as np
 import pytest
 
 import torch
-from coreax.kernels import LinearKernel
 from pixeltable import Error
 from sklearn.decomposition import PCA
 
 import pixeltable as pxt
 from torch.utils.data import Dataset
 
+from goldener.distance import DistanceType
 from goldener.pxt_utils import GoldPxtTorchDataset
 from goldener.reduce import GoldSKLearnReductionTool
 from goldener.select import (
     GoldSelector,
     GoldGreedyFarthestPointSelectionTool,
     GoldGreedyKCenterSelectionTool,
-    DistanceType,
 )
 from goldener.select import (
     GoldGreedyClosestPointSelectionTool,
@@ -25,6 +27,13 @@ from goldener.select import (
     GoldZCoreSelectionTool,
 )
 from goldener.torch_utils import collate_keeping_sequences_as_sequences
+
+if TYPE_CHECKING or sys.platform != "win32":
+    from coreax.kernels import LinearKernel
+
+requires_coreax = pytest.mark.skipif(
+    sys.platform == "win32", reason="coreax is not installed on Windows"
+)
 
 
 class DummyDataset(Dataset):
@@ -42,6 +51,7 @@ class DummyDataset(Dataset):
         )
 
 
+@requires_coreax
 class TestGoldSelector:
     def setup_method(self):
         pxt.drop_dir("unit_test", force=True)
@@ -64,6 +74,30 @@ class TestGoldSelector:
         with pytest.raises(NotImplementedError, match=error):
             selector.distribute = True
         assert selector.distribute is False
+
+    @pytest.mark.parametrize(
+        "kwargs, match",
+        [
+            pytest.param(
+                {"selection_key": "idx"},
+                r"selection_key='idx' collides with the identity column",
+                id="key_is_identity",
+            ),
+            pytest.param(
+                {"selection_key": "vectorized"},
+                r"share the same column name: 'vectorized'",
+                id="duplicate_keys",
+            ),
+            pytest.param(
+                {"to_keep_schema": {"idx_vector": pxt.Int}},
+                r"cannot redefine the identity columns \['idx_vector'\]",
+                id="kept_identity",
+            ),
+        ],
+    )
+    def test_rejects_column_name_collisions(self, kwargs, match):
+        with pytest.raises(ValueError, match=match):
+            GoldSelector(table_path="unit_test.test_collisions", **kwargs)
 
     def test_collate_fn_defaults_to_collate_keeping_sequences_as_sequences(self):
         selector = GoldSelector(table_path="unit_test.select_default_collate")
@@ -179,8 +213,9 @@ class TestGoldSelector:
         ]
         assert set(row_indices) == {0, 1}
 
-    def test_select_in_table_from_dataset(self):
+    def test_select_in_table_from_dataset(self, caplog: pytest.LogCaptureFixture):
         table_path = "unit_test.test_select_from_dataset"
+        caplog.set_level("INFO", logger="goldener.select")
 
         dataset = DummyDataset(
             [{"vectorized": torch.rand(5), "idx": idx} for idx in range(100)]
@@ -193,6 +228,12 @@ class TestGoldSelector:
         selection_table = selector.select_in_table(
             dataset, select_size=10, value="train"
         )
+        assert any(
+            "Starting coresubset selection for value 'train' with target count"
+            in message
+            for message in caplog.messages
+        )
+        assert all("label 'None'" not in message for message in caplog.messages)
 
         assert selection_table.count() == 100
         assert (
@@ -599,7 +640,7 @@ class TestGoldSelector:
 
         # calling select_in_table when a table exists and allow_existing is False should raise
         with pytest.raises(
-            ValueError, match="already exists and allow_existing is set to"
+            ValueError, match="already exists while allow_existing is False"
         ):
             selector.select_in_table(dataset, select_size=20, value="train")
 
@@ -890,6 +931,16 @@ class TestGoldSelector:
 
         dataset.keep_cache = False
 
+    def test_select_in_table_rejects_none_value(self):
+        selector = GoldSelector(table_path="unit_test.test_reject_none")
+
+        with pytest.raises(TypeError, match="value must be a non-null string"):
+            selector.select_in_table(
+                DummyDataset([{"vectorized": torch.rand(5), "idx": 0}]),
+                select_size=1,
+                value=None,
+            )
+
     def test_get_selected_indices(self):
         src_path = "unit_test.test_select"
 
@@ -1014,14 +1065,16 @@ class TestGoldGreedyClosestPointSelectionTool:
     def test_rejects_1d_tensor(self) -> None:
         tool = GoldGreedyClosestPointSelectionTool(device="cpu")
         with pytest.raises(
-            ValueError, match="GoldSelectionTool only accepts 2D tensors"
+            ValueError,
+            match="GoldGreedyClosestPointSelectionTool only accepts 2D tensors",
         ):
             tool.select(torch.randn(10), k=2)
 
     def test_rejects_3d_tensor(self) -> None:
         tool = GoldGreedyClosestPointSelectionTool(device="cpu")
         with pytest.raises(
-            ValueError, match="GoldSelectionTool only accepts 2D tensors"
+            ValueError,
+            match="GoldGreedyClosestPointSelectionTool only accepts 2D tensors",
         ):
             tool.select(torch.randn(10, 5, 3), k=2)
 
@@ -1074,14 +1127,16 @@ class TestGoldGreedyFarthestPointSelectionTool:
     def test_rejects_1d_tensor(self) -> None:
         tool = GoldGreedyFarthestPointSelectionTool(device="cpu")
         with pytest.raises(
-            ValueError, match="GoldSelectionTool only accepts 2D tensors"
+            ValueError,
+            match="GoldGreedyFarthestPointSelectionTool only accepts 2D tensors",
         ):
             tool.select(torch.randn(10), k=2)
 
     def test_rejects_3d_tensor(self) -> None:
         tool = GoldGreedyFarthestPointSelectionTool(device="cpu")
         with pytest.raises(
-            ValueError, match="GoldSelectionTool only accepts 2D tensors"
+            ValueError,
+            match="GoldGreedyFarthestPointSelectionTool only accepts 2D tensors",
         ):
             tool.select(torch.randn(10, 5, 3), k=2)
 
@@ -1134,14 +1189,14 @@ class TestGoldGreedyKCenterSelectionTool:
     def test_rejects_1d_tensor(self) -> None:
         tool = GoldGreedyKCenterSelectionTool(device="cpu")
         with pytest.raises(
-            ValueError, match="GoldSelectionTool only accepts 2D tensors"
+            ValueError, match="GoldGreedyKCenterSelectionTool only accepts 2D tensors"
         ):
             tool.select(torch.randn(10), k=2)
 
     def test_rejects_3d_tensor(self) -> None:
         tool = GoldGreedyKCenterSelectionTool(device="cpu")
         with pytest.raises(
-            ValueError, match="GoldSelectionTool only accepts 2D tensors"
+            ValueError, match="GoldGreedyKCenterSelectionTool only accepts 2D tensors"
         ):
             tool.select(torch.randn(10, 5, 3), k=2)
 
@@ -1182,6 +1237,7 @@ class TestGoldGreedyKCenterSelectionTool:
 
 
 class TestGoldGreedyKernelPointsSelectionTool:
+    @requires_coreax
     def test_simple_usage(self) -> None:
         tool = GoldGreedyKernelPointsSelectionTool(
             feature_kernel=LinearKernel(output_scale=1, constant=0)
@@ -1195,6 +1251,7 @@ class TestGoldGreedyKernelPointsSelectionTool:
         assert len(indices) == k
         assert len(set(indices)) == k
 
+    @requires_coreax
     def test_select_all_points_with_linear_kernel(self) -> None:
         tool = GoldGreedyKernelPointsSelectionTool(
             feature_kernel=LinearKernel(output_scale=1, constant=0)
@@ -1208,6 +1265,7 @@ class TestGoldGreedyKernelPointsSelectionTool:
         assert len(indices) == k
         assert len(set(indices)) == k
 
+    @requires_coreax
     def test_with_k_greater_than_size(self) -> None:
         x = torch.tensor([[0.0], [1.0]], dtype=torch.float32)
 
@@ -1217,23 +1275,47 @@ class TestGoldGreedyKernelPointsSelectionTool:
         with pytest.raises(ValueError, match="k cannot be greater"):
             tool.select(x, k=5)
 
+    @requires_coreax
     def test_rejects_1d_tensor(self) -> None:
         tool = GoldGreedyKernelPointsSelectionTool(
             feature_kernel=LinearKernel(output_scale=1, constant=0)
         )
         with pytest.raises(
-            ValueError, match="GoldSelectionTool only accepts 2D tensors"
+            ValueError,
+            match="GoldGreedyKernelPointsSelectionTool only accepts 2D tensors",
         ):
             tool.select(torch.randn(10), k=2)
 
+    @requires_coreax
     def test_rejects_3d_tensor(self) -> None:
         tool = GoldGreedyKernelPointsSelectionTool(
             feature_kernel=LinearKernel(output_scale=1, constant=0)
         )
         with pytest.raises(
-            ValueError, match="GoldSelectionTool only accepts 2D tensors"
+            ValueError,
+            match="GoldGreedyKernelPointsSelectionTool only accepts 2D tensors",
         ):
             tool.select(torch.randn(10, 5, 3), k=2)
+
+    @pytest.mark.parametrize(
+        ("build", "match"),
+        [
+            (
+                lambda: GoldGreedyKernelPointsSelectionTool(feature_kernel=Mock()),
+                "GoldGreedyKernelPointsSelectionTool is not available on Windows",
+            ),
+            (
+                lambda: GoldSelector(table_path="unit_test.select_windows_default"),
+                "GoldSelector needs an explicit selection_tool on Windows",
+            ),
+        ],
+        ids=["tool", "selector_default_tool"],
+    )
+    def test_rejects_windows(self, monkeypatch, build, match) -> None:
+        monkeypatch.setattr(sys, "platform", "win32")
+
+        with pytest.raises(RuntimeError, match=match):
+            build()
 
 
 class TestGoldZCoreSelectionTool:

@@ -18,12 +18,11 @@ name: Draft and publish a LinkedIn post
 # The LINKEDIN_API_VERSION variable (YYYYMM) overrides the version of the LinkedIn API, which supports each version
 # for one year only.
 #
-# The workflow runs on `pull_request_target` so that pull requests merged from a fork also get the secrets. It never
-# checks out nor runs the code of the pull request, and only uses its url, set by GitHub: keep it that way.
+# Push runs look up the merged PR associated with the pushed commit; direct pushes are skipped.
+# Only the GitHub-provided PR URL reaches the prompt. No PR code or PR workflow artifacts are consumed.
 
 on:
-  pull_request_target:
-    types: [closed]
+  push:
     branches:
       - main
   workflow_dispatch:
@@ -34,17 +33,44 @@ on:
         default: false
         type: boolean
 
-permissions:
-  contents: read
+permissions: {}
 
 jobs:
+  resolve-pr:
+    name: Find the merged pull request
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      should_draft: ${{ steps.pr.outputs.should_draft }}
+      url: ${{ steps.pr.outputs.url }}
+    steps:
+      - name: Resolve eligible merged PR
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "should_draft=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          gh api --paginate "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls?per_page=100" \
+            --jq '.[] | select(.merged_at != null and .base.ref == "main")' \
+            | jq -s --arg sha "$GITHUB_SHA" '[.[] | select(.merge_commit_sha == $sha)] | sort_by(.number) | last' \
+            > "$RUNNER_TEMP/pr.json"
+          if jq -e '. != null and ([.labels[].name] | index("no-post") | not) and (.head.ref | contains("release-v") | not)' \
+            "$RUNNER_TEMP/pr.json" > /dev/null; then
+            echo "should_draft=true" >> "$GITHUB_OUTPUT"
+            jq -r '"url=" + .html_url' "$RUNNER_TEMP/pr.json" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_draft=false" >> "$GITHUB_OUTPUT"
+          fi
+
   draft-post:
     name: Draft a LinkedIn post about a research paper
-    if: >-
-      github.event_name == 'workflow_dispatch'
-      || (github.event.pull_request.merged == true
-      && !contains(github.event.pull_request.labels.*.name, 'no-post')
-      && !contains(github.event.pull_request.head.ref, 'release-v'))
+    needs: resolve-pr
+    if: needs.resolve-pr.outputs.should_draft == 'true'
     runs-on: ubuntu-latest
     environment: linkedin-post
     # reading a paper in full can take a while, but a stuck session must not run for hours
@@ -56,10 +82,10 @@ jobs:
       # bibliography and the skills are meant to evolve, and every run uses their latest version on main.
       CLAUDE_CODE_VERSION: 2.1.296
       # the line added to the post when the workflow is triggered by a merged pull request
-      TRIGGER_LINE: "${{ github.event.pull_request.html_url && format('Triggered by PR merged in Goldener: {0}', github.event.pull_request.html_url) || '' }}"
+      TRIGGER_LINE: "${{ needs.resolve-pr.outputs.url && format('Triggered by PR merged in Goldener: {0}', needs.resolve-pr.outputs.url) || '' }}"
     steps:
       - name: Clone the research repository
-        run: git clone --depth 1 https://github.com/goldener-data/goldener-research.git "$RESEARCH_DIR"
+        run: git clone --depth 1 --branch main https://github.com/goldener-data/goldener-research.git "$RESEARCH_DIR"
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -203,7 +229,7 @@ jobs:
   publish-post:
     name: Publish the post on LinkedIn
     needs: draft-post
-    if: github.event_name == 'pull_request_target' || inputs.publish
+    if: github.event_name == 'push' || inputs.publish
     runs-on: ubuntu-latest
     environment: linkedin-post
     timeout-minutes: 10

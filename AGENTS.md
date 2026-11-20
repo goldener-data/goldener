@@ -22,6 +22,7 @@ intermediate results so operations can resume without recomputing completed work
 - `goldener/vision/`: adapt processing to vision data.
 - `tests/`: verify behavior; also read `tests/AGENTS.md`.
 - `README.md`: explain usage and development.
+- `docs/posts/`: explain features and workflows in detailed documentation posts.
 - `scripts/generate_api_docs.sh`: generate API documentation.
 
 ## Architecture
@@ -60,6 +61,8 @@ intermediate results so operations can resume without recomputing completed work
 - Validate invalid public inputs with informative exceptions, normally `ValueError`.
   Use `NotImplementedError` for unsupported capabilities, following the relevant API.
   Use module-level loggers for operational messages and warnings.
+- Omit label clauses from progress logs when no label is selected, including
+  when an operation has no `label_key`.
 - Keep changes focused. Do not silently change device, dtype, shape, index meaning,
   persistence behavior, or randomness while adding an algorithm or option.
 - When exposing a new root-level public API, update both imports and `__all__` in
@@ -93,6 +96,85 @@ intermediate results so operations can resume without recomputing completed work
   when essential context, intent, or a non-obvious constraint cannot be conveyed
   clearly by names and code structure. Do not narrate statements or add routine
   arrange/act/assert labels. Keep required API docstrings distinct from inline comments.
+
+### Module docstrings
+
+- Start each public library module with a top-level docstring before imports.
+  Open with a short statement of the module's main goal, then explain its role
+  in the data pipeline and when its functionality is used.
+- Follow the introduction with a concise bulleted overview of the `GoldDoer`
+  subclasses and `Gold...Tool` classes implemented in the module, including its
+  abstract interfaces and shared base classes. Name each class in backticks and
+  explain its responsibility; group closely related implementations when useful.
+  Distinguish tensor computation tools from dataset/table orchestration and explain
+  how the concrete implementations relate to their base classes.
+- Include supporting public configuration classes, enums, or helpers when needed
+  to understand the main APIs. Link related stages using qualified names such as
+  `goldener.describe.GoldDescriptor`, distinguishing those references from classes
+  implemented in the module. Modules without doers or tools should introduce their
+  own main APIs rather than inventing a doer/tool overview.
+- Use the module docstrings in `goldener/select.py`, `goldener/clusterize.py`, and
+  `goldener/embed.py` as references for structure and level of detail. Keep the
+  overview consistent when adding, removing, or renaming classes; leave detailed
+  parameters and algorithm contracts to class and method docstrings.
+
+### GoldDoer and Gold...Tool class docstrings
+
+- Follow the content and order of existing class docstrings in the same API family.
+  Use `GoldDescriptor`, `GoldVectorizer`, `GoldClusterizer`, and `GoldSelector` as
+  references for persisted doers; use `GoldSplitter` for composed orchestration.
+  For tools, use `GoldTorchEmbeddingTool`, `GoldTensorVectorizationTool`, and the
+  concrete selection tools as references. Match the structure, but verify every
+  claim against the class being documented rather than copying implementation details.
+- Start with a one-line description of the action and its data or result. Follow
+  with explanatory paragraphs, then an indented Google-style `Attributes:` section
+  for public configuration and state, including relevant inherited attributes.
+  Distinguish constructor inputs documented in `Args:` from stored attributes
+  and properties documented in `Attributes:`.
+- For `GoldDoer` subclasses, explain the supported Dataset/Table inputs, the tools
+  or pipeline stages used, and the outputs produced. For persisted doers, describe
+  local PixelTable storage, reuse of completed results on repeated or resumed calls,
+  batching or chunking, tensor-to-array conversion when applicable, and the `idx`
+  and `idx_vector` columns actually used to associate results with inputs. State
+  distribution support accurately. For composed doers, explain stage order,
+  optional stages, and how samples are assigned or passed between stages instead
+  of implying that the doer owns a result table.
+  - For persisted doers, explain the computation tools, table path and column keys,
+    collation and retained schema, batch/chunk settings, and applicable lifecycle
+    controls such as `allow_existing`, `drop_table`, and `max_batches` when present.
+    For composed doers, document their own configuration and clarify which settings
+    are forwarded to stages. Include defaults, constraints, and scope where needed,
+    especially whether an option applies only to a dataset entry point or is forwarded.
+  to a dataset entry point or is forwarded to composed stages.
+- For `Gold...Tool` classes, explain the tensor operation or algorithm, relevant
+  input/output shapes and index meanings, and non-obvious behavior such as fitting,
+  fusion/filter order, anchor support, backend limitations, or model hooks. Describe
+  mutable versus fixed configuration and random-state behavior when relevant.
+  Use `Attributes:` for the tool's configuration and state; keep dataset traversal
+  and table lifecycle details in the doer documentation. Abstract interfaces and
+  simple adapters can stay brief when their contracts are already documented by
+  the base class and public methods.
+
+## Documentation consistency
+
+- When adding or modifying `GoldDoer`, its subclasses, or any `Gold...Tool`, review
+  the relevant sections of `README.md` and posts in `docs/posts/` before making changes.
+  Use them to understand the documented behavior and usage of the affected APIs.
+- Update affected explanations and examples when behavior, public APIs, defaults,
+  or usage changes. Before finishing, verify that the relevant README sections,
+  documentation posts, and docstrings agree with the implementation.
+
+## README feature documentation
+
+- When adding a new feature, add or update its section in `README.md` as part of
+  completing the feature.
+- Start with the problem the feature solves and a brief description of what it
+  does and when to use it. Keep the explanation user-focused and omit internal
+  implementation details; leave technical reference details to API documentation.
+- Include a short usage example illustrating the main use case through the public
+  API. Show the essential setup and call, and briefly explain the result.
+- Use existing feature sections in `README.md` as inspiration for structure, tone,
+  and example length. Ensure the example matches the implemented API.
 
 ## Rules by API family
 
@@ -149,6 +231,17 @@ intermediate results so operations can resume without recomputing completed work
 - `GoldDescriptor`, `GoldVectorizer`, `GoldClusterizer`, and `GoldSelector` derive
   from `GoldDoerWithTable`; `GoldSplitter` derives from `GoldDoer` and composes stages.
   Put shared initialization in the appropriate base and forward options via `super()`.
+- `idx` and `idx_vector` are `GoldDoerWithTable._RESERVED_KEYS`. They are
+  reserved only when a doer uses an intermediate table, not on a plain
+  `GoldDoer`. Collision checks use `_RESERVED_KEYS` merged with the keys of
+  `_MINIMAL_SCHEMA`, and a hit raises the identity-column error, including
+  `idx_vector` when the schema lists only `idx`. `GoldDoerWithTable` also
+  rejects duplicate key values and a `to_keep_schema` entry that redefines a
+  name in that merged set. `label_key` is checked after it is assigned in
+  `GoldDoerWithTable.__init__`. Children set their own attributes before
+  `super().__init__()`. Name new column attributes `*_key` and declare
+  additional identity columns in `_MINIMAL_SCHEMA`. Do not add `idx_vector` to
+  a schema that does not store that column.
 - Preserve paired entry points: `describe_in_*`, `vectorize_in_*`, `cluster_in_*`,
   `select_in_*`, and `split_in_*`, with `*_in_table` returning PixelTable tables and
   `*_in_dataset` returning the existing dataset wrapper. Follow each method's actual
