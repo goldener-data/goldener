@@ -131,6 +131,53 @@ gs = GoldSelector(
 )
 ```
 
+## Scoring novel vectors against a reference
+
+Novelty scoring compares each vector with a fixed bank of reference vectors. The default scorer returns the nearest
+cosine distance; larger values mean greater novelty, but the scores are distances rather than calibrated probabilities.
+When a sample has multiple vectors, use `get_novel_indices(..., idx_key="idx")` to mark the sample novel if any vector
+exceeds the threshold. A zero vector has cosine distance 1 under Goldener's shared cosine distance helper.
+
+```python
+from goldener import (
+    GoldDescriptor,
+    GoldTensorVectorizationTool,
+    GoldNoveltyScorer,
+    GoldTorchEmbeddingTool,
+    GoldTorchEmbeddingToolConfig,
+)
+from goldener.vectorize import GoldVectorizer
+
+embedder = GoldTorchEmbeddingTool(GoldTorchEmbeddingToolConfig(model=my_model))
+reference_descriptor = GoldDescriptor(
+    table_path="local.reference_descriptions", embedder=embedder
+)
+query_descriptor = GoldDescriptor(
+    table_path="local.query_descriptions", embedder=embedder
+)
+vectorizer = GoldTensorVectorizationTool()
+reference_vectors = GoldVectorizer(
+    table_path="local.reference_vectors", vectorizer=vectorizer
+).vectorize_in_table(reference_descriptor.describe_in_table(reference_dataset))
+query_vectors = GoldVectorizer(
+    table_path="local.query_vectors", vectorizer=vectorizer
+).vectorize_in_table(query_descriptor.describe_in_table(query_dataset))
+
+novelty = GoldNoveltyScorer(table_path="local.novelty_scores", chunk=256)
+scores = novelty.score_in_table(query_vectors, reference=reference_vectors)
+novel_sample_ids = novelty.get_novel_indices(scores, threshold=0.25, idx_key="idx")
+```
+
+The complete reference and optional fitted reducer are kept in memory. Query vectors are loaded and scored in chunks
+against that same reference. Results are stored by `idx_vector`, and repeated calls reuse completed scores.
+`max_batches` limits pending score batches per call; all source rows are staged before scoring. After restarting, fit a
+new scorer with the same reference and settings before resuming. Use a new output table to change the reference.
+
+Dataset-backed scoring tables retain original vectors; table-backed results retain them only when
+`include_vectorized_in_table=True`. Retained bfloat16 vectors are stored as float32 because PixelTable does not support
+bfloat16 arrays; scoring uses the stored vector dtype. The nearest-neighbor tool keeps the complete reference in memory
+and batches pairwise distances using `distance_batch_size`. Distributed scoring is not implemented.
+
 ## Splitting annotated data in train and validation sets
 
 Goldener can split data between the train and validation sets ensuring that the training set is containing
@@ -183,7 +230,7 @@ from sklearn.cluster import KMeans
 
 # Reuse the descriptor from smart sampling (vectorizer included).
 # dataset is user-supplied.
-gd = GoldDescriptor(...) 
+gd = GoldDescriptor(...)
 n_clusters = 10
 gcluster = GoldClusterizer(
     table_path="my_table_for_clusterization",
@@ -240,7 +287,7 @@ from goldener import GoldClusterizedBatchSampler, GoldClusterizer, GoldDescripto
 # Reuse the descriptor and clusterizer from earlier examples.
 # Keep vectorized_key aligned with gd.description_key on the clusterizer.
 # my_dataset is user-supplied.
-gd = GoldDescriptor(...) 
+gd = GoldDescriptor(...)
 gc = GoldClusterizer(...)
 
 batch_sampler = GoldClusterizedBatchSampler(

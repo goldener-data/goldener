@@ -35,6 +35,11 @@ class GoldReductionTool(ABC):
 
     """
 
+    @property
+    def supports_transform(self) -> bool:
+        """Whether this reducer can transform new rows using a fitted mapping."""
+        return True
+
     @abstractmethod
     def transform(self, x: torch.Tensor) -> torch.Tensor:
         """Transform the 2D vectors using the dimensionality reduction tool.
@@ -163,6 +168,11 @@ class GoldSKLearnReductionTool(GoldReductionToolWithFit):
         if self._random_state is None:
             return None
         return self._random_state.get_state(legacy=False)
+
+    @property
+    def supports_transform(self) -> bool:
+        """Whether the wrapped estimator has a fitted transform operation."""
+        return self._has_transform
 
     def update_random_state(self, state: dict[str, Any]) -> None:
         """Restore the reducer random state.

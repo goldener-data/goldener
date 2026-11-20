@@ -38,6 +38,11 @@ from goldener.embed import (
     GoldMultiModalTorchEmbeddingTool,
 )
 from goldener.organize import GoldClusterizedBatchSampler
+from goldener.novelty import (
+    GoldNearestNeighborNoveltyScoringTool,
+    GoldNoveltyScorer,
+    GoldNoveltyScoringTool,
+)
 from goldener.pxt_utils import GoldPxtTorchDataset
 from goldener.reduce import (
     GoldReductionTool,
@@ -82,6 +87,9 @@ __all__ = (
     "GoldTorchEmbeddingToolConfig",
     "GoldMultiModalTorchEmbeddingTool",
     "GoldClusterizedBatchSampler",
+    "GoldNoveltyScoringTool",
+    "GoldNearestNeighborNoveltyScoringTool",
+    "GoldNoveltyScorer",
     "GoldPxtTorchDataset",
     "GoldReductionTool",
     "GoldReductionToolWithFit",

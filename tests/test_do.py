@@ -8,6 +8,7 @@ from goldener.clusterize import GoldClusterizer, GoldRandomClusteringTool
 from goldener.describe import GoldDescriptor
 from goldener.do import GoldDoer, GoldDoerWithTable
 from goldener.embed import GoldTorchEmbeddingTool, GoldTorchEmbeddingToolConfig
+from goldener.novelty import GoldNoveltyScorer
 from goldener.select import GoldGreedyKCenterSelectionTool, GoldSelector
 from goldener.torch_utils import collate_keeping_sequences_as_sequences
 from goldener.vectorize import GoldTensorVectorizationTool, GoldVectorizer
@@ -22,6 +23,7 @@ from goldener.weigh import GoldDensityWeigher
         GoldSelector,
         GoldClusterizer,
         GoldVectorizer,
+        GoldNoveltyScorer,
         GoldDensityWeigher,
     ],
     ids=lambda cls: cls.__name__,
@@ -55,7 +57,7 @@ def test_defaults(make_doer):
     assert doer.allow_existing is True
     assert doer.drop_table is False
     assert doer.max_batches is None
-    if isinstance(doer, (GoldSelector, GoldDensityWeigher)):
+    if isinstance(doer, (GoldSelector, GoldDensityWeigher, GoldNoveltyScorer)):
         assert doer.include_vectorized_in_table is False
     if isinstance(doer, GoldDoerWithTable):
         assert doer.collate_fn is collate_keeping_sequences_as_sequences
@@ -74,6 +76,7 @@ def test_custom_settings(make_doer):
 
     schema = {"label": pxt.String}
     kwargs = {"allow_existing": False, "drop_table": True, "max_batches": 3}
+    label_key = None
     if make_doer is not GoldDoer:
         kwargs.update(
             collate_fn=collate_fn,
@@ -81,8 +84,10 @@ def test_custom_settings(make_doer):
             min_pxt_insert_size=10,
             batch_size=4,
             num_workers=2,
-            label_key="labels",
         )
+        if make_doer.func is not GoldNoveltyScorer:
+            label_key = "labels"
+            kwargs["label_key"] = label_key
 
     doer = make_doer(**kwargs)
 
@@ -96,7 +101,7 @@ def test_custom_settings(make_doer):
         assert doer.batch_size == 4
         assert doer.num_workers == 2
         assert doer.table_path == "unit_test.doer"
-        assert doer.label_key == "labels"
+        assert doer.label_key == label_key
 
 
 class _DoerWithKeys(GoldDoerWithTable):
