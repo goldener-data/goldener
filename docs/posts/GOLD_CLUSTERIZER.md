@@ -1,25 +1,12 @@
 # Use embedding clusters to investigate model errors
 
-![Four fictional support tickets with subjects about duplicate charges and missing packages.](illustrations/clustering-ticket-records.jpg)
-
-## TL;DR
-
-Use `GoldClusterizer` to group similar vectors and retrieve the source samples for review. For monitoring over time, fit a clustering tool once and use `predict` to assign new vectors to the same groups.
-
-## Table of contents
-
-- [Group misrouted support tickets](#group-misrouted-support-tickets)
-- [Track the same groups in later sensor windows](#track-the-same-groups-in-later-sensor-windows)
-- [Read assignments by vector or sample](#read-assignments-by-vector-or-sample)
-- [Choose which vectors to fit together](#choose-which-vectors-to-fit-together)
-
 An error rate tells you how often a model fails. To decide what to fix, you need to see which errors have something in common. If a classifier sends many support tickets to the wrong queue, grouping their text embeddings can help you find repeated patterns. Read tickets in one cluster to see whether a new form template makes different requests look alike or whether one routing rule needs a clearer definition.
 
 `GoldClusterizer` stores those assignments so you can retrieve members by sample ID. You can use the same workflow before training to find borderline examples and write annotation guidelines.
 
-## Group misrouted support tickets
+## Turn a review queue into groups
 
-Eight synthetic vectors stand in for tickets routed to the wrong queue. There are two visibly separate neighborhoods in the toy space. The clusterizer runs one k-means fit over the queue and links each assignment to its original sample.
+This example uses eight synthetic vectors from a single review queue. There are two visibly separate neighborhoods in the toy space. The clusterizer runs one k-means fit over the queue and links each assignment to its original sample.
 
 ```python
 from uuid import uuid4
@@ -60,56 +47,18 @@ for cluster_id, ids in groups.items():
     print(cluster_id, sorted(ids))
 ```
 
-![Scatter plot of eight synthetic ticket vectors and the four source ticket IDs retrieved from each of two clusters.](figures/ticket-clusters.png)
-
 The two neighborhoods each yield four IDs. In a real queue, use the IDs to open the original inputs. Review several members and some borderline cases before using a cluster to write an annotation guideline or change a routing rule. The fit produces cluster numbers. The review establishes what the groups mean.
 
-The caller chooses `n_clusters`. A small count gives broader groups to review. A large count can expose narrower patterns and create more groups to inspect. The partition depends on the representation and estimator. If you start from raw data, use `GoldDescriptor` and a vectorization tool, then align the clusterizer's `vectorized_key` with the vector output column. [Lloyd's k-means method](https://doi.org/10.1109/TIT.1982.1056489)
+## Define the population and what “similar” means
 
-## Track the same groups in later sensor windows
+`GoldSKLearnClusteringTool` wraps an estimator such as `KMeans` and returns a cluster assignment per input vector. The call to `cluster_in_table` supplies `n_clusters`. A small count gives broader groups to review. A large count can expose narrower patterns and creates more groups to inspect. The partition reflects the representation and estimator you chose. [Lloyd's k-means method](https://doi.org/10.1109/TIT.1982.1056489)
 
-For a sensor-based fault detector, compare the share of incoming windows assigned to a known pattern. These two-dimensional vectors stand in for vibration and temperature features. Fit on a reference period, identify a group from a known high-vibration window, and use `predict` to count its assignments in a later period. Use the same feature extraction and preprocessing in both periods.
+Start from vectors in a dataset or a Pixeltable table. If you start from raw data, use `GoldDescriptor` and a vectorization tool to make the vectors, then align `vectorized_key` with the output column. Each stored assignment has an `idx_vector`, which identifies a vector, and an `idx`, which identifies the original sample. Retrieval defaults to `idx_vector`. Passing `idx_key="idx"` retrieves distinct sample IDs, as in the example. If you cluster multiple windows from a sensor trace, that trace can appear in several groups.
 
-```python
-import torch
-from sklearn.cluster import KMeans
+Use one fit for a single partition. With `label_key`, Goldener fits each label population separately, which is useful when you want to look for variations within a known class. Setting `chunk` limits memory use by fitting each chunk separately. Both approaches reuse numeric cluster IDs across fits. Query within a label to interpret a label-specific fit. Use an unchunked fit when you need the stored cluster IDs to identify groups in one population, since the table does not store chunk membership. A `reducer` also changes the space in which the groups are found. [Reducing the dimensionality of embeddings](GOLD_REDUCTION.md)
 
-from goldener import GoldSKLearnClusteringTool
+## Track the same groups over time
 
-reference = torch.tensor([[0.2, 0.1], [0.3, 0.2], [4.0, 0.2], [4.2, 0.3]])
-later = torch.tensor([[0.3, 0.1], [3.9, 0.1], [4.0, 0.2], [4.3, 0.3]])
-tool = GoldSKLearnClusteringTool(KMeans(random_state=0))
+Fit `GoldSKLearnClusteringTool` once on reference vectors and call its `predict` method on later vectors. Use the same embedding model and preprocessing, including the fitted reducer if you used one. Every incoming vector is assigned to an existing group. For a sensor-based fault detector, track whether more time windows are assigned to a group of high-vibration traces, then review the underlying signals and measure the error rate among labeled examples. If you want to discover new groups in recent alerts, fit a new partition and review its groups separately.
 
-reference_groups = tool.fit(reference, n_clusters=2)
-high_vibration_group = reference_groups[-1]
-later_groups = tool.predict(later)
-reference_count = int((reference_groups == high_vibration_group).sum())
-later_count = int((later_groups == high_vibration_group).sum())
-
-assert (reference_count, later_count) == (2, 3)
-print(reference_count / len(reference), later_count / len(later))  # 0.5 0.75
-```
-
-In this toy comparison, the group's share rises from half to three quarters. Open the corresponding traces to check what changed. Every incoming vector gets an existing cluster ID, so fit a new partition separately if you want to look for patterns the reference groups miss. A fresh fit has its own ID numbering.
-
-## Read assignments by vector or sample
-
-`GoldClusterizer` stores one assignment per vector in Pixeltable. By default, `get_cluster_indices` returns vector IDs (`idx_vector`). Pass `idx_key="idx"` for source sample IDs. A sensor trace represented by several windows can appear in several clusters.
-
-Set `force_same_cluster=True` to write one cluster ID to every row with the same `idx`. The tool still fits the individual vectors. If vectors from the same sample receive different IDs, the last write determines the stored ID. To fit clusters on one representation per sample, combine the vectors before clustering.
-
-## Choose which vectors to fit together
-
-Use one fit over the whole population when you need one partition. Separate fits reuse numeric cluster IDs, so cluster 0 can describe different groups in the same table.
-
-| Option | What gets fitted |
-| --- | --- |
-| `label_key` | Each label separately. Pass both `label_key` and `label_value` when retrieving a cluster from a specific label. |
-| `chunk` | Each randomly assigned chunk separately. This bounds the size of each fit. Pixeltable stores the cluster ID for each vector, while chunk membership is temporary. |
-| Resume with an existing table | Only pending vectors. Saved assignments are reused. |
-
-K-means needs at least `n_clusters` vectors in every fit. Check the smallest label or chunk, especially after a partial run. If you configure a reducer that learns a projection, it fits on each population before clustering. [Reducing the dimensionality of embeddings](GOLD_REDUCTION.md)
-
-Use a fresh result table to refit the whole population. To assign new vectors to existing groups, call `predict` with the original fitted tool.
-
-To draw across those groups during training, configure the batch sampler with a clusterizer that fits the training population as a whole. [Building batches from embedding clusters](GOLD_BATCHER.md)
+Use the Pixeltable output to reopen a completed review. A table can reuse recorded assignments, and a resumed computation can fit just the pending vectors. For a fresh partition over changed inputs or settings, use a new table. If the next task is to control how those groups appear during training, give Goldener's batch sampler the training data and a clusterizer configured for one fit. [Building batches from embedding clusters](GOLD_BATCHER.md)
