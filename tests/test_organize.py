@@ -412,12 +412,8 @@ class TestGoldClusterizedBatchSampler:
         generator = torch.Generator().manual_seed(1)
         batch_sampler = make_multi_size_batch_sampler(generator, strategy)
 
-        details = batch_sampler.get_sampling_details(n_epochs=2)
-        epochs = [list(batch_sampler) for _ in range(2)]
-        assert details == get_sampling_details_from_epochs(epochs)
-
         state = generator.get_state()
-        assert batch_sampler.get_sampling_details(n_epochs=2) == details
+        details = batch_sampler.get_sampling_details(n_epochs=2)
         assert torch.equal(generator.get_state(), state)
 
         first_epoch_steps = details["steps_per_epoch"][0]
@@ -426,7 +422,9 @@ class TestGoldClusterizedBatchSampler:
             "samples_per_step": details["samples_per_step"][: first_epoch_steps + 1],
         }
 
-        batch_sampler.generator = torch.Generator().manual_seed(2)
+        epochs = [list(batch_sampler) for _ in range(2)]
+        assert details == get_sampling_details_from_epochs(epochs)
+
         details = batch_sampler.get_sampling_details(n_epochs=2)
         epochs = [list(batch_sampler) for _ in range(2)]
         assert details == get_sampling_details_from_epochs(epochs)

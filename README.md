@@ -235,7 +235,6 @@ can hurt how well a model learns to recognize the underrepresented cases.
 Goldener proposes a batch sampler grouping data into groups of similar content, and then drawing samples so each batch is spread across clusters as evenly as possible.
 
 ```python
-import torch
 from goldener import GoldClusterizedBatchSampler, GoldClusterizer, GoldDescriptor
 
 # Reuse the descriptor and clusterizer from earlier examples.
@@ -250,15 +249,7 @@ batch_sampler = GoldClusterizedBatchSampler(
     clusterizer=gc,
     descriptor=gd,
     n_clusters=10,
-    generator=torch.Generator().manual_seed(0),
 )
-```
-
-The number of batches of an epoch depends on the cluster sizes, the exhaustion strategy and the shuffling. `get_sampling_details` runs the sampling ahead of the training to give the number of steps of each epoch and the number of samples of each step, for instance to configure a learning rate scheduler. It requires a `generator` that only the sampler uses, so that the training reproduces these epochs.
-
-```python
-details = batch_sampler.get_sampling_details(n_epochs=10)
-total_steps = sum(details["steps_per_epoch"])
 ```
 
 ## Weighting samples by embedding density

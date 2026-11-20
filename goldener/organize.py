@@ -100,6 +100,8 @@ class GoldClusterizedBatchSampler(Sampler):
         shuffle: if True, the order of the samples of all clusters will be shuffled before sampling,
             the batch is shuffled to change the cluster order, and once exhausted a cluster is shuffled again.
             If False, the order of the samples and clusters will be preserved.
+        generator: optional generator to manage the random shuffling.
+            If None, a new generator will be created with a random seed.
     """
 
     def __init__(
@@ -188,32 +190,16 @@ class GoldClusterizedBatchSampler(Sampler):
                 "All the clusters are required to have the same size when `force_same_size=True`"
             )
 
-    @property
-    def generator(self) -> Generator | None:
-        """Optional generator to manage the random shuffling.
-
-        If None, every iteration creates a new generator with a random seed.
-        """
-        return self._generator
-
-    @generator.setter
-    def generator(self, generator: Generator | None) -> None:
-        """Set the generator managing the random shuffling."""
-        self._generator = generator
-        if generator is not None:
-            self._initial_generator_state = generator.get_state()
-
     def get_sampling_details(
         self, n_epochs: int | None = None, n_steps: int | None = None
     ) -> dict[str, list[int]]:
         """Get the number of steps per epoch and of samples per step.
 
-        The sampling is run for the requested number of epochs or steps. It starts from
-        the state the `generator` had when it was set, and the state it had before the
-        call is restored afterwards, so the next iterations are not affected. The
-        details describe the first epochs of the sampler as long as nothing else draws
-        from or reseeds the `generator`. A `generator` is required, as every iteration
-        draws a new random seed without one.
+        The sampling is run from the current state of the `generator` for the requested
+        number of epochs or steps. This state is restored afterwards, so the next
+        iterations are not affected. The details describe the next epochs of the sampler
+        as long as nothing else draws from or reseeds the `generator`. A `generator` is
+        required, as every iteration draws a new random seed without one.
 
         Args:
             n_epochs: Number of epochs to sample. Cannot be specified with `n_steps`.
@@ -240,7 +226,6 @@ class GoldClusterizedBatchSampler(Sampler):
             raise ValueError("A generator is required to get the sampling details.")
 
         state = generator.get_state()
-        generator.set_state(self._initial_generator_state)
 
         steps_per_epoch: list[int] = []
         samples_per_step: list[int] = []
