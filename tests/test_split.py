@@ -947,7 +947,8 @@ class TestGoldSplitter:
                 in_described_table=False,
             )
 
-    def test_split_with_clusterizer(self, selector):
+    @pytest.mark.parametrize("source_type", ["dataset", "table"])
+    def test_split_with_clusterizer(self, selector, source_type):
         # Build a simple vectorized table first, then let the splitter handle clustering
         sets = [GoldSet(name="train", size=0.5), GoldSet(name="val", size=0.5)]
 
@@ -981,10 +982,19 @@ class TestGoldSplitter:
                 for idx_vector in range(120)
             ]
         )
+        to_split = dataset
+        if source_type == "table":
+            to_split = pxt.create_table(
+                "unit_test.clusterizer_split_source",
+                source=[
+                    {**dataset[i], "vectorized": dataset[i]["vectorized"].numpy()}
+                    for i in range(len(dataset))
+                ],
+            )
 
         # validate using clustering and then restart while already done
-        splitter.split_in_table(to_split=dataset)
-        split_table = splitter.split_in_table(to_split=dataset)
+        splitter.split_in_table(to_split=to_split)
+        split_table = splitter.split_in_table(to_split=to_split)
 
         splitted = splitter.get_split_indices(
             split_table,

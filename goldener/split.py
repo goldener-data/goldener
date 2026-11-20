@@ -206,9 +206,10 @@ class GoldSplitter(GoldDoer):
                 )
 
             clusterizer.include_vectorized_in_table = True
+            selector.include_vectorized_in_table = True
             logger.info(
-                "Clusterizer's include_vectorized_in_table is set to True to keep the "
-                "vectorized embeddings in the table for the selection step. "
+                "Clusterizer's and selector's include_vectorized_in_table are set to True "
+                "to keep the vectorized embeddings in their tables for the selection step. "
                 "This is necessary to perform cluster-wise selection. "
             )
 
