@@ -1,172 +1,54 @@
-# GOLDENER <br> Smart sampling from embeddings and coreset selection
+# Choose what to label with embedding-based selection
 
-[**Introduction**](#1-introduction) |
-[**Semantics extraction**](#2-semantics-extraction) |
-[**Smart split**](#3-smart-sampling) |
-[**Bibliography**](#4-bibliography) |
-[**Authors**](#5-authors)|
-[**Miscellaneous**](#6-miscellaneous)
+You can afford to label only a fraction of an unlabeled pool. When near-duplicates dominate, a random draw can spend much of the budget on examples that teach the model similar things. If you train a multilingual product search ranker, a queue dominated by common queries can hide regional product names and less common ways to describe the same item. Selecting for coverage can bring those queries to annotators when they form distinct neighborhoods.
 
-## TLDR
+Goldener compares vectors from a pretrained model and selects actual samples for review. The same workflow can build a monitoring queue for investigating unfamiliar inputs.
 
-In [Goldener](https://github.com/goldener-data/goldener), pretrained models and coreset selection algorithms can be leveraged to perform smart sampling (as opposed to the usual random sampling).
+## Pick samples from an unlabeled pool
+
+The example starts with six synthetic vectors in three neighborhoods. The IDs could be keys in your source dataset. The selector writes a named assignment to a local Pixeltable table, and the query returns sample IDs that you can send to an annotation queue.
 
 ```python
-# Create a descriptor to access the semantics representation
-embedder_config = GoldTorchEmbeddingToolConfig(
-    model=my_model,
-    layers=my_layers,
-    layer_fusion=EmbeddingFusionStrategy.AVERAGE,
-    group_fusion=EmbeddingFusionStrategy.CONCAT,
-    channel_pos=1,
-)
-embedder = GoldTorchEmbeddingTool(embedder_config)
-vectorizer = GoldTensorVectorizationTool(
-    keep=Filter2DWithCount(
-        filter_count=1,
-        filter_location=FilterLocation.START,
-        keep=True,
-    ),
-    fusion_strategy=EmbeddingFusionStrategy.AVERAGE,
-    transform_y=None,
-    channel_pos=1
-)
-gold_descriptor = GoldDescriptor(
-    table_path="my_table_for_description",
-    embedder=embedder,
-    vectorizer=vectorizer,
-    data_key="data",
-    target_key="target",
-    label_key="label",
-    description_key="embeddings",
-)
-description_table = gold_descriptor.describe_in_table(dataset)
+from uuid import uuid4
 
-# Create a selector to select the samples
-selection_tool = GoldGreedyKCenterSelectionTool(
-    device=torch.device("cuda"),
-    distance=DistanceType.EUCLIDEAN
-)
-gold_selector = GoldSelector(
-    table_path="my_table_for_selection",
-    selection_tool=selection_tool,
-    selection_key="selected",
-    label_key="label",
-    vectorized_key="embeddings",
-)
+import torch
+from torch.utils.data import Subset
 
-selection_table = gold_selector.select_in_table(
-    description_table, select_size=100, value="training"
+from goldener import GoldGreedyKCenterSelectionTool, GoldSelector
+
+vectors = torch.tensor(
+    [[0.0, 0.0], [0.1, 0.0], [4.0, 0.0], [4.1, 0.0], [0.0, 5.0], [0.0, 5.1]],
 )
-selected_indices = gold_selector.get_selection_indices(selection_table, "training", "selected")
+sample_ids = [101, 102, 201, 202, 301, 302]
+rows = [
+    {"idx": sample_id, "idx_vector": pos, "vectorized": vector}
+    for pos, (sample_id, vector) in enumerate(zip(sample_ids, vectors))
+]
+pool = Subset(rows, range(len(rows)))
+
+selector = GoldSelector(
+    table_path=f"annotation_demo_{uuid4().hex}",
+    selection_tool=GoldGreedyKCenterSelectionTool(device="cpu"),
+)
+table = selector.select_in_table(pool, select_size=3, value="annotate")
+review_ids = selector.get_selection_indices(table, value="annotate", idx_key="idx")
+
+assert {sample_id // 100 for sample_id in review_ids} == {1, 2, 3}
+print(sorted(review_ids))
 ```
 
+Greedy K-center picks one sample from each of the three neighborhoods in this example. After choosing the first center, it repeatedly picks the candidate farthest from its *nearest* chosen center. Once a neighborhood has a center, taking another near-duplicate usually contributes less coverage. An isolated corrupt input can also look far away, so inspect the selected examples before labeling.
 
-## 1. Introduction
+## Choose the representation and the objective
 
-[Goldener](https://github.com/goldener-data/goldener) is an open source Python library focusing on data orchestration for efficient Machine Learning (ML).
-It provides features to sample, split, organize, annotate, and curate data based on embeddings/features in order to make the full ML lifecycle more efficient, from training to monitoring.
+Use a pretrained model through `GoldTorchEmbeddingTool` and `GoldDescriptor` to extract embeddings. Use `GoldTensorVectorizationTool` in the descriptor, or `GoldVectorizer` on stored embeddings, to turn model features into vectors. Point the selector's `vectorized_key` at the resulting column. The embedding layer and distance metric determine what looks redundant to the selector. If you review long audio recordings for short sound events, use vectors for windows so a brief event can influence which recording you review. A whole-recording average can bury it.
 
-In the ML lifecycle, data sampling can be done at different steps:
-- Among historical unannotated data to trigger the initial training or retraining of the model.
-- Among training data (annotated or not) to curate and reduce the size of the training set.
-- Among inference data to monitor model performance.
+The tool sees a 2D tensor with one vector per row and returns row positions. `GoldSelector` handles dataset or Pixeltable input and records the result by ID. `idx` identifies the sample you can label. `idx_vector` identifies a particular vector, such as one window in a recording. If a window is selected, its recording consumes one place in the budget and its other vectors are assigned to the same selection.
 
-In all cases, a random selection process can skew both actual performance (suboptimal model training) and the perception of that performance (over- or under-confidence in the model). In this post, we introduce how [Goldener](https://github.com/goldener-data/goldener) gives access to smarter data sampling by leveraging pretrained networks and coreset selection algorithms. This semantics aware sampling aims to optimize both the capacity and the understanding of the real behavior of the deployed model.
+Use an integer `select_size` for a fixed budget or a float for a fraction of distinct samples, rounded up. Set `label_key` if you already have labels and want selection to account for them. A small budget can be insufficient to cover every label. Earlier assignments in the table count toward a repeated request for the same value and reserve those samples from later values. Reuse the table for the same run. Choose a fresh table for a different representation or selection recipe.
 
+Greedy K-center emphasizes coverage. `GoldGreedyKernelPointsSelectionTool` aims to approximate a distribution in its chosen kernel space. For a large pool, chunking limits the per-chunk computation and makes coverage decisions within smaller pools. Reducing vector width also saves work, with the risk of erasing distinctions you need. [Coreset selection survey](https://arxiv.org/abs/2505.17799) · [Reducing the dimensionality of embeddings](GOLD_REDUCTION.md)
 
-## 2. Semantics extraction
+For monitoring, review the selected IDs to discover failure modes and collect examples for follow-up. Coverage selection changes the mixture you inspect, so draw a separate random audit sample from the deployment population when estimating deployment error rates. If the samples are already labeled and you need disjoint training and evaluation sets, use the same selection stage inside `GoldSplitter`. [Splitting labeled data with Goldener](GOLD_SPLIT.md)
 
-[Goldener](https://github.com/goldener-data/goldener) is designed to process datasets of any size. To accommodate this, Goldener utilizes a local internal storage managed by [Pixeltable](https://www.pixeltable.com/). With this open source Python library, Goldener locally saves its output but also the different objects required to run/restart a task.
-
-In Goldener, the smart sampling is based on the semantics description of the data provided by the embeddings computed from pretrained networks. In order to be data and task agnostic, the selection/sampling tools in [Goldener](https://github.com/goldener-data/goldener) are all designed to process vectors. Thus, Goldener provides tools to describe data semantics, vectorize this information, and, when necessary, filter for targeted elements.
-
-More details about the different building blocks are available in this [article](https://huggingface.co/blog/Yann-CV/goldener-smart-split#2-components).
-
-```python
-embedder_config = GoldTorchEmbeddingToolConfig(
-    model=my_model,
-    layers=my_layers,
-    layer_fusion=EmbeddingFusionStrategy.AVERAGE,
-    group_fusion=EmbeddingFusionStrategy.CONCAT,
-    channel_pos=1,
-)
-embedder = GoldTorchEmbeddingTool(embedder_config)
-vectorizer = GoldTensorVectorizationTool(
-    keep=Filter2DWithCount(
-        filter_count=1,
-        filter_location=FilterLocation.START,
-        keep=True,
-    ),
-    fusion_strategy=EmbeddingFusionStrategy.AVERAGE,
-    transform_y=None,
-    channel_pos=1
-)
-gold_descriptor = GoldDescriptor(
-    table_path="my_table_for_description",
-    embedder=embedder,
-    vectorizer=vectorizer,
-    data_key="data",
-    target_key="target",
-    label_key="label",
-    description_key="embeddings",
-)
-description_table = gold_descriptor.describe_in_table(dataset)
-```
-
-## 3. Smart sampling
-
-The main entry point in the code is [GoldSelector](https://github.com/goldener-data/goldener/blob/main/goldener/select.py).
-
-Once the semantics `Description` (vectors) of the dataset is available, smart sampling means leveraging the distribution of the vectors in the semantics space to select specific samples. This automated distribution analysis is then performed using coreset subsampling algorithms applied directly to the data pool. Depending on the algorithm, the selection can approximate the global distribution, ensure all data clusters are represented, or even combine both strategies.
-
-In [Goldener](https://github.com/goldener-data/goldener), the coreset subsampling algorithm must be implemented within a class inheriting from the `GoldSelectionTool` class. Goldener natively supports several strategies:
-
-* `GoldGreedyKernelPointsSelectionTool` based on the `GreedyKernelPoints` class from [Coreax](https://coreax.readthedocs.io/en/latest/index.html) (not available on Windows, where Coreax is not installed)
-* `GoldGreedyKCenterSelectionTool` based on an internal reimplementation of the Greedy K-Center algorithm
-* `GoldZCoreSelectionTool` based on an internal reimplementation of the ZCore method
-`GoldSelectionTool` assumes that all the data to select from fits in memory (RAM or VRAM). Those selection tools take the vectorized data as input and return a list of integers specifying which vectors have been selected.
-
-In [Goldener](https://github.com/goldener-data/goldener), the `GoldSelector` class orchestrates the selection of samples from a `GoldSelectionTool`. In `GoldSelector`, the internal selection `Table` is created and partly populated (all columns except the selection one) before applying any selection algorithm. Then, the selection process is stratified between the classes when the `label_key` is provided. When all the vectors cannot be processed at once, the user can specify a chunk size to split the selection process in multiple smaller chunks of data. Vectors are assigned to chunks randomly. Additionally, under strict memory constraints, `GoldSelector` can integrate a `GoldReductionTool` in order to reduce the dimensions of the vectors. The available reduction tools are UMAP, PCA, t-SNE, and GaussianRandomProjection. An interface to use any PyTorch module as `GoldReductionTool` is also available.
-
-Depending on the dataset and `Description`, multiple vectors can come from the same sample. Thus, in [Goldener](https://github.com/goldener-data/goldener), the selection algorithm might be applied multiple times before reaching the requested number of samples. This selection target can be specified as a fixed integer value or a float corresponding to a ratio of the full dataset. The indices of the selected vectors are used to populate the selection column with the specified value. Once a vector of a sample is selected, its other vectors are removed from the next selection round.
-
-In [Goldener](https://github.com/goldener-data/goldener), `GoldSelector` is callable from either a PyTorch `Dataset` or a Pixeltable `Table`. If a `Dataset` is provided, each sample is expected to be accessible as a dictionary containing the keys defined in `vectorized_key`, `label_key`, `idx`, and `idx_vector` attributes (if it is not initially in this format, a custom collate function must be provided). During the initialization of the selection `Table`, the input data is processed sequentially, batch by batch, using a PyTorch `DataLoader`. Then, the data is selected from the internal Pixeltable `Table`, label by label if the `label_key` is provided, and chunk by chunk if required. Finally, the `GoldSelector` returns a PyTorch `Dataset` via `select_in_dataset` or a Pixeltable `Table` via `select_in_table`. At the end, the selection status is stored within the column defined by the `selection_key` attribute. The output also includes the `idx` and `idx_vector` fields, with `idx` storing the index of the sample and `idx_vector` the index of the vector (each sample might be described by multiple vectors).
-
-```python
-# Create a selection tool to select the samples
-selection_tool = GoldGreedyKCenterSelectionTool(
-    device=torch.device("cuda"),
-    distance=DistanceType.EUCLIDEAN
-)
-
-# Select the samples and store the result
-gold_selector = GoldSelector(
-    table_path="my_table_for_selection",
-    selection_tool=selection_tool,
-    selection_key="selected",
-    label_key="label",
-    vectorized_key="embeddings",
-)
-selection_table = gold_selector.select_in_table(
-    description_table, select_size=100, value="training"
-)
-selected_indices = gold_selector.get_selection_indices(selection_table, "training", "selected")
-```
-
-
-## 4. Bibliography
-
-The readers of this post might be interested in the following resources:
-
-* Moser, Brian B., et al. A coreset selection of coreset selection literature: Introduction and recent advances. arXiv preprint arXiv:2505.17799. 2025.
-* Griffin, Brent A., et al. Zero-Shot Coreset Selection via Iterative Subspace Sampling. Proceedings of the IEEE/CVF Winter Conference on Applications of Computer Vision. 2026.
-
-## 5. Authors
-
-[Yann Chéné, PhD,](https://huggingface.co/Yann-CV) is a Machine Learning (ML) engineer currently working at [Scortex](https://scortex.io/) - a company leveraging computer vision to automate manufacturing quality control. Within Scortex, he is involved in tasks from research to product integration and MLOps. His current focus is on improving the state of the art in image anomaly detection. Yann is also the creator of [Goldener](https://pypi.org/project/goldener/), an open source Python data orchestrator. Goldener proposes features to sample, split, organize, annotate, and curate data based on model embeddings/features in order to make the full ML lifecycle more efficient.
-
-
-## 6. Miscellaneous
-
-Sponsored by [Pixeltable](https://www.pixeltable.com/): Multimodal Data, Made Simple. Video, audio, images, and documents as first-class data types, with storage, orchestration, and retrieval unified under one table interface.
+Original post by [Yann Chéné](https://huggingface.co/Yann-CV). Sponsored by [Pixeltable](https://www.pixeltable.com/).
