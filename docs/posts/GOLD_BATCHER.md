@@ -202,6 +202,13 @@ for batch in dataloader:
   # do something with the batch
 ```
 
+The number of batches of an epoch depends on the size of the clusters, the `strategy` and the shuffling. To know the length of the training before it starts (for instance, to configure a learning rate scheduler), `get_sampling_details` runs the sampling for a number of epochs or steps. It returns the number of steps of each epoch and the number of samples of each step. It requires a `generator` that only the sampler uses, and it restores the state of this `generator` afterwards, so that the training reproduces these epochs.
+
+```python
+details = batch_sampler.get_sampling_details(n_epochs=n_epochs)
+total_steps = sum(details["steps_per_epoch"])
+```
+
 
 ## 4. Bibliography
 
