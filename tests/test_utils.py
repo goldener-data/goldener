@@ -4,6 +4,7 @@ import numpy as np
 from goldener.utils import (
     validate_positive_number,
     validate_positive_integer,
+    validate_integer_tensor,
     validate_vectorized_input,
     check_x_and_y_shapes,
     get_size_and_sampling_count_per_chunk,
@@ -884,6 +885,78 @@ class TestTransformBatchFromMultilabelToBinaryLabels:
         assert torch.equal(x_out, expected_x)
         assert sorted(out["label"]) == expected_labels
         assert out["other"] == expected_other
+
+
+def test_validate_integer_tensor_accepts_integer_rows():
+    values = torch.tensor([3, 4], dtype=torch.int64)
+    assert validate_integer_tensor(values, 1, 2, "sample_idx") is values
+    assert validate_integer_tensor(None, 1, 2, "sample_idx", allow_none=True) is None
+
+
+@pytest.mark.parametrize("name", ["uint16", "uint32", "uint64"])
+def test_validate_integer_tensor_accepts_optional_unsigned_dtypes(name):
+    dtype = getattr(torch, name, None)
+    if dtype is None:
+        pytest.skip(f"torch.{name} is not available")
+    values = torch.tensor([3, 4], dtype=dtype)
+    assert validate_integer_tensor(values, 1, 2, "sample_idx") is values
+
+
+def test_integer_dtypes_skip_unsigned_widths_missing_from_torch(monkeypatch):
+    import builtins
+    import importlib
+
+    import goldener.utils as utils
+
+    hidden = {"uint16", "uint32", "uint64"}
+    real_hasattr = builtins.hasattr
+
+    def hiding_hasattr(obj, name):
+        if obj is torch and name in hidden:
+            return False
+        return real_hasattr(obj, name)
+
+    monkeypatch.setattr(builtins, "hasattr", hiding_hasattr)
+    importlib.reload(utils)
+    try:
+        for name in hidden:
+            dtype = getattr(torch, name, None)
+            if dtype is not None:
+                assert dtype not in utils._INTEGER_DTYPES
+        assert torch.int8 in utils._INTEGER_DTYPES
+        assert torch.int16 in utils._INTEGER_DTYPES
+        assert torch.int32 in utils._INTEGER_DTYPES
+        assert torch.int64 in utils._INTEGER_DTYPES
+        assert torch.uint8 in utils._INTEGER_DTYPES
+        values = torch.tensor([1, 2], dtype=torch.int32)
+        assert utils.validate_integer_tensor(values, 1, 2, "sample_idx") is values
+        with pytest.raises(ValueError, match="integer tensor"):
+            utils.validate_integer_tensor(
+                torch.tensor([True, False]), 1, 2, "sample_idx"
+            )
+    finally:
+        monkeypatch.undo()
+        importlib.reload(utils)
+
+
+@pytest.mark.parametrize(
+    "tensor,dim,batch_size,allow_none,match",
+    [
+        (None, 1, 2, False, "sample_idx is required"),
+        (torch.tensor([1.0, 2.0]), 1, 2, False, "1D integer tensor"),
+        (torch.tensor([True, False]), 1, 2, False, "1D integer tensor"),
+        (torch.tensor([[1, 2]]), 1, 1, False, "1D integer tensor"),
+        (torch.tensor([1, 2, 3]), 1, 2, False, "one entry per row"),
+        ([1, 2], 1, 2, False, "1D integer tensor"),
+    ],
+)
+def test_validate_integer_tensor_rejects_invalid_values(
+    tensor, dim, batch_size, allow_none, match
+):
+    with pytest.raises(ValueError, match=match):
+        validate_integer_tensor(
+            tensor, dim, batch_size, "sample_idx", allow_none=allow_none
+        )
 
 
 @pytest.mark.parametrize(

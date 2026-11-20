@@ -93,6 +93,69 @@ def validate_vectorized_input(x: torch.Tensor, tool_name: str) -> None:
         raise ValueError("x must contain only finite floating point values.")
 
 
+_INTEGER_DTYPES = (
+    torch.int8,
+    torch.int16,
+    torch.int32,
+    torch.int64,
+    torch.uint8,
+    *(
+        getattr(torch, dtype)
+        for dtype in ("uint16", "uint32", "uint64")
+        if hasattr(torch, dtype)
+    ),
+)
+
+
+def validate_integer_tensor(
+    tensor: torch.Tensor | None,
+    dim: int,
+    batch_size: int,
+    name: str,
+    *,
+    allow_none: bool = False,
+) -> torch.Tensor | None:
+    """Validate an integer tensor with a fixed rank and leading size.
+
+    Args:
+        tensor: Tensor to validate. Booleans are not integer tensors.
+        dim: Required number of dimensions.
+        batch_size: Required size of dimension 0.
+        name: Argument name included in the error message.
+        allow_none: Whether `None` is returned unchanged. Defaults to `False`.
+
+    Returns:
+        The validated tensor, or `None` when `tensor` is `None` and `allow_none`
+        is true.
+
+    Raises:
+        ValueError: If the value is missing when `None` is not allowed, or is not
+            an integer tensor of rank `dim` whose first dimension equals
+            `batch_size`.
+    """
+    if tensor is None:
+        if allow_none:
+            return None
+        raise ValueError(f"{name} is required.")
+    if (
+        not isinstance(tensor, torch.Tensor)
+        or tensor.ndim != dim
+        or tensor.dtype not in _INTEGER_DTYPES
+    ):
+        shape = getattr(tensor, "shape", None)
+        dtype = getattr(tensor, "dtype", type(tensor).__name__)
+        raise ValueError(
+            f"{name} must be a {dim}D integer tensor with one entry per row; "
+            f"got shape {shape} and dtype {dtype}."
+        )
+    if tensor.shape[0] != batch_size:
+        raise ValueError(
+            f"{name} must contain one entry per row; "
+            f"got {tensor.shape[0]} entries for {batch_size} rows."
+        )
+    return tensor
+
+
 def check_x_and_y_shapes(x_shape: tuple[int, ...], y_shape: tuple[int, ...]) -> None:
     """Check compatibility of shapes of x and y tensors.
 
