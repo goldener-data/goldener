@@ -1,5 +1,15 @@
 # Use embedding clusters to investigate model errors
 
+## TL;DR
+
+Use `GoldClusterizer` to group similar vectors and retrieve the source samples for review. For monitoring over time, fit a clustering tool once and use `predict` to assign new vectors to the same groups.
+
+## Table of contents
+
+- [Group misrouted support tickets](#group-misrouted-support-tickets)
+- [Track the same groups in later sensor windows](#track-the-same-groups-in-later-sensor-windows)
+- [How it works](#how-it-works)
+
 An error rate tells you how often a model fails. To decide what to fix, you need to see which errors have something in common. If a classifier sends many support tickets to the wrong queue, grouping their text embeddings can help you find repeated patterns. Read tickets in one cluster to see whether a new form template makes different requests look alike or whether one routing rule needs a clearer definition.
 
 `GoldClusterizer` stores those assignments so you can retrieve members by sample ID. You can use the same workflow before training to find borderline examples and write annotation guidelines.

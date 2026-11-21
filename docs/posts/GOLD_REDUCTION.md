@@ -1,5 +1,17 @@
 # Reduce embedding width and keep a common reference space
 
+## TL;DR
+
+Reduce embedding width to make similarity searches cheaper. Fit a reusable projection on reference data for comparisons over time, or use t-SNE for a one-time view of a collection.
+
+## Table of contents
+
+- [Fit on reference sensor data and project a later window](#fit-on-reference-sensor-data-and-project-a-later-window)
+- [Map an image collection for a one-time review](#map-an-image-collection-for-a-one-time-review)
+- [How it works](#how-it-works)
+- [Choose a projection that fits the job](#choose-a-projection-that-fits-the-job)
+- [Check what the smaller vectors preserve](#check-what-the-smaller-vectors-preserve)
+
 Wide embeddings can make repeated similarity searches expensive. Reducing the feature width can save memory and speed up later searches. For example, a job that monitors sensor behavior can compare this week's signal windows with a reference archive in a smaller feature space. Fit the projection once so changes in the coordinates reflect changes in the inputs under that mapping.
 
 `GoldSKLearnReductionTool` wraps PCA and other estimators for PyTorch tensors. Fit PCA once on representative reference vectors, then apply that fitted projection to later windows. For training and validation, learn the mapping on training vectors and reuse it on validation vectors.

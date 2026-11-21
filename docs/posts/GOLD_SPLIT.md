@@ -1,5 +1,17 @@
 # Split labeled data with semantic coverage in mind
 
+## TL;DR
+
+Use `GoldSplitter` to assign samples to disjoint sets with semantic coverage in mind. Earlier sets get first choice, and the last receives the remainder. Establish any grouping or time boundaries before splitting.
+
+## Table of contents
+
+- [Build a diagnostic validation set for video](#build-a-diagnostic-validation-set-for-video)
+- [Decide which set gets first choice](#decide-which-set-gets-first-choice)
+- [Hold back future transactions before splitting history](#hold-back-future-transactions-before-splitting-history)
+- [How it works](#how-it-works)
+- [Design the split around the evaluation question](#design-the-split-around-the-evaluation-question)
+
 A train and validation split can match label counts while missing variation within a label. For a video activity classifier, a small validation set could contain plenty of clips of the common activities, filmed mostly from a single viewpoint. Once you have set aside independent recordings for validation, embedding-based selection can help you choose clips that cover several viewpoints from those recordings.
 
 `GoldSplitter` uses a selection algorithm to fill named sets in the order you supply. Give the first set a coverage objective, then decide whether the remaining data is suitable for the role you assign it.

@@ -1,5 +1,16 @@
 # Reweight training samples by embedding density
 
+## TL;DR
+
+Use `GoldDensityWeigher` to give samples in sparse embedding neighborhoods more influence. Look up weights by sample ID and use them for sampling or loss weighting.
+
+## Table of contents
+
+- [Sample shipments by their density within a class](#sample-shipments-by-their-density-within-a-class)
+- [Weight an image classification loss by sample ID](#weight-an-image-classification-loss-by-sample-id)
+- [How it works](#how-it-works)
+- [Balance memory use and neighborhood scope](#balance-memory-use-and-neighborhood-scope)
+
 Two examples can carry the same label even when one reflects a much less common case. In a table of delayed shipments, most delayed examples might be from busy routes. A model still needs to learn about delays on less traveled routes. If those routes form sparse neighborhoods in the feature space, local distances offer a way to give them more influence without changing the label.
 
 `GoldDensityWeigher` scores each vector by how far it sits from nearby vectors. Use those scores to draw some samples more often or to give them more weight in the training loss.

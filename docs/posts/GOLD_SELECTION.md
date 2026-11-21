@@ -1,5 +1,16 @@
 # Choose what to label with embedding-based selection
 
+## TL;DR
+
+Use `GoldSelector` to spend a fixed labeling or review budget on samples that cover different embedding neighborhoods. A sample can have multiple vectors and still count once toward the budget.
+
+## Table of contents
+
+- [Pick search queries for annotation](#pick-search-queries-for-annotation)
+- [Select recordings by their audio windows](#select-recordings-by-their-audio-windows)
+- [How it works](#how-it-works)
+- [Choose the representation and the objective](#choose-the-representation-and-the-objective)
+
 You can afford to label only a fraction of an unlabeled pool. When near-duplicates dominate, a random draw can spend much of the budget on examples that teach the model similar things. If you train a multilingual product search ranker, a queue dominated by common queries can hide regional product names and less common ways to describe the same item. Selecting for coverage can bring those queries to annotators when they form distinct neighborhoods.
 
 Goldener compares vectors from a pretrained model and selects actual samples for review. The same workflow can build a monitoring queue for investigating unfamiliar inputs.

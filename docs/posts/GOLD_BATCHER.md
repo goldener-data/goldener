@@ -1,5 +1,16 @@
 # Put different kinds of examples in each training batch
 
+## TL;DR
+
+Use `GoldClusterizedBatchSampler` to draw from several embedding clusters in each training batch. The exhaustion policy determines whether small clusters repeat, training stops early, or later batches draw from fewer clusters.
+
+## Table of contents
+
+- [Mix acoustic conditions in each batch](#mix-acoustic-conditions-in-each-batch)
+- [Decide what happens when a pool runs out](#decide-what-happens-when-a-pool-runs-out)
+- [Use every event session without recycling a small group](#use-every-event-session-without-recycling-a-small-group)
+- [How it works](#how-it-works)
+
 Shuffling mixes a training set over an epoch, but many batches can still be dominated by a common pattern. A speech command model trained mostly on quiet recordings may see background conversation in very few updates. If embeddings separate those acoustic conditions, drawing across clusters can expose the model to both more regularly.
 
 `GoldClusterizedBatchSampler` groups samples by embedding similarity, then draws across the resulting pools. The cluster count determines how many pools compete for the available batch positions.
