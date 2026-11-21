@@ -4,9 +4,9 @@ Two examples can carry the same label even when one reflects a much less common 
 
 `GoldDensityWeigher` scores each vector by how far it sits from nearby vectors. Use those scores to draw some samples more often or to give them more weight in the training loss.
 
-## Weigh samples and draw a training batch
+## Sample shipments by their density within a class
 
-Here, eight samples share a label. Six sit close together in embedding space, and two sit apart. The k-nearest-neighbor tool scores their vectors, and the weigher looks up the resulting sample weights by ID. The sampler needs weights in the same order as the training dataset.
+These eight synthetic vectors stand in for delayed shipments. Six sit close together in feature space, and two sit apart. The k-nearest-neighbor tool scores their vectors, and the weigher looks up the resulting sample weights by ID. The sampler needs weights in the same order as the training dataset.
 
 ```python
 from uuid import uuid4
@@ -49,15 +49,60 @@ for batch in loader:
     print(batch["idx"].tolist())
 ```
 
-The two isolated samples have larger weights, so each has a higher probability per draw. Sampling with replacement can repeat some examples and leave others undrawn in an epoch. If you want to keep the existing sampler, use the weights in the loss instead. Multiply the unreduced per-sample losses by their weights and divide their sum by the total positive weight in the batch. Using both a weighted sampler and a weighted loss compounds the emphasis.
+The two isolated samples have larger weights, so each has a higher probability per draw. Sampling with replacement can repeat some examples and leave others undrawn in an epoch.
 
-## Decide which neighbors count
+## Weight an image classification loss by sample ID
 
-`GoldKnnDensityWeighingTool` averages the distances to the `k` nearest eligible neighbors, floors the mean at a small positive value, then raises it to `power`. The default square root softens differences in distance. Euclidean distance can reflect both magnitude and direction. Cosine distance compares directions, which is useful when vector magnitude carries little meaning. Large scores signal sparsity in the chosen representation. Inspect highly weighted examples before you use them. In a camera-trap image dataset, a sparse neighborhood might contain useful night sightings or blank frames from a camera fault. In the second case, remove the faulty inputs or change the representation before increasing their influence.
+A camera-trap model can keep its usual sampler and give uncommon images more influence in the loss. The example uses two synthetic region vectors per image. Set `exclude_same_sample=True` so the other region of a query image does not count as a neighbor. This makes the score reflect distance to regions from other images.
 
-Set `label_key` to look for neighbors within the same class, as above, or leave it unset for a shared population. Within-class scoring can give different weights to samples of the same label. Class balance still depends on the scores and training policy. [Cui et al. on reweighting by class frequency](https://arxiv.org/abs/1901.05555)
+```python
+from uuid import uuid4
 
-Use one vector per sample as shown, or keep several vectors for regions or views. The result table stores a raw score per `idx_vector`. `get_weights_per_idx` averages those scores by sample `idx` and divides by the largest returned sample score by default. This gives one weight per item for training. With several vectors per sample, set `exclude_same_sample=True` if multiple views of the same item should never count as neighbors. Each query then needs `k` eligible vectors from other samples and at least `k + 1` reference rows in its population. By default, the tool drops just one nearest reference and requires at least `k + 2` vectors per population.
+import torch
+from torch.nn.functional import cross_entropy
+
+from goldener import GoldDensityWeigher, GoldKnnDensityWeighingTool
+
+regions = torch.tensor(
+    [[0.0, 0.0], [0.05, 0.0], [0.2, 0.0], [0.25, 0.0], [4.0, 4.0], [4.05, 4.0]],
+)
+image_ids = [11, 11, 22, 22, 33, 33]
+rows = [
+    {"idx": image_id, "idx_vector": pos, "vectorized": vector}
+    for pos, (image_id, vector) in enumerate(zip(image_ids, regions))
+]
+weigher = GoldDensityWeigher(
+    table_path=f"image_loss_weights_{uuid4().hex}",
+    weigher=GoldKnnDensityWeighingTool(k=2),
+    exclude_same_sample=True,
+)
+sample_weights = weigher.get_weights_per_idx(weigher.weigh_in_table(rows))
+
+# Stand-in for logits, targets, and image IDs from an ordinary training batch.
+batch_ids = [11, 33]
+logits = torch.tensor([[2.0, -1.0], [2.0, -1.0]], requires_grad=True)
+targets = torch.tensor([0, 1])
+losses = cross_entropy(logits, targets, reduction="none")
+batch_weights = losses.new_tensor([sample_weights[idx] for idx in batch_ids])
+total_weight = batch_weights.sum()
+
+assert sample_weights[33] > sample_weights[11]
+if total_weight > 0:
+    loss = (batch_weights * losses).sum() / total_weight
+    assert loss > losses.mean()
+    loss.backward()
+    print(round(loss.item(), 3))
+```
+
+The two losses correspond to different images. Image 33 sits in a sparse neighborhood and receives more weight. The ID lookup keeps weights aligned even when the loader shuffles the batch. A custom weigher can yield a batch with zero total weight. In a training loop, skip that batch before dividing or taking an optimizer step. Using both a weighted sampler and a weighted loss compounds the emphasis.
+
+## How it works
+
+1. `GoldDensityWeigher` reads vectors from a dataset or Pixeltable table and defines the reference population for each query. Set `label_key` to look for neighbors within a class, as in the shipment example. Per-label neighborhoods can change weights within a class. Their effects on class balance also depend on the scores and training policy. [Cui et al. on reweighting by class frequency](https://arxiv.org/abs/1901.05555)
+2. `GoldKnnDensityWeighingTool` computes pairwise distances and discards ineligible references. When `exclude_same_sample=True`, the weigher passes sample IDs to the tool, which discards every reference with the query's `idx`. This requires at least `k + 1` reference rows and `k` eligible vectors from other samples for every query. Without sample IDs it drops one nearest reference and requires at least `k + 2` rows.
+3. The tool averages the `k` nearest eligible distances, floors the mean at a small positive value, and raises it to `power`. The default square root softens distance differences. The result table stores the raw score by `idx_vector`. By default, `get_weights_per_idx` averages all returned vector scores per `idx` and divides those sample scores by the largest returned sample score.
+
+Euclidean distance can reflect magnitude and direction. Cosine distance compares directions, which is useful when vector magnitude carries little meaning. Inspect highly weighted examples before using them. Sparse image regions could capture uncommon night sightings or blank frames from a camera fault.
 
 ## Balance memory use and neighborhood scope
 

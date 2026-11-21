@@ -4,9 +4,9 @@ A train and validation split can match label counts while missing variation with
 
 `GoldSplitter` uses a selection algorithm to fill named sets in the order you supply. Give the first set a coverage objective, then decide whether the remaining data is suitable for the role you assign it.
 
-## Reserve a validation set for checking known variation
+## Build a diagnostic validation set for video
 
-Here, nine labeled samples already have an embedding vector each. The vectors form three neighborhoods within the same class. We choose three validation samples first so that a small diagnostic set can cover all three modes. The training set gets the six remaining samples.
+Here, nine independent video samples already have an embedding vector each. The vectors form three neighborhoods within the same class. We choose three validation samples first so that a small diagnostic set can cover all three modes. The training set gets the six remaining samples.
 
 ```python
 from uuid import uuid4
@@ -56,9 +56,58 @@ Each `GoldSet` supplies a unique name and a target size. Use either counts that 
 
 In the example, validation gets first choice across the three modes. Reverse the roles and a training set chosen first gets the coverage objective, with validation inheriting the remainder. With more than two sets, every later selection has fewer candidates. Inspect the label and mode coverage of each result, especially when a mode has only a handful of samples. A selector with `label_key` allocates selections by label as well, so each actively selected set needs a workable budget for its label populations.
 
-## Connect the pipeline to your data
+## Hold back future transactions before splitting history
 
-`GoldSplitter` can run a `GoldDescriptor` to extract embeddings, a `GoldVectorizer` if the embeddings still need to become vectors, and an optional `GoldClusterizer` to allocate selection across groups when `n_clusters > 1`. Those stages, when provided, run before the selector. Match each stage's input column to the previous stage's output. With precomputed vectors, supply the selector directly as shown above. The selector persists assignments in Pixeltable. Reuse the table to resume the same split, and start a new table if you change the set order or selection criteria. When a sample has multiple vector rows, those rows share its `idx`, have distinct `idx_vector` values, and belong to the same set. [Selecting an embedding-based subset](GOLD_SELECTION.md) · [Clustering embeddings](GOLD_CLUSTERIZER.md)
+If a tabular model will score future transactions, put a date boundary around the test set before choosing any training examples. The synthetic dataset uses six historical rows and two future rows. Goldener builds a training and development split only within the historical window.
+
+```python
+from uuid import uuid4
+
+import torch
+from torch.utils.data import Subset
+
+from goldener import GoldGreedyKCenterSelectionTool, GoldSelector, GoldSet, GoldSplitter
+
+features = torch.tensor(
+    [
+        [0.0, 0.0], [0.1, 0.0], [2.0, 1.0], [2.1, 1.1],
+        [4.0, 0.0], [4.1, 0.1], [4.5, 1.0], [5.0, 1.2],
+    ],
+)
+rows = [
+    {"idx": pos, "vectorized": vector, "day": pos + 1}
+    for pos, vector in enumerate(features)
+]
+past_ids = [row["idx"] for row in rows if row["day"] <= 6]
+future_ids = [row["idx"] for row in rows if row["day"] > 6]
+past = Subset(rows, past_ids)
+future_test = Subset(rows, future_ids)
+
+selector = GoldSelector(
+    table_path=f"transaction_split_{uuid4().hex}",
+    selection_tool=GoldGreedyKCenterSelectionTool(device="cpu"),
+)
+splitter = GoldSplitter(
+    sets=[GoldSet("train", 0.75), GoldSet("development", 0.25)],
+    selector=selector,
+)
+splits = splitter.get_split_indices(splitter.split_in_table(past))
+
+assert len(splits["train"]) == 4
+assert splits["train"] | splits["development"] == set(past_ids)
+assert (splits["train"] | splits["development"]).isdisjoint(future_ids)
+print(len(splits["train"]), len(splits["development"]), len(future_test))  # 4 2 2
+```
+
+Training gets first choice within the past window. Development receives the remaining historical rows, and the future test set stays outside selection. Use fixed features for selection, as above. Fit the model's learned preprocessing on the chosen training rows before using it to score future rows.
+
+## How it works
+
+1. `GoldSplitter` takes vectors directly or runs the supplied `GoldDescriptor` and `GoldVectorizer` first. Supply a `GoldClusterizer` and `n_clusters > 1` to allocate selection budgets across embedding clusters. Match the output column of each stage to the next stage's input.
+2. The splitter counts distinct sample IDs in the selector's table and resolves earlier set sizes against that original count. Each active selection writes its set name to the rows belonging to the chosen IDs, excluding those IDs from subsequent sets. A sample with several vector rows, such as clips represented by several views, keeps one set assignment. The final set is an update of all still-unassigned rows.
+3. The selector persists assignments in Pixeltable. `get_split_indices` groups them into one set of IDs per name. Reuse the table to resume the same split. Start a new table when the order or selection criteria change.
+
+[Selecting an embedding-based subset](GOLD_SELECTION.md) · [Clustering embeddings](GOLD_CLUSTERIZER.md)
 
 ## Design the split around the evaluation question
 

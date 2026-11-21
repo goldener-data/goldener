@@ -4,9 +4,9 @@ An error rate tells you how often a model fails. To decide what to fix, you need
 
 `GoldClusterizer` stores those assignments so you can retrieve members by sample ID. You can use the same workflow before training to find borderline examples and write annotation guidelines.
 
-## Turn a review queue into groups
+## Group misrouted support tickets
 
-This example uses eight synthetic vectors from a single review queue. There are two visibly separate neighborhoods in the toy space. The clusterizer runs one k-means fit over the queue and links each assignment to its original sample.
+Eight synthetic vectors stand in for tickets routed to the wrong queue. There are two visibly separate neighborhoods in the toy space. The clusterizer runs one k-means fit over the queue and links each assignment to its original sample.
 
 ```python
 from uuid import uuid4
@@ -49,16 +49,40 @@ for cluster_id, ids in groups.items():
 
 The two neighborhoods each yield four IDs. In a real queue, use the IDs to open the original inputs. Review several members and some borderline cases before using a cluster to write an annotation guideline or change a routing rule. The fit produces cluster numbers. The review establishes what the groups mean.
 
-## Define the population and what “similar” means
+The caller chooses `n_clusters`. A small count gives broader groups to review. A large count can expose narrower patterns and create more groups to inspect. The partition depends on the representation and estimator. If you start from raw data, use `GoldDescriptor` and a vectorization tool, then align the clusterizer's `vectorized_key` with the vector output column. [Lloyd's k-means method](https://doi.org/10.1109/TIT.1982.1056489)
 
-`GoldSKLearnClusteringTool` wraps an estimator such as `KMeans` and returns a cluster assignment per input vector. The call to `cluster_in_table` supplies `n_clusters`. A small count gives broader groups to review. A large count can expose narrower patterns and creates more groups to inspect. The partition reflects the representation and estimator you chose. [Lloyd's k-means method](https://doi.org/10.1109/TIT.1982.1056489)
+## Track the same groups in later sensor windows
 
-Start from vectors in a dataset or a Pixeltable table. If you start from raw data, use `GoldDescriptor` and a vectorization tool to make the vectors, then align `vectorized_key` with the output column. Each stored assignment has an `idx_vector`, which identifies a vector, and an `idx`, which identifies the original sample. Retrieval defaults to `idx_vector`. Passing `idx_key="idx"` retrieves distinct sample IDs, as in the example. If you cluster multiple windows from a sensor trace, that trace can appear in several groups.
+For a sensor-based fault detector, compare the share of incoming windows assigned to a known pattern. These two-dimensional vectors stand in for vibration and temperature features. Fit on a reference period, identify a group from a known high-vibration window, and use `predict` to count its assignments in a later period. Use the same feature extraction and preprocessing in both periods.
 
-Use one fit for a single partition. With `label_key`, Goldener fits each label population separately, which is useful when you want to look for variations within a known class. Setting `chunk` limits memory use by fitting each chunk separately. Both approaches reuse numeric cluster IDs across fits. Query within a label to interpret a label-specific fit. Use an unchunked fit when you need the stored cluster IDs to identify groups in one population, since the table does not store chunk membership. A `reducer` also changes the space in which the groups are found. [Reducing the dimensionality of embeddings](GOLD_REDUCTION.md)
+```python
+import torch
+from sklearn.cluster import KMeans
 
-## Track the same groups over time
+from goldener import GoldSKLearnClusteringTool
 
-Fit `GoldSKLearnClusteringTool` once on reference vectors and call its `predict` method on later vectors. Use the same embedding model and preprocessing, including the fitted reducer if you used one. Every incoming vector is assigned to an existing group. For a sensor-based fault detector, track whether more time windows are assigned to a group of high-vibration traces, then review the underlying signals and measure the error rate among labeled examples. If you want to discover new groups in recent alerts, fit a new partition and review its groups separately.
+reference = torch.tensor([[0.2, 0.1], [0.3, 0.2], [4.0, 0.2], [4.2, 0.3]])
+later = torch.tensor([[0.3, 0.1], [3.9, 0.1], [4.0, 0.2], [4.3, 0.3]])
+tool = GoldSKLearnClusteringTool(KMeans(random_state=0))
 
-Use the Pixeltable output to reopen a completed review. A table can reuse recorded assignments, and a resumed computation can fit just the pending vectors. For a fresh partition over changed inputs or settings, use a new table. If the next task is to control how those groups appear during training, give Goldener's batch sampler the training data and a clusterizer configured for one fit. [Building batches from embedding clusters](GOLD_BATCHER.md)
+reference_groups = tool.fit(reference, n_clusters=2)
+high_vibration_group = reference_groups[-1]
+later_groups = tool.predict(later)
+reference_count = int((reference_groups == high_vibration_group).sum())
+later_count = int((later_groups == high_vibration_group).sum())
+
+assert (reference_count, later_count) == (2, 3)
+print(reference_count / len(reference), later_count / len(later))  # 0.5 0.75
+```
+
+In this toy comparison, the group's share rises from half to three quarters. Open the corresponding traces to check what changed. Every incoming vector gets an existing cluster ID, so fit a new partition separately if you want to look for patterns the reference groups miss. A fresh fit has its own ID numbering.
+
+## How it works
+
+1. The clusterizer reads each pending vector and its IDs from a dataset or Pixeltable table. `idx_vector` identifies a stored vector assignment, and `idx` links it to the original item. A sensor trace can contribute more than one vector and appear in multiple groups.
+2. Each population is fitted independently. If configured, the reducer runs before the fit. `GoldSKLearnClusteringTool` passes the requested cluster count to the estimator and converts the detached 2D tensor to a CPU NumPy array. It returns one integer assignment per row. K-means iterates between assigning each vector to its nearest center and recomputing those centers.
+3. The clusterizer writes assignments to Pixeltable. By default, `get_cluster_indices` returns vector IDs. Ask for `idx_key="idx"` to retrieve the source sample IDs. When you call `fit` and `predict` on the tensor tool directly, the estimator in memory supplies the reference partition for later vectors.
+
+Use one fit for a single partition. With `label_key`, Goldener fits each label population separately, which is useful when you want to look for variations within a known class. Setting `chunk` limits memory use by fitting each chunk separately. Both approaches reuse numeric cluster IDs across fits. Query within a label to interpret a label-specific fit. Use an unchunked fit when you need the stored cluster IDs to identify groups in one population, since the table does not store chunk membership. [Reducing the dimensionality of embeddings](GOLD_REDUCTION.md)
+
+Use the Pixeltable output to reopen a completed review. Goldener reuses recorded assignments and fits pending vectors separately on resume. The same numeric ID can therefore refer to different groups in the same table. Use a new table for a fresh fit over the whole population, or call `predict` with the original fitted tool to assign new vectors to existing groups. To control how groups appear during training, give Goldener's batch sampler the training data and a clusterizer configured for one fit. [Building batches from embedding clusters](GOLD_BATCHER.md)

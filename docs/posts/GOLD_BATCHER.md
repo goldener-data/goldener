@@ -4,9 +4,9 @@ Shuffling mixes a training set over an epoch, but many batches can still be domi
 
 `GoldClusterizedBatchSampler` groups samples by embedding similarity, then draws across the resulting pools. The cluster count determines how many pools compete for the available batch positions.
 
-## Draw each batch from several groups
+## Mix acoustic conditions in each batch
 
-Here, four vectors come from one neighborhood and two from another. The `mode` field lets us inspect batch composition. The k-means estimator uses only the vectors. With two clusters, a batch size of two, and `RESTART`, each batch will contain one sample from each group.
+These synthetic audio vectors stand in for four quiet recordings and two recordings with background conversation. The `mode` field lets us inspect batch composition. The k-means estimator uses only the vectors. With two clusters, a batch size of two, and `RESTART`, each batch will contain one sample from each group.
 
 ```python
 from uuid import uuid4
@@ -61,11 +61,59 @@ The three `ExhaustedClusterStrategy` policies make different trade-offs on those
 | `STOP` | Yield the second mixed batch, then stop because group B is exhausted. Two samples from group A go unused in that epoch. |
 | `EXCLUDE` | Draw two mixed batches, then one batch of group A alone. Each sample is used once in this example, and the tail has less variety. Other pool sizes can leave a smaller final batch. |
 
-Choose based on how much repetition you can tolerate and whether an epoch needs to reach every training sample. For a model that predicts outcomes from user event sequences, `RESTART` can keep a small cluster of long sessions in the mix, but it will repeat those same sessions. Use `EXCLUDE` if you want to use every session without recycling the rare pool and can tolerate less variety near the end of an epoch. With more clusters than batch positions, each update sees a subset of the pools. With fewer clusters, the sampler can draw several examples from a pool within a batch. The example disables shuffling to make the draws easy to inspect. In training, shuffling changes the order of samples within pools and helps vary which pools appear when a batch can only fit some of them.
+Choose based on how much repetition you can tolerate and whether an epoch needs to reach every training sample. With more clusters than batch positions, each update sees a subset of the pools. With fewer clusters, the sampler can draw several examples from a pool within a batch. The example disables shuffling to make the draws easy to inspect. In training, shuffling changes the order of samples within pools and helps vary which pools appear when a batch can only fit some of them.
 
-## Keep the clusters aligned with the training data
+## Use every event session without recycling a small group
 
-Supply vectors as above, or pass a `GoldDescriptor` and an optional `GoldVectorizer` to the sampler before clustering. One vector per item and a single fit over the training population give each item one batch pool. The sampler retrieves source `idx` values as dataset positions, so make sure they identify positions in the dataset fed to the loader. For a PyTorch `Subset`, supply base-dataset positions as `idx` so the sampler can map them to positions in the subset. [How to inspect an embedding partition](GOLD_CLUSTERIZER.md)
+Suppose a session model trains on a subset of user event sequences. The synthetic vectors below use session length as one feature. The clusterer separates shorter and longer sessions. Use `EXCLUDE` to see each session once, even if the last batch comes from a single group. Keep each `idx` tied to its position in the original dataset.
+
+```python
+from uuid import uuid4
+
+import torch
+from sklearn.cluster import KMeans
+from torch.utils.data import DataLoader, Subset
+
+from goldener import GoldClusterizedBatchSampler, GoldClusterizer, GoldSKLearnClusteringTool
+from goldener.organize import ExhaustedClusterStrategy
+
+event_counts = [1, 2, 2, 3, 4, 14, 15, 16]
+all_sessions = [
+    {"idx": pos, "vectorized": torch.tensor([float(count), 1.0]), "event_count": count}
+    for pos, count in enumerate(event_counts)
+]
+training = Subset(all_sessions, [1, 2, 3, 5, 6])
+clusterizer = GoldClusterizer(
+    table_path=f"session_clusters_{uuid4().hex}",
+    clustering_tool=GoldSKLearnClusteringTool(KMeans(random_state=0)),
+)
+sampler = GoldClusterizedBatchSampler(
+    dataset=training,
+    batch_size=2,
+    n_clusters=2,
+    clusterizer=clusterizer,
+    shuffle=False,
+    strategy=ExhaustedClusterStrategy.EXCLUDE,
+)
+loader = DataLoader(training, batch_sampler=sampler)
+
+batches = [batch["idx"].tolist() for batch in loader]
+seen = [idx for batch in batches for idx in batch]
+assert sorted(seen) == sorted(training.indices)
+assert [len(batch) for batch in batches] == [2, 2, 1]
+for batch in batches[:2]:
+    shorter, longer = sorted(event_counts[idx] for idx in batch)
+    assert shorter < 5 and longer >= 14
+print(batches)
+```
+
+The first two batches mix shorter and longer sessions. Once the longer pool runs out, the remaining short session forms the last batch. The sampler supplies row positions. If your training items contain variable-length event sequences, use the loader's `collate_fn` to pad or pack them.
+
+## How it works
+
+1. The sampler runs the supplied `GoldDescriptor` and `GoldVectorizer` if configured, then calls the clusterizer on the training data. If the descriptor already produces one vector per item and you omit the separate vectorizer, set the clusterizer's `vectorized_key` to the descriptor's `description_key` (default `"embeddings"`). Use a vectorizer if the stored embeddings still need to become vectors. It reads each cluster's `idx` values into an index pool. Use one vector per item and a single fit over the training population to give each item one pool.
+2. For a PyTorch `Subset`, the sampler maps base-dataset `idx` values to positions within the subset. Those subset positions are what the `DataLoader` uses to look up items. The example prints the original IDs carried by the items, so you can verify coverage against `training.indices`.
+3. At iteration time, the sampler orders each pool, optionally shuffles it, and advances a cursor each time it draws from that pool. A pass draws at most one item per active cluster. The sampler can take more passes to fill a large batch, or spread the pools over several batches when there are fewer positions than pools. At exhaustion the chosen policy controls whether a cursor resets, the pool is removed, or iteration stops after the current batch. [How to inspect an embedding partition](GOLD_CLUSTERIZER.md)
 
 Cluster balancing changes which examples meet in an optimizer update and, with `RESTART`, how often the smaller pools contribute. Embedding-density weights let you adjust a sample's draw frequency or loss contribution based on its local rarity. Compare the policies on the evaluation slices that matter to the model. [Weighting training samples by embedding density](GOLD_DENSITY_WEIGHING.md) · [Zhao and Zhang on stratified minibatch sampling](https://arxiv.org/abs/1405.3080)
 
