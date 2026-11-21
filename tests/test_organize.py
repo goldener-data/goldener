@@ -109,6 +109,37 @@ class DummyEmptySizesClusteringTool(GoldClusteringTool):
         raise NotImplementedError
 
 
+def make_multi_size_batch_sampler(
+    generator: torch.Generator | None,
+    strategy: ExhaustedClusterStrategy = ExhaustedClusterStrategy.RESTART,
+) -> GoldClusterizedBatchSampler:
+    dataset = DummyDataset(
+        [{"vectorized": torch.rand(4), "idx": idx} for idx in range(20)]
+    )
+    clusterizer = GoldClusterizer(
+        table_path="unit_test.clusterizer_batcher",
+        clustering_tool=DummyMultiSizesClusteringTool(5),
+        allow_existing=False,
+    )
+    return GoldClusterizedBatchSampler(
+        dataset=dataset,
+        batch_size=3,
+        clusterizer=clusterizer,
+        n_clusters=5,
+        generator=generator,
+        strategy=strategy,
+    )
+
+
+def get_sampling_details_from_epochs(
+    epochs: list[list[list[int]]],
+) -> dict[str, list[int]]:
+    return {
+        "steps_per_epoch": [len(epoch) for epoch in epochs],
+        "samples_per_step": [len(batch) for epoch in epochs for batch in epoch],
+    }
+
+
 class TestGoldClusterizedBatchSampler:
     def setup_method(self):
         pxt.drop_dir("unit_test", force=True)
@@ -371,6 +402,57 @@ class TestGoldClusterizedBatchSampler:
 
         batches = list(batch_sampler)
         assert len(batches) == 4
+
+    @pytest.mark.parametrize(
+        "strategy",
+        [ExhaustedClusterStrategy.RESTART, ExhaustedClusterStrategy.EXCLUDE],
+        ids=lambda strategy: strategy.value,
+    )
+    def test_get_sampling_details(self, strategy):
+        generator = torch.Generator().manual_seed(1)
+        batch_sampler = make_multi_size_batch_sampler(generator, strategy)
+
+        state = generator.get_state()
+        details = batch_sampler.get_sampling_details(n_epochs=2)
+        assert torch.equal(generator.get_state(), state)
+
+        first_epoch_steps = details["steps_per_epoch"][0]
+        assert batch_sampler.get_sampling_details(n_steps=first_epoch_steps + 1) == {
+            "steps_per_epoch": [first_epoch_steps, 1],
+            "samples_per_step": details["samples_per_step"][: first_epoch_steps + 1],
+        }
+
+        epochs = [list(batch_sampler) for _ in range(2)]
+        assert details == get_sampling_details_from_epochs(epochs)
+
+        details = batch_sampler.get_sampling_details(n_epochs=2)
+        epochs = [list(batch_sampler) for _ in range(2)]
+        assert details == get_sampling_details_from_epochs(epochs)
+
+    @pytest.mark.parametrize(
+        "duration, match",
+        [
+            ({}, "Exactly one of n_epochs and n_steps must be specified"),
+            (
+                {"n_epochs": 1, "n_steps": 1},
+                "Exactly one of n_epochs and n_steps must be specified",
+            ),
+            ({"n_epochs": 0}, "n_epochs must be a positive integer"),
+            ({"n_steps": 0}, "n_steps must be a positive integer"),
+            ({"n_epochs": 1}, "A generator is required"),
+        ],
+        ids=[
+            "no_duration",
+            "two_durations",
+            "zero_epochs",
+            "zero_steps",
+            "no_generator",
+        ],
+    )
+    def test_get_sampling_details_failure(self, duration, match):
+        batch_sampler = make_multi_size_batch_sampler(generator=None)
+        with pytest.raises(ValueError, match=match):
+            batch_sampler.get_sampling_details(**duration)
 
 
 class TestGetIndicesPerClusterForSubset:
