@@ -1318,6 +1318,10 @@ class TestGoldGreedyKernelPointsSelectionTool:
             build()
 
 
+def _same_zcore_random_state(left: dict, right: dict) -> bool:
+    return bool(left == right)
+
+
 class TestGoldZCoreSelectionTool:
     def test_select_basic(self):
         device = torch.device("cpu")
@@ -1390,6 +1394,46 @@ class TestGoldZCoreSelectionTool:
         indices2 = tool2.select(x, k=k)
 
         assert indices1 == indices2
+
+    def test_select_random_state_snapshot_replays_selection(self):
+        device = torch.device("cpu")
+        x = torch.randn(20, 4)
+
+        tool = GoldZCoreSelectionTool(
+            device=device,
+            n_dim_for_score=2,
+            n_random_anchors=15,
+            n_redundancy=5,
+            random_state=123,
+        )
+
+        initial = tool.random_state
+        first = tool.select(x, k=5)
+        advanced = tool.random_state
+        assert not _same_zcore_random_state(advanced, initial)
+
+        tool.update_random_state(initial)
+        assert _same_zcore_random_state(tool.random_state, initial)
+        replayed = tool.select(x, k=5)
+        assert replayed == first
+
+        # Reading does not advance the state.
+        held = tool.random_state
+        assert _same_zcore_random_state(tool.random_state, held)
+
+        # Rejected restoration does not replace the current state.
+        before = tool.random_state
+        with pytest.raises(TypeError, match="state must be a dict"):
+            tool.update_random_state(1)
+        assert _same_zcore_random_state(tool.random_state, before)
+        with pytest.raises(ValueError, match="state must be for a PCG64 RNG"):
+            tool.update_random_state({})
+        assert _same_zcore_random_state(tool.random_state, before)
+
+        # Snapshot is independent of later mutation.
+        snapshot = tool.random_state
+        snapshot["state"]["state"] = 0
+        assert _same_zcore_random_state(tool.random_state, before)
 
     def test_select_n_dim_for_score_exceeds_feature_dim(self):
         device = torch.device("cpu")
