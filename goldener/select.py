@@ -1121,6 +1121,37 @@ class GoldSelector(GoldDoerWithTable):
                 }
             )
 
+        if self.include_vectorized_in_table:
+            vectorized_col = get_expr_from_column_name(
+                selection_table, self.vectorized_key
+            )
+            missing_vectorized = [
+                row["idx_vector"]
+                for row in selection_table.where(
+                    vectorized_col == None  # noqa: E711
+                )
+                .select(selection_table.idx_vector)
+                .collect()
+            ]
+            for idx_vector in missing_vectorized:
+                sample = get_sample_row_from_idx(
+                    select_from,
+                    idx_key="idx_vector",
+                    idx=idx_vector,
+                    collate_fn=self.collate_fn,
+                    expected_keys=[self.vectorized_key],
+                )
+                vectorized_value = sample[self.vectorized_key]
+                if hasattr(vectorized_value, "detach"):
+                    vectorized_value = vectorized_value.detach().cpu()
+                if hasattr(vectorized_value, "squeeze"):
+                    vectorized_value = vectorized_value.squeeze(0)
+                if hasattr(vectorized_value, "numpy"):
+                    vectorized_value = vectorized_value.numpy()
+                selection_table.where(selection_table.idx_vector == idx_vector).update(
+                    {self.vectorized_key: vectorized_value}
+                )
+
         if selection_table.count() > 0:
             to_select_indices = set(
                 [
