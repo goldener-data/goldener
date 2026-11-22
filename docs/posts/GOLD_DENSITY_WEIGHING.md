@@ -182,6 +182,16 @@ With `label_key=None` (the default), vectors share a population. Setting `label_
 
 Retrieval can filter a label using `label_key="label", label_value="class_a"`. Aggregation and max normalization then use only returned rows. Consequently, weights retrieved for different filters need not share a common scale.
 
+Omit `label_value` to retrieve every label at once. Each label is normalized by its own maximum, so weights remain comparable within a label but not necessarily across labels. For samples that belong to a single label, this agrees with merging the separate per-label results:
+
+```python
+all_label_weights = label_weigher.get_weights_per_idx(
+    label_weighted, label_key="label",
+)
+```
+
+A sample with vectors in several labels has its per-label weights combined with the configured `aggregation`.
+
 Each label below has four vectors, satisfying the `k + 2` minimum with `k=2`. Labels determine the neighbor populations during scoring; the retrieval filter then selects which results to return.
 
 ```python

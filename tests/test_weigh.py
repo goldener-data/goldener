@@ -983,10 +983,48 @@ class TestGoldDensityWeigher:
         ) == pytest.approx(
             {idx: score / max(selected.values()) for idx, score in selected.items()}
         )
-        with pytest.raises(ValueError, match="label_value must also be provided"):
-            weigher.get_weights_per_idx(result, label_key="label")
+        selected_b = {idx: score for idx, score in scores.items() if idx >= 3}
+        assert weigher.get_weights_per_idx(result, label_key="label") == pytest.approx(
+            {
+                **{
+                    idx: score / max(selected.values())
+                    for idx, score in selected.items()
+                },
+                **{
+                    idx: score / max(selected_b.values())
+                    for idx, score in selected_b.items()
+                },
+            }
+        )
         with pytest.raises(RuntimeError, match="No scores found"):
             weigher.get_weights_per_idx(result, label_key="label", label_value="absent")
+
+    def test_getter_normalizes_each_label_population_when_label_value_is_omitted(self):
+        table = pxt.create_table(
+            "unit_test.per_label_weights",
+            source=[
+                {"idx": 10, "idx_vector": 0, "weight": 10.0, "label": "a"},
+                {"idx": 10, "idx_vector": 1, "weight": 30.0, "label": "a"},
+                {"idx": 11, "idx_vector": 2, "weight": 40.0, "label": "a"},
+                {"idx": 20, "idx_vector": 3, "weight": 0.0, "label": "b"},
+                {"idx": 20, "idx_vector": 4, "weight": 0.0, "label": "b"},
+                {"idx": 21, "idx_vector": 5, "weight": 2.0, "label": "b"},
+            ],
+            primary_key="idx_vector",
+        )
+
+        per_label = GoldDensityWeigher.get_weights_per_idx(table, label_key="label")
+        assert per_label == pytest.approx({10: 0.5, 11: 1.0, 20: 0.0, 21: 1.0})
+
+        merged = {
+            **GoldDensityWeigher.get_weights_per_idx(
+                table, label_key="label", label_value="a"
+            ),
+            **GoldDensityWeigher.get_weights_per_idx(
+                table, label_key="label", label_value="b"
+            ),
+        }
+        assert per_label == pytest.approx(merged)
 
     @pytest.mark.parametrize("reducer_type", [TrackingReducer, FittedTrackingReducer])
     @pytest.mark.parametrize("weighing_batch_size", [None, 1, 2])

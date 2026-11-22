@@ -262,7 +262,9 @@ signal, not a calibrated measure of model difficulty or a guarantee of better ge
 See [Weighting training samples by embedding density](docs/posts/GOLD_DENSITY_WEIGHING.md)
 for a runnable example, the kNN scoring formula, training integration, and chunking
 and restart limitations. Raw scores are stored per vector; retrieval defaults to
-averaging by sample `idx`, then dividing by the maximum returned score.
+averaging by sample `idx`, then dividing by the maximum returned score. When a
+`label_key` is configured, omitting `label_value` retrieves every label and
+normalizes each label by its own maximum.
 
 ```python
 from goldener import (
