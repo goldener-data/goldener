@@ -299,3 +299,50 @@ def shuffle_list(items: list[T], generator: torch.Generator) -> list[T]:
     return [
         items[int(i)] for i in torch.randperm(len(items), generator=generator).tolist()
     ]
+
+class UniqueDataset:
+    """Associate a PyTorch dataset with a unique identifier.
+
+    Wrapping a dataset in a `UniqueDataset` lets a `GoldDoer` record which input
+    produced an intermediary table and reject a different input reused with the
+    same table path.
+
+    Attributes:
+        dataset: The wrapped PyTorch dataset.
+        dataset_id: The unique identifier of the wrapped dataset.
+    """
+
+    def __init__(self, dataset: Dataset, dataset_id: str) -> None:
+        """Initialize the UniqueDataset.
+
+        Args:
+            dataset: The PyTorch dataset to wrap.
+            dataset_id: The unique identifier of the dataset.
+
+        Raises:
+            ValueError: If `dataset_id` is empty.
+        """
+        if not dataset_id:
+            raise ValueError("dataset_id must be a non-empty string.")
+        self.dataset = dataset
+        self.dataset_id = dataset_id
+
+    def __len__(self) -> int:
+        return len(self.dataset)  # type: ignore[arg-type]
+
+    def __getitem__(self, index: int) -> Any:
+        return self.dataset[index]
+
+
+def get_dataset_id(dataset: Any) -> str | None:
+    """Return the dataset id of a dataset or UniqueDataset, if any."""
+    if isinstance(dataset, UniqueDataset):
+        return dataset.dataset_id
+    return getattr(dataset, "dataset_id", None)
+
+
+def unwrap_dataset(dataset: Any) -> Any:
+    """Return the underlying dataset of a UniqueDataset, or the dataset itself."""
+    if isinstance(dataset, UniqueDataset):
+        return dataset.dataset
+    return dataset

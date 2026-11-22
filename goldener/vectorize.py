@@ -49,6 +49,7 @@ from goldener.torch_utils import (
     collate_keeping_sequences_as_sequences,
     get_dataset_sample_dict,
     make_2d_tensor,
+    UniqueDataset,
 )
 from goldener.utils import (
     validate_positive_integer,
@@ -560,6 +561,7 @@ class GoldVectorizer(GoldDoerWithTable):
     _MINIMAL_SCHEMA: dict[str, type] = {
         "idx": pxt.Required[pxt.Int],
         "idx_vector": pxt.Required[pxt.Int],
+        "dataset_id": pxt.String,
     }
 
     def __init__(
@@ -584,6 +586,7 @@ class GoldVectorizer(GoldDoerWithTable):
         drop_table: bool = False,
         max_batches: int | None = None,
         estimation_time_batch_count: int = 2,
+        dataset_id: str | None = None,
     ) -> None:
         """Initialize the GoldVectorizer.
 
@@ -636,6 +639,7 @@ class GoldVectorizer(GoldDoerWithTable):
             estimation_time_batch_count, "estimation_time_batch_count"
         )
         self.estimation_time_batch_count = estimation_time_batch_count
+        self.dataset_id = dataset_id
         super().__init__(
             allow_existing=allow_existing,
             drop_table=drop_table,
@@ -761,6 +765,34 @@ class GoldVectorizer(GoldDoerWithTable):
                 "allow_existing is set to False."
             )
 
+        resolved_dataset_id = self.dataset_id
+        if isinstance(to_vectorize, UniqueDataset):
+            if resolved_dataset_id is None:
+                resolved_dataset_id = to_vectorize.dataset_id
+            to_vectorize = to_vectorize.dataset
+
+        self._dataset_id = resolved_dataset_id
+
+        # validate dataset id against an existing table
+        if (
+            old_vectorized_table is not None
+            and resolved_dataset_id is not None
+            and "dataset_id" in old_vectorized_table.columns()
+        ):
+            stored = {
+                row["dataset_id"]
+                for row in old_vectorized_table.select(old_vectorized_table.dataset_id)
+                .distinct()
+                .collect()
+            }
+            stored.discard(None)
+            if stored and resolved_dataset_id not in stored:
+                raise ValueError(
+                    f"The vectorized table at {self.table_path} was created "
+                    f"from a different dataset (stored id(s): {sorted(stored)}, "
+                    f"provided: {resolved_dataset_id!r})."
+                )
+
         # get the table and dataset to execute the vectorize pipeline
         to_vectorize_dataset: Dataset | GoldPxtTorchDataset
         if isinstance(to_vectorize, Table):
@@ -854,6 +886,11 @@ class GoldVectorizer(GoldDoerWithTable):
                 }
             )
 
+        if "dataset_id" not in vectorized_table.columns():
+            vectorized_table.add_column(
+                if_exists="ignore", **{"dataset_id": pxt.String}
+            )
+
         return vectorized_table
 
     def _vectorized_table_from_dataset(
@@ -899,6 +936,11 @@ class GoldVectorizer(GoldDoerWithTable):
                         vectorized.shape, pxt.Float
                     ]
                 }
+            )
+
+        if "dataset_id" not in vectorized_table.columns():
+            vectorized_table.add_column(
+                if_exists="ignore", **{"dataset_id": pxt.String}
             )
 
         return vectorized_table
@@ -951,6 +993,11 @@ class GoldVectorizer(GoldDoerWithTable):
             starts = batch_idx * self.batch_size
             batch["idx"] = [starts + idx for idx in range(len(batch[self.data_key]))]
 
+        batch["dataset_id"] = [
+            getattr(self, "_dataset_id", self.dataset_id)
+            for _ in range(len(batch[self.data_key]))
+        ]
+
         if restrict_to is not None:
             to_remove = {
                 int(idx.item()) if isinstance(idx, torch.Tensor) else int(idx)
@@ -983,7 +1030,7 @@ class GoldVectorizer(GoldDoerWithTable):
             data_key=self.data_key,
             vectorized_key=self.vectorized_key,
             target_key=self.target_key,
-            to_keep=to_keep_keys,
+            to_keep=to_keep_keys + ["dataset_id"],
             starts=start_idx,
             target_to_label=self.target_to_label,
             merge_multilabels=self.merge_multilabels,
@@ -997,7 +1044,7 @@ class GoldVectorizer(GoldDoerWithTable):
 
         start_idx = max(batch["idx_vector"]) + 1
 
-        to_insert_keys = [self.vectorized_key, "idx"] + to_keep_keys
+        to_insert_keys = [self.vectorized_key, "idx", "dataset_id"] + to_keep_keys
         batch_as_list = make_batch_ready_for_table(batch, to_insert_keys, "idx_vector")
 
         return batch_as_list, start_idx
