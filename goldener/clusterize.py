@@ -12,6 +12,7 @@ when selecting or splitting it, and to balance the batches during training (`gol
 """
 
 import math
+from collections import defaultdict
 from abc import ABC, abstractmethod
 from logging import getLogger
 from typing import Callable, Any
@@ -759,6 +760,9 @@ class GoldClusterizer(GoldDoerWithTable):
         if self.cluster_key not in cluster_table_cols:
             cluster_table.add_column(if_exists="error", **{self.cluster_key: pxt.Int})
 
+        if "chunk" not in cluster_table_cols:
+            cluster_table.add_column(if_exists="ignore", **{"chunk": pxt.Int})
+
         if (
             self.include_vectorized_in_table
             and self.vectorized_key not in cluster_table_cols
@@ -896,6 +900,9 @@ class GoldClusterizer(GoldDoerWithTable):
 
         if self.cluster_key not in cluster_table_cols:
             cluster_table.add_column(if_exists="error", **{self.cluster_key: pxt.Int})
+
+        if "chunk" not in cluster_table_cols:
+            cluster_table.add_column(if_exists="ignore", **{"chunk": pxt.Int})
 
         self._add_rows_to_cluster_table_from_dataset(
             cluster_from,
@@ -1284,11 +1291,48 @@ class GoldClusterizer(GoldDoerWithTable):
             )
             return
 
-        chunk_assignment = get_random_chunk_assignment(
-            to_chunk=to_cluster_vector_indices,
-            max_chunk_size=self.chunk,
-            random_state=self.random_state,
-        )
+        chunk_col = get_expr_from_column_name(cluster_table, "chunk")
+
+        if self.chunk is None:
+            chunk_assignment = [to_cluster_vector_indices]
+        else:
+            persisted = {
+                row["idx_vector"]: row["chunk"]
+                for row in to_cluster.select(
+                    cluster_table.idx_vector, chunk_col
+                ).collect()
+            }
+
+            none_indices = [
+                iv for iv in to_cluster_vector_indices if persisted.get(iv) is None
+            ]
+
+            if none_indices:
+                new_chunks = get_random_chunk_assignment(
+                    to_chunk=none_indices,
+                    max_chunk_size=self.chunk,
+                    random_state=self.random_state,
+                )
+                existing_ids = [v for v in persisted.values() if v is not None]
+                next_id = (max(existing_ids) + 1) if existing_ids else 0
+                for chunk in new_chunks:
+                    for iv in chunk:
+                        persisted[iv] = next_id
+                    next_id += 1
+
+                for iv in none_indices:
+                    set_value_to_idx_rows(
+                        table=cluster_table,
+                        col_expr=chunk_col,
+                        idx_expr=cluster_table.idx_vector,
+                        indices={iv},
+                        value=persisted[iv],
+                    )
+
+            groups: dict[int, list[int]] = defaultdict(list)
+            for iv in to_cluster_vector_indices:
+                groups[persisted[iv]].append(iv)
+            chunk_assignment = list(groups.values())
 
         for chunk_indices in chunk_assignment:
             to_cluster_from = cluster_from.where(
@@ -1328,6 +1372,15 @@ class GoldClusterizer(GoldDoerWithTable):
                     indices=set(indices_in_cluster),
                     value=cluster_idx,
                 )
+
+            # persist chunk assignment is no longer needed once clustered
+            set_value_to_idx_rows(
+                table=cluster_table,
+                col_expr=chunk_col,
+                idx_expr=cluster_idx_col,
+                indices=set(indices.tolist()),
+                value=None,
+            )
 
     def _distributed_cluster(
         self,
