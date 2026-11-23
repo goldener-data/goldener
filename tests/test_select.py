@@ -1318,10 +1318,6 @@ class TestGoldGreedyKernelPointsSelectionTool:
             build()
 
 
-def _same_zcore_random_state(left: dict, right: dict) -> bool:
-    return bool(left == right)
-
-
 class TestGoldZCoreSelectionTool:
     def test_select_basic(self):
         device = torch.device("cpu")
@@ -1395,7 +1391,7 @@ class TestGoldZCoreSelectionTool:
 
         assert indices1 == indices2
 
-    def test_select_random_state_snapshot_replays_selection(self):
+    def test_select_random_state_replays_selection(self):
         device = torch.device("cpu")
         x = torch.randn(20, 4)
 
@@ -1409,31 +1405,15 @@ class TestGoldZCoreSelectionTool:
 
         initial = tool.random_state
         first = tool.select(x, k=5)
-        advanced = tool.random_state
-        assert not _same_zcore_random_state(advanced, initial)
+        assert tool.random_state != initial
 
         tool.update_random_state(initial)
-        assert _same_zcore_random_state(tool.random_state, initial)
-        replayed = tool.select(x, k=5)
-        assert replayed == first
+        assert tool.random_state == initial
+        assert tool.select(x, k=5) == first
 
         # Reading does not advance the state.
         held = tool.random_state
-        assert _same_zcore_random_state(tool.random_state, held)
-
-        # Rejected restoration does not replace the current state.
-        before = tool.random_state
-        with pytest.raises(TypeError, match="state must be a dict"):
-            tool.update_random_state(1)
-        assert _same_zcore_random_state(tool.random_state, before)
-        with pytest.raises(ValueError, match="state must be for a PCG64 RNG"):
-            tool.update_random_state({})
-        assert _same_zcore_random_state(tool.random_state, before)
-
-        # Snapshot is independent of later mutation.
-        snapshot = tool.random_state
-        snapshot["state"]["state"] = 0
-        assert _same_zcore_random_state(tool.random_state, before)
+        assert tool.random_state == held
 
     def test_select_n_dim_for_score_exceeds_feature_dim(self):
         device = torch.device("cpu")

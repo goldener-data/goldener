@@ -10,12 +10,11 @@ used to choose the data to annotate and, by the `goldener.split.GoldSplitter`, t
   reduction (`goldener.reduce`) or stratified by label, and stores the selected samples locally.
 """
 
-import copy
 import math
 import sys
 from abc import ABC, abstractmethod
 from logging import getLogger
-from typing import TYPE_CHECKING, Callable, Any, cast
+from typing import TYPE_CHECKING, Callable, Any
 
 import numpy as np
 import pixeltable as pxt
@@ -546,19 +545,17 @@ class GoldZCoreSelectionTool(GoldSelectionTool):
 
     @property
     def random_state(self) -> dict[str, Any]:
-        """Return a snapshot of the random generator state.
+        """Return the current random generator state.
 
-        Reading this property does not advance the generator. The result is a
-        deep copy of the current `numpy.random.Generator` bit generator state,
-        as returned by `numpy.random.Generator.bit_generator.state`. It is not
-        the seed passed to `__init__`.
+        Reading this property does not advance the generator. The result is the
+        current `numpy.random.Generator` bit generator state, as returned by
+        `numpy.random.Generator.bit_generator.state`. It is not the seed passed
+        to `__init__`.
 
         Returns:
-            A snapshot of the current random generator state.
+            The current random generator state.
         """
-        return copy.deepcopy(
-            cast(dict[str, Any], self.np_generator.bit_generator.state)
-        )
+        return self.np_generator.bit_generator.state
 
     def update_random_state(self, state: dict[str, Any]) -> None:
         """Restore the random generator state from a previous snapshot.
@@ -567,12 +564,8 @@ class GoldZCoreSelectionTool(GoldSelectionTool):
 
         Args:
             state: Random state, as returned by `random_state`.
-
-        Raises:
-            TypeError: If `state` is not a dictionary.
-            ValueError: If `state` is not a valid generator state.
         """
-        self.np_generator.bit_generator.state = copy.deepcopy(state)
+        self.np_generator.bit_generator.state = state
 
     def select(
         self,
