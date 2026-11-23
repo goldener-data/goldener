@@ -61,6 +61,8 @@ assert {pos // 3 for pos in splits["validation"]} == {0, 1, 2}
 print(len(validation), len(training))  # 3 6
 ```
 
+![The nine clips grouped into three embedding neighborhoods. Each neighborhood contributes one clip to validation and two to training.](figures/validation-neighborhoods.png)
+
 `get_split_indices` groups the stored assignments by set name and returns sets of sample IDs. This example makes those IDs the dataset positions so they work directly in `Subset`. For catalog IDs, look up their dataset positions first.
 
 ## Decide which set gets first choice

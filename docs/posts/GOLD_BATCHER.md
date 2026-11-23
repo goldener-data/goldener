@@ -66,6 +66,8 @@ The epoch draws four batches. Each sample in group B appears twice and each samp
 
 The three `ExhaustedClusterStrategy` policies make different trade-offs on those same two pools.
 
+![The six example scans under each policy. RESTART draws four mixed batches, STOP draws two, and EXCLUDE draws two mixed batches followed by one fixed-room batch.](figures/batch-exhaustion.png)
+
 | Policy | What happens with four samples in A and two in B |
 | --- | --- |
 | `RESTART` (default) | Draw four mixed batches by cycling through group B a second time. Both modes appear throughout the epoch, and the smaller pool is oversampled. |

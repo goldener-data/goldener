@@ -58,6 +58,8 @@ for cluster_id, ids in groups.items():
     print(cluster_id, sorted(ids))
 ```
 
+![Scatter plot of eight synthetic ticket vectors and the four source ticket IDs retrieved from each of two clusters.](figures/ticket-clusters.png)
+
 The two neighborhoods each yield four IDs. In a real queue, use the IDs to open the original inputs. Review several members and some borderline cases before using a cluster to write an annotation guideline or change a routing rule. The fit produces cluster numbers. The review establishes what the groups mean.
 
 The caller chooses `n_clusters`. A small count gives broader groups to review. A large count can expose narrower patterns and create more groups to inspect. The partition depends on the representation and estimator. If you start from raw data, use `GoldDescriptor` and a vectorization tool, then align the clusterizer's `vectorized_key` with the vector output column. [Lloyd's k-means method](https://doi.org/10.1109/TIT.1982.1056489)

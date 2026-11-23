@@ -94,6 +94,8 @@ assert window_ids == {0, 1, 4, 5}
 print(sorted(review_ids))
 ```
 
+![Two motion windows per trial, plotted by lateral displacement. Both windows are marked for trials 10 and 30. Trial 20 remains unselected and trial 99 is outside the candidate pool.](figures/robot-trial-selection.png)
+
 Trial 30 stands out because its second window contains a large lateral correction. Once selected, both windows are marked. Use the trial IDs to queue the original 3D trajectories for review and the window IDs to look up their stored vectors.
 
 ## From vector picks to sample IDs

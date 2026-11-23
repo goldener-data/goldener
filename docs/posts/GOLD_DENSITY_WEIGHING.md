@@ -61,6 +61,8 @@ for batch in loader:
     print(batch["idx"].tolist())
 ```
 
+![Six example shipments sit close together and receive lower weights. The two isolated shipments, IDs 731 and 845, receive the highest normalized weights.](figures/shipment-density-weights.png)
+
 The two isolated samples have larger weights, so each has a higher probability per draw. Sampling with replacement can repeat some examples and leave others undrawn in an epoch.
 
 ## Weight an image classification loss by sample ID

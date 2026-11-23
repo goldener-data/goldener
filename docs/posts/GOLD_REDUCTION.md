@@ -47,6 +47,8 @@ assert torch.allclose(reference_reduced[0], later_reduced[0], atol=1e-6)
 print(reference_reduced.shape, later_reduced.shape)  # (6, 2), (2, 2)
 ```
 
+![Six reference windows and two later windows plotted on the same two PCA components. A reference marker and a later marker overlap where the input rows match.](figures/shared-pca-projection.png)
+
 ## Map an image collection for a one-time review
 
 To inspect a fixed collection of images, you can use t-SNE to produce two coordinates per image for a scatter plot. Here, each row is a synthetic image embedding and each coordinate pair keeps the input image's ID. `perplexity` must be smaller than the number of rows in the fit.
