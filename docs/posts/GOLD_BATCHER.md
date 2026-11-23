@@ -128,4 +128,4 @@ The first two batches mix shorter and longer sessions. Once the longer pool runs
 
 Cluster balancing changes which examples meet in an optimizer update and, with `RESTART`, how often the smaller pools contribute. Embedding-density weights let you adjust a sample's draw frequency or loss contribution based on its local rarity. Compare the policies on the evaluation slices that matter to the model. [Weighting training samples by embedding density](GOLD_DENSITY_WEIGHING.md) · [Zhao and Zhang on stratified minibatch sampling](https://arxiv.org/abs/1405.3080)
 
-Original post by [Yann Chéné](https://huggingface.co/Yann-CV). Sponsored by [Pixeltable](https://www.pixeltable.com/).
+Sponsored by [Pixeltable](https://www.pixeltable.com/).

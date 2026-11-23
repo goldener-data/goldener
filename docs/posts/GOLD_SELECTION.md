@@ -111,4 +111,4 @@ Greedy K-center emphasizes coverage. `GoldGreedyKernelPointsSelectionTool` aims 
 
 For monitoring, review the selected IDs to discover failure modes and collect examples for follow-up. Coverage selection changes the mixture you inspect, so draw a separate random audit sample from the deployment population when estimating deployment error rates. If the samples are already labeled and you need disjoint training and evaluation sets, use the same selection stage inside `GoldSplitter`. [Splitting labeled data with Goldener](GOLD_SPLIT.md)
 
-Original post by [Yann Chéné](https://huggingface.co/Yann-CV). Sponsored by [Pixeltable](https://www.pixeltable.com/).
+Sponsored by [Pixeltable](https://www.pixeltable.com/).

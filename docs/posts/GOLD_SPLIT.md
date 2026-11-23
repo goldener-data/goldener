@@ -127,4 +127,4 @@ A coverage-oriented validation set can expose failures on familiar modes. Keep a
 
 Use a holdout that reflects the population you want to score when the result needs to estimate deployment performance. The diagnostic validation set above is intentionally chosen for variation. Joseph and Vakayil study another approach to geometry-based splitting, using support points to reflect the full dataset's distribution. [SPlit: An optimal method for data splitting](https://doi.org/10.1080/00401706.2021.1921037)
 
-Original post by [Yann Chéné](https://huggingface.co/Yann-CV). Sponsored by [Pixeltable](https://www.pixeltable.com/).
+Sponsored by [Pixeltable](https://www.pixeltable.com/).
