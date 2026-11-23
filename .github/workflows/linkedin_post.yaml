@@ -71,7 +71,7 @@ jobs:
     name: Draft a LinkedIn post about a research paper
     needs: resolve-pr
     if: needs.resolve-pr.outputs.should_draft == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment: linkedin-post
     # reading a paper in full can take a while, but a stuck session must not run for hours
     timeout-minutes: 45
