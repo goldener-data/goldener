@@ -2,22 +2,22 @@
 
 ## TL;DR
 
-Use `GoldClusterizedBatchSampler` to draw from several embedding clusters in each training batch. The exhaustion policy determines whether small clusters repeat, training stops early, or later batches draw from fewer clusters.
+Use `GoldClusterizedBatchSampler` to draw from embedding clusters in each training batch. Choose whether to repeat smaller clusters, end the epoch early, or keep drawing from the clusters that still have samples.
 
 ## Table of contents
 
-- [Mix acoustic conditions in each batch](#mix-acoustic-conditions-in-each-batch)
+- [Mix chest X-ray acquisition settings in each batch](#mix-chest-x-ray-acquisition-settings-in-each-batch)
 - [Decide what happens when a pool runs out](#decide-what-happens-when-a-pool-runs-out)
 - [Use every event session without recycling a small group](#use-every-event-session-without-recycling-a-small-group)
-- [How it works](#how-it-works)
+- [Prepare vectors and dataset indices](#prepare-vectors-and-dataset-indices)
 
-Shuffling mixes a training set over an epoch, but many batches can still be dominated by a common pattern. A speech command model trained mostly on quiet recordings may see background conversation in very few updates. If embeddings separate those acoustic conditions, drawing across clusters can expose the model to both more regularly.
+Shuffling mixes a training set over an epoch, but many batches can still be dominated by a common pattern. A chest X-ray model trained mostly on images from fixed radiography rooms may see portable bedside scans in few updates. If embeddings separate the two acquisition settings, drawing across clusters can expose the model to both more regularly.
 
 `GoldClusterizedBatchSampler` groups samples by embedding similarity, then draws across the resulting pools. The cluster count determines how many pools compete for the available batch positions.
 
-## Mix acoustic conditions in each batch
+## Mix chest X-ray acquisition settings in each batch
 
-These synthetic audio vectors stand in for four quiet recordings and two recordings with background conversation. The `mode` field lets us inspect batch composition. The k-means estimator uses only the vectors. With two clusters, a batch size of two, and `RESTART`, each batch will contain one sample from each group.
+These synthetic vectors stand in for four chest X-rays from fixed radiography rooms (group A) and two portable bedside X-rays (group B). The `mode` field records the groups so we can inspect batch composition. The k-means estimator uses only the vectors. With two clusters, a batch size of two, and `RESTART`, each batch will contain one sample from each group.
 
 ```python
 from uuid import uuid4
@@ -60,7 +60,7 @@ assert len(seen) == 8
 assert set(seen) == set(range(len(training_data)))
 ```
 
-The epoch draws four batches, so each sample in group B appears twice and each sample in group A appears once. In training you would use the data and targets from each batch in the optimizer step. Pass the sampler as `batch_sampler` because it supplies complete index lists to the `DataLoader`.
+The epoch draws four batches. Each sample in group B appears twice and each sample in group A appears once. Pass the sampler as `batch_sampler` because it yields a list of dataset positions for each batch.
 
 ## Decide what happens when a pool runs out
 
@@ -120,11 +120,13 @@ print(batches)
 
 The first two batches mix shorter and longer sessions. Once the longer pool runs out, the remaining short session forms the last batch. The sampler supplies row positions. If your training items contain variable-length event sequences, use the loader's `collate_fn` to pad or pack them.
 
-## How it works
+## Prepare vectors and dataset indices
 
-1. The sampler runs the supplied `GoldDescriptor` and `GoldVectorizer` if configured, then calls the clusterizer on the training data. If the descriptor already produces one vector per item and you omit the separate vectorizer, set the clusterizer's `vectorized_key` to the descriptor's `description_key` (default `"embeddings"`). Use a vectorizer if the stored embeddings still need to become vectors. It reads each cluster's `idx` values into an index pool. Use one vector per item and a single fit over the training population to give each item one pool.
-2. For a PyTorch `Subset`, the sampler maps base-dataset `idx` values to positions within the subset. Those subset positions are what the `DataLoader` uses to look up items. The example prints the original IDs carried by the items, so you can verify coverage against `training.indices`.
-3. At iteration time, the sampler orders each pool, optionally shuffles it, and advances a cursor each time it draws from that pool. A pass draws at most one item per active cluster. The sampler can take more passes to fill a large batch, or spread the pools over several batches when there are fewer positions than pools. At exhaustion the chosen policy controls whether a cursor resets, the pool is removed, or iteration stops after the current batch. [How to inspect an embedding partition](GOLD_CLUSTERIZER.md)
+Use one vector per item and a single clustering fit over the training population so each item belongs to one pool. The clusterizer needs both `idx` and `idx_vector` in the input table. A descriptor configured without a vectorization tool provides `idx` alone, even for flat embeddings. Configure the descriptor's `vectorizer` or pass a separate `GoldVectorizer` to the sampler to produce vector IDs.
+
+Set the clusterizer's `vectorized_key` to the column that contains the vectors. With vectorization inside `GoldDescriptor`, that column is the descriptor's `description_key` (default `"embeddings"`).
+
+The sampler uses `idx` as a dataset position. For a PyTorch `Subset`, supply positions in the base dataset as `idx`. The sampler maps them to subset positions for the loader. [How to inspect an embedding partition](GOLD_CLUSTERIZER.md)
 
 Cluster balancing changes which examples meet in an optimizer update and, with `RESTART`, how often the smaller pools contribute. Embedding-density weights let you adjust a sample's draw frequency or loss contribution based on its local rarity. Compare the policies on the evaluation slices that matter to the model. [Weighting training samples by embedding density](GOLD_DENSITY_WEIGHING.md) · [Zhao and Zhang on stratified minibatch sampling](https://arxiv.org/abs/1405.3080)
 

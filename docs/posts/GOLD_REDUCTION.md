@@ -8,7 +8,7 @@ Reduce embedding width to make similarity searches cheaper. Fit a reusable proje
 
 - [Fit on reference sensor data and project a later window](#fit-on-reference-sensor-data-and-project-a-later-window)
 - [Map an image collection for a one-time review](#map-an-image-collection-for-a-one-time-review)
-- [How it works](#how-it-works)
+- [Fit, transform, and reuse a projection](#fit-transform-and-reuse-a-projection)
 - [Choose a projection that fits the job](#choose-a-projection-that-fits-the-job)
 - [Check what the smaller vectors preserve](#check-what-the-smaller-vectors-preserve)
 
@@ -77,11 +77,13 @@ print(points)
 
 Use the IDs to open neighboring images during review. Calling `transform` with more images would warn and refit t-SNE, producing a new map. For coordinates you want to compare across collections or time periods, use a method with a reusable transform. [t-SNE paper](https://www.jmlr.org/papers/v9/vandermaaten08a.html)
 
-## How it works
+## Fit, transform, and reuse a projection
 
-1. The input is a finite floating tensor shaped `(num_vectors, feature_dim)`. Each row describes one vector, and the adapter keeps rows in that order so sample IDs can stay alongside the output.
-2. `GoldSKLearnReductionTool` detaches the tensor, converts it to a CPU NumPy array, and calls the estimator. `fit` learns the mapping without producing a projection. `fit_transform` learns it and returns the projected data. `transform` applies the fitted mapping when the estimator supports it. In PCA, that means subtracting the reference mean and projecting onto the reference axes, even for a later window. For NumPy-compatible floating dtypes supported by the estimator, the adapter returns the result on the input tensor's device and with its dtype. Convert `torch.bfloat16` inputs to `torch.float32` before passing them to this adapter.
-3. Fit again to replace the estimator's learned mapping, or keep it to project future rows consistently. Save the fitted estimator with the preprocessing configuration for later jobs. `GoldTorchModuleReductionTool` instead delegates `transform` to your PyTorch module, such as a trained projection head. Match the module's device and dtype to the input before calling `transform`. The wrapper passes the tensor directly to the module. Use a module that returns one output row per input row.
+Pass a finite floating tensor of shape `(num_vectors, feature_dim)`. `GoldSKLearnReductionTool` preserves row order. It runs the estimator on a detached CPU NumPy array and returns the projected tensor on the input's device and with its dtype. Use a NumPy-compatible dtype that your estimator supports. For example, convert `torch.bfloat16` to `torch.float32` before calling the tool.
+
+Call `fit` to learn the mapping or `fit_transform` to learn it and return the projected rows. Use `transform` to apply a fitted mapping when the estimator supports it. Save the fitted estimator with your preprocessing configuration to reuse its coordinates in later jobs. When the wrapper manages a NumPy `RandomState`, snapshot it with `random_state` and restore it with `update_random_state` to replay random choices.
+
+`GoldTorchModuleReductionTool` passes the input directly to a PyTorch module, such as a trained projection head. Match the module's device and dtype to the input, and use a module that preserves the number and order of rows.
 
 ## Choose a projection that fits the job
 

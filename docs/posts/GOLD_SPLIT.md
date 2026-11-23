@@ -56,6 +56,7 @@ splits = splitter.get_split_indices(table)
 validation = Subset(dataset, sorted(splits["validation"]))
 training = Subset(dataset, sorted(splits["train"]))
 assert splits["validation"].isdisjoint(splits["train"])
+assert (len(validation), len(training)) == (3, 6)
 assert {pos // 3 for pos in splits["validation"]} == {0, 1, 2}
 print(len(validation), len(training))  # 3 6
 ```
@@ -64,9 +65,11 @@ print(len(validation), len(training))  # 3 6
 
 ## Decide which set gets first choice
 
-Each `GoldSet` supplies a unique name and a target size. Use either counts that sum to the number of distinct samples or fractions that sum to one. The splitter fills each set before the last through selection on the available samples. With fractions, those targets round down with a minimum of one sample, so leave enough examples for the final set. The last set receives all unassigned samples. A fraction passed directly to `GoldSelector` rounds up.
+Each `GoldSet` supplies a unique name and a target size. Use counts that sum to the number of distinct samples or fractions that sum to one. The splitter fills the sets in the order you give them and assigns the remainder to the last set. For earlier sets, it rounds fractions down with a minimum of one sample per set. Leave at least one sample for the final set. Fractions passed directly to `GoldSelector` round up.
 
-In the example, validation gets first choice across the three modes. Reverse the roles and a training set chosen first gets the coverage objective, with validation inheriting the remainder. With more than two sets, every later selection has fewer candidates. Inspect the label and mode coverage of each result, especially when a mode has only a handful of samples. A selector with `label_key` allocates selections by label as well, so each actively selected set needs a workable budget for its label populations.
+Put validation first to prioritize its coverage, as in the example. Put training first when coverage matters most for training. Inspect each set's label and mode coverage, especially for small groups.
+
+With `label_key`, the selector can raise an error if a set's initial allocation leaves a label with zero samples. Overlapping labels can also push a set above its target and leave fewer samples for the final set. Check the realized counts when sizes matter. [How the selector allocates its budget](GOLD_SELECTION.md#set-the-sample-budget)
 
 ## Hold back future transactions before splitting history
 

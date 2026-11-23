@@ -8,7 +8,8 @@ Use `GoldClusterizer` to group similar vectors and retrieve the source samples f
 
 - [Group misrouted support tickets](#group-misrouted-support-tickets)
 - [Track the same groups in later sensor windows](#track-the-same-groups-in-later-sensor-windows)
-- [How it works](#how-it-works)
+- [Read assignments by vector or sample](#read-assignments-by-vector-or-sample)
+- [Choose which vectors to fit together](#choose-which-vectors-to-fit-together)
 
 An error rate tells you how often a model fails. To decide what to fix, you need to see which errors have something in common. If a classifier sends many support tickets to the wrong queue, grouping their text embeddings can help you find repeated patterns. Read tickets in one cluster to see whether a new form template makes different requests look alike or whether one routing rule needs a clearer definition.
 
@@ -87,12 +88,24 @@ print(reference_count / len(reference), later_count / len(later))  # 0.5 0.75
 
 In this toy comparison, the group's share rises from half to three quarters. Open the corresponding traces to check what changed. Every incoming vector gets an existing cluster ID, so fit a new partition separately if you want to look for patterns the reference groups miss. A fresh fit has its own ID numbering.
 
-## How it works
+## Read assignments by vector or sample
 
-1. The clusterizer reads each pending vector and its IDs from a dataset or Pixeltable table. `idx_vector` identifies a stored vector assignment, and `idx` links it to the original item. A sensor trace can contribute more than one vector and appear in multiple groups.
-2. Each population is fitted independently. If configured, the reducer runs before the fit. `GoldSKLearnClusteringTool` passes the requested cluster count to the estimator and converts the detached 2D tensor to a CPU NumPy array. It returns one integer assignment per row. K-means iterates between assigning each vector to its nearest center and recomputing those centers.
-3. The clusterizer writes assignments to Pixeltable. By default, `get_cluster_indices` returns vector IDs. Ask for `idx_key="idx"` to retrieve the source sample IDs. When you call `fit` and `predict` on the tensor tool directly, the estimator in memory supplies the reference partition for later vectors.
+`GoldClusterizer` stores one assignment per vector in Pixeltable. By default, `get_cluster_indices` returns vector IDs (`idx_vector`). Pass `idx_key="idx"` for source sample IDs. A sensor trace represented by several windows can appear in several clusters.
 
-Use one fit for a single partition. With `label_key`, Goldener fits each label population separately, which is useful when you want to look for variations within a known class. Setting `chunk` limits memory use by fitting each chunk separately. Both approaches reuse numeric cluster IDs across fits. Query within a label to interpret a label-specific fit. Use an unchunked fit when you need the stored cluster IDs to identify groups in one population, since the table does not store chunk membership. [Reducing the dimensionality of embeddings](GOLD_REDUCTION.md)
+Set `force_same_cluster=True` to write one cluster ID to every row with the same `idx`. The tool still fits the individual vectors. If vectors from the same sample receive different IDs, the last write determines the stored ID. To fit clusters on one representation per sample, combine the vectors before clustering.
 
-Use the Pixeltable output to reopen a completed review. Goldener reuses recorded assignments and fits pending vectors separately on resume. The same numeric ID can therefore refer to different groups in the same table. Use a new table for a fresh fit over the whole population, or call `predict` with the original fitted tool to assign new vectors to existing groups. To control how groups appear during training, give Goldener's batch sampler the training data and a clusterizer configured for one fit. [Building batches from embedding clusters](GOLD_BATCHER.md)
+## Choose which vectors to fit together
+
+Use one fit over the whole population when you need one partition. Separate fits reuse numeric cluster IDs, so cluster 0 can describe different groups in the same table.
+
+| Option | What gets fitted |
+| --- | --- |
+| `label_key` | Each label separately. Pass both `label_key` and `label_value` when retrieving a cluster from a specific label. |
+| `chunk` | Each randomly assigned chunk separately. This bounds the size of each fit. Pixeltable stores the cluster ID for each vector, while chunk membership is temporary. |
+| Resume with an existing table | Only pending vectors. Saved assignments are reused. |
+
+K-means needs at least `n_clusters` vectors in every fit. Check the smallest label or chunk, especially after a partial run. If you configure a reducer that learns a projection, it fits on each population before clustering. [Reducing the dimensionality of embeddings](GOLD_REDUCTION.md)
+
+Use a fresh result table to refit the whole population. To assign new vectors to existing groups, call `predict` with the original fitted tool.
+
+To draw across those groups during training, configure the batch sampler with a clusterizer that fits the training population as a whole. [Building batches from embedding clusters](GOLD_BATCHER.md)
