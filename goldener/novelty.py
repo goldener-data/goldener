@@ -1,16 +1,20 @@
-"""Score vectorized samples by distance from a fitted reference bank.
+"""Score vectorized samples for novelty relative to a reference population.
 
-`GoldNoveltyScoringTool` defines the tensor interface and
-`GoldNearestNeighborNoveltyScoringTool` implements exact nearest-reference distance.
-`GoldNoveltyScorer` fits on reference vectors and persists scores for query vectors.
+Use this stage to score query vectors against a fixed reference population.
+Tensor tools compute scores and dataset and table orchestration persist them.
 
-Scores remain vector-indexed, so samples with multiple vectors can use the maximum
-vector novelty as their sample-level result.
+- `GoldNoveltyScoringTool` defines the tensor interface for fitting on reference
+  vectors and scoring queries.
+- `GoldNearestNeighborNoveltyScoringTool` scores each query by its minimum
+  distance to the fitted reference vectors.
+- `GoldNoveltyScorer` fits the reference and persists raw novelty scores per
+  vector. It retrieves scores by vector or by sample, using the highest vector
+  score for each sample.
 """
 
 from abc import ABC, abstractmethod
 from logging import getLogger
-from typing import Any, Callable
+from typing import Any, Callable, Literal
 
 import numpy as np
 import pixeltable as pxt
@@ -32,36 +36,36 @@ from goldener.pxt_utils import (
 )
 from goldener.reduce import GoldReductionToolWithFit
 from goldener.torch_utils import get_dataset_sample_dict
-from goldener.utils import filter_batch_from_indices
+from goldener.utils import (
+    filter_batch_from_indices,
+    validate_positive_integer,
+    validate_vectorized_input,
+)
 
 logger = getLogger(__name__)
 
 
 class GoldNoveltyScoringTool(ABC):
-    """Score vectors against a fitted reference using a distance measure.
+    """Score vectors for novelty using a tool fitted on reference data.
 
     Inputs have shape `(num_vectors, feature_dim)` and scores have shape
-    `(num_vectors,)`. Higher scores indicate greater novelty. Fitted state is kept
-    in memory.
+    `(num_vectors,)`. Higher scores indicate greater novelty. Implementations
+    define the meaning and scale of their scores, such as nearest-reference
+    distance or predicted probability of novelty. Fitted state is kept in memory.
 
     Attributes:
-        distance: Distance metric used by the tool.
-        device: Device used for distance computation.
-        fitted: Read-only indicator for whether a reference bank is available.
+        device: Device used for computation. Defaults to CPU.
     """
 
     def __init__(
         self,
-        distance: DistanceType = DistanceType.COSINE,
         device: torch.device | str = "cpu",
     ) -> None:
         """Initialize the GoldNoveltyScoringTool.
 
         Args:
-            distance: Distance selector used by implementations. Defaults to cosine.
             device: Device used for computation. Defaults to CPU.
         """
-        self.distance = distance
         self.device = torch.device(device)
 
     @property
@@ -70,27 +74,12 @@ class GoldNoveltyScoringTool(ABC):
         """Whether a reference has been fitted.
 
         Returns:
-            True when this tool can score against a reference bank.
+            True when this tool is ready to score query vectors.
         """
-
-    def _validate_input(self, x: torch.Tensor) -> None:
-        """Validate the finite floating matrix accepted by novelty scoring tools."""
-        if not isinstance(x, torch.Tensor) or x.ndim != 2:
-            shape = getattr(x, "shape", None)
-            raise ValueError(
-                "GoldNoveltyScoringTool only accepts 2D tensors "
-                f"(num_vectors, feature_dim). Got shape {shape}."
-            )
-        if x.shape[1] <= 0:
-            raise ValueError("feature_dim must be greater than zero.")
-        if not x.is_floating_point():
-            raise ValueError("Novelty vectors must have a floating-point dtype.")
-        if not torch.isfinite(x).all():
-            raise ValueError("Novelty vectors must contain only finite values.")
 
     @abstractmethod
     def fit(self, x: torch.Tensor) -> None:
-        """Fit the reference bank from 2D vectors.
+        """Fit the scoring tool on 2D reference vectors.
 
         Args:
             x: Nonempty floating reference vectors of shape `(num_vectors, feature_dim)`.
@@ -107,7 +96,7 @@ class GoldNoveltyScoringTool(ABC):
             x: Floating query vectors of shape `(num_vectors, feature_dim)`.
 
         Returns:
-            A 1D tensor on the input device and with the input dtype.
+            A 1D novelty scoring tensor on the input device.
 
         Raises:
             ValueError: If the tool is unfitted or inputs do not satisfy the tensor contract.
@@ -115,17 +104,18 @@ class GoldNoveltyScoringTool(ABC):
 
 
 class GoldNearestNeighborNoveltyScoringTool(GoldNoveltyScoringTool):
-    """Use each query's minimum distance to any fitted reference vector.
+    """Novelty scoring from the minimum distance to any fitted reference vector.
 
     Exact computation stores the complete reference bank in memory. Pairwise
     temporary allocations are bounded by `distance_batch_size` query and reference
-    rows. Cosine distance uses Goldener's existing helper, including distance 1 for
-    a zero vector against any vector. Scores preserve query device and dtype.
+    rows.
 
     Attributes:
-        distance_batch_size: Maximum rows in each query/reference computation block.
+        distance: Pairwise distance metric. Defaults to cosine.
+        device: Device used for tensor computation. Defaults to CPU.
+        distance_batch_size: Maximum rows in each query or reference computation
+            block. Defaults to 1024.
         reference_bank: Cloned fitted vectors on the configured device, or None.
-        fitted: Whether a reference bank has been fitted.
     """
 
     def __init__(
@@ -144,13 +134,9 @@ class GoldNearestNeighborNoveltyScoringTool(GoldNoveltyScoringTool):
         Raises:
             ValueError: If `distance_batch_size` is not a positive integer.
         """
-        super().__init__(distance=distance, device=device)
-        if (
-            not isinstance(distance_batch_size, int)
-            or isinstance(distance_batch_size, bool)
-            or distance_batch_size <= 0
-        ):
-            raise ValueError("distance_batch_size must be a positive integer.")
+        super().__init__(device=device)
+        validate_positive_integer(distance_batch_size, "distance_batch_size")
+        self.distance = distance
         self.distance_batch_size = distance_batch_size
         self.reference_bank: torch.Tensor | None = None
 
@@ -168,7 +154,7 @@ class GoldNearestNeighborNoveltyScoringTool(GoldNoveltyScoringTool):
         Raises:
             ValueError: If `x` is empty or violates the 2D floating tensor contract.
         """
-        self._validate_input(x)
+        validate_vectorized_input(x, "GoldNoveltyScoringTool")
         if x.shape[0] == 0:
             raise ValueError("The novelty reference must not be empty.")
         self.reference_bank = x.detach().to(self.device).clone()
@@ -189,7 +175,7 @@ class GoldNearestNeighborNoveltyScoringTool(GoldNoveltyScoringTool):
         if not self.fitted:
             raise ValueError("Fit the novelty scorer before calling score.")
         assert self.reference_bank is not None
-        self._validate_input(x)
+        validate_vectorized_input(x, "GoldNoveltyScoringTool")
 
         if x.shape[1] != self.reference_bank.shape[1]:
             raise ValueError(
@@ -202,23 +188,20 @@ class GoldNearestNeighborNoveltyScoringTool(GoldNoveltyScoringTool):
         if compute_dtype in (torch.float16, torch.bfloat16):
             compute_dtype = torch.float32
         reference = self.reference_bank.to(dtype=compute_dtype)
-        query = x.detach().to(device=self.device, dtype=compute_dtype)
-        score_blocks: list[torch.Tensor] = []
-        distance_fn = self.distance.distance_function
-        for q_start in range(0, query.shape[0], self.distance_batch_size):
-            q = query[q_start : q_start + self.distance_batch_size]
-            nearest = torch.full(
-                (q.shape[0],), torch.inf, dtype=compute_dtype, device=self.device
-            )
-            for r_start in range(0, reference.shape[0], self.distance_batch_size):
-                r = reference[r_start : r_start + self.distance_batch_size]
-                distances = distance_fn(q, r)
+        queries = x.detach().to(device=self.device, dtype=compute_dtype)
+        reference_batches = reference.split(self.distance_batch_size)
+        score_batches = []
+        distance_func = self.distance.distance_function
+        for query_batch in queries.split(self.distance_batch_size):
+            nearest = query_batch.new_full((len(query_batch),), torch.inf)
+            for reference_batch in reference_batches:
+                distances = distance_func(query_batch, reference_batch)
                 if not torch.isfinite(distances).all():
                     raise ValueError("Computed novelty distances are not finite.")
-                nearest = torch.minimum(nearest, distances.min(dim=1).values)
-            score_blocks.append(nearest)
-        scores = torch.cat(score_blocks)
-        result = scores.to(device=x.device, dtype=x.dtype)
+                nearest = torch.minimum(nearest, distances.amin(dim=1))
+            score_batches.append(nearest)
+
+        result = torch.cat(score_batches).to(x)
         if not torch.isfinite(result).all():
             raise ValueError(
                 "Computed novelty scores are not finite in the input dtype."
@@ -234,10 +217,11 @@ class GoldNoveltyScorer(GoldDoerWithTable):
     a local PixelTable table (specified by `table_path`) so that repeated calls reuse
     completed scores without duplicating or recomputing them.
 
-    Query vectors are loaded and scored in chunks against the same complete reference.
-    The reference bank and fitted reducer are kept in memory. Refitting is rejected
-    after completed scores exist; after restarting, a fresh scorer must be fitted
-    with the same reference and settings before resuming.
+    The scorer stages query vectors in the result table, fits the reference if supplied,
+    and scores pending vectors in chunks against the complete reference. The reference
+    bank and fitted reducer are kept in memory. Refitting the scorer is rejected
+    once the table has scores. On restart, fit a fresh scorer with the same
+    reference and settings before resuming.
 
     Scoring operates in sequential (single-process) mode; distributed processing is
     not implemented. The table schema is created or validated automatically and
@@ -251,7 +235,8 @@ class GoldNoveltyScorer(GoldDoerWithTable):
             Fitted once on the reference and applied to query vectors without refitting.
         vectorized_key: Key containing vectorized data for scoring. Defaults to "vectorized".
         score_key: Column name for novelty scores. Defaults to "novelty".
-        chunk: Maximum number of query vectors scored together. If None, uses `batch_size`.
+        chunk: Positive integer maximum number of query vectors scored together.
+            Defaults to None, which uses `batch_size`.
         include_vectorized_in_table: Whether original query vectors are retained;
             Dataset inputs always retain vectors. Retained bfloat16 vectors are stored
             and scored as float32 because PixelTable does not support bfloat16 arrays.
@@ -259,15 +244,17 @@ class GoldNoveltyScorer(GoldDoerWithTable):
         collate_fn: Optional collate function for the DataLoader. If None,
             `collate_keeping_sequences_as_sequences` is used.
         to_keep_schema: Optional dictionary defining additional columns to keep from
-            the source dataset/table. Values are PixelTable types.
-        min_pxt_insert_size: Minimum number of rows to accumulate before writing to PixelTable.
+            the source dataset/table. Values are PixelTable types. Identity,
+            vector, and score columns are managed by the scorer.
+        min_pxt_insert_size: Minimum number of source rows to accumulate before inserting into PixelTable.
             Defaults to 100.
         batch_size: Batch size used for dataset ingestion. Defaults to 1.
         num_workers: Number of workers for the PyTorch DataLoader. Defaults to 0.
         allow_existing: Whether to allow using an existing table. Defaults to True.
         drop_table: Whether to drop the scoring table after creating the dataset when
             using `score_in_dataset`. Defaults to False.
-        max_batches: Maximum number of pending score batches computed per call.
+        max_batches: Nonnegative integer limit on pending score batches per call.
+            Defaults to None, which scores all pending batches.
     """
 
     _MINIMAL_SCHEMA: dict[str, type] = {
@@ -310,67 +297,47 @@ class GoldNoveltyScorer(GoldDoerWithTable):
                 Dataset-backed score tables always retain vectors for persisted scoring.
                 Retained bfloat16 vectors are stored as float32 because PixelTable does
                 not support bfloat16 arrays. Scoring uses the stored vector dtype.
-            chunk: Maximum query rows scored together, or None to use `batch_size`.
+            chunk: Positive integer maximum number of query rows scored together.
+                Defaults to None, which uses `batch_size`.
             collate_fn: Optional collate function for the DataLoader.
                 If None, `collate_keeping_sequences_as_sequences` is used.
             to_keep_schema: Optional schema for additional columns to preserve.
-            min_pxt_insert_size: Minimum number of rows to accumulate before writing
-                to PixelTable. Defaults to 100.
-            batch_size: Batch size used for dataset ingestion. Defaults to 1.
-            num_workers: Number of workers for the PyTorch DataLoader. Defaults to 0.
+            min_pxt_insert_size: Positive integer minimum number of source rows to
+                accumulate before inserting into PixelTable. Defaults to 100.
+            batch_size: Positive integer batch size used for dataset ingestion. Defaults to 1.
+            num_workers: Nonnegative integer number of workers for the PyTorch DataLoader.
+                Defaults to 0.
             allow_existing: Whether to allow using an existing table. Defaults to True.
             distribute: Whether to use distributed scoring. Not implemented yet. Defaults to False.
             drop_table: Whether to drop the table after dataset creation when using
                 `score_in_dataset`. Defaults to False.
-            max_batches: Maximum pending scoring batches processed per call.
-                If None, all pending vectors are scored.
+            max_batches: Nonnegative integer limit on pending score batches per call.
+                Defaults to None, which scores all pending batches.
 
         Raises:
-            ValueError: If sizes are invalid, names collide, or a score column is reserved.
+            ValueError: If a numeric option is outside its allowed range or is not an
+                integer, two column keys share a name, a column key uses an identity
+                name, or `to_keep_schema` redefines an identity, vector, or score column.
             NotImplementedError: If `distribute` is True.
         """
-        if chunk is not None and (
-            not isinstance(chunk, int) or isinstance(chunk, bool) or chunk <= 0
-        ):
-            raise ValueError("chunk must be a positive integer or None.")
-        if (
-            not isinstance(batch_size, int)
-            or isinstance(batch_size, bool)
-            or batch_size <= 0
-            or not isinstance(min_pxt_insert_size, int)
-            or isinstance(min_pxt_insert_size, bool)
-            or min_pxt_insert_size <= 0
-        ):
-            raise ValueError(
-                "batch_size and min_pxt_insert_size must be positive integers."
-            )
-        if {score_key, vectorized_key}.intersection(to_keep_schema or {}):
-            raise ValueError("to_keep_schema cannot redefine score or vector columns.")
-        if (
-            not isinstance(num_workers, int)
-            or isinstance(num_workers, bool)
-            or num_workers < 0
-        ):
-            raise ValueError("num_workers must be non-negative.")
-        if max_batches is not None and (
-            not isinstance(max_batches, int)
-            or isinstance(max_batches, bool)
-            or max_batches < 0
-        ):
-            raise ValueError("max_batches must be a non-negative integer or None.")
+        validate_positive_integer(chunk, "chunk", allow_none=True)
+        validate_positive_integer(min_pxt_insert_size, "min_pxt_insert_size")
+        validate_positive_integer(batch_size, "batch_size")
+        validate_positive_integer(num_workers, "num_workers", allow_zero=True)
+        validate_positive_integer(
+            max_batches, "max_batches", allow_zero=True, allow_none=True
+        )
+
         self.scorer = (
             scorer if scorer is not None else GoldNearestNeighborNoveltyScoringTool()
         )
         self.reducer = reducer
-        self.vectorized_key = vectorized_key
-        self.score_key = score_key
-        self.include_vectorized_in_table = include_vectorized_in_table
         self.chunk = chunk
-        if distribute:
-            raise NotImplementedError(
-                "Distributed processing is not implemented for GoldNoveltyScorer."
-            )
-        self._distribute = False
+        self.vectorized_key = vectorized_key
+        self.include_vectorized_in_table = include_vectorized_in_table
+        self.score_key = score_key
+        self.distribute = distribute
+
         super().__init__(
             table_path=table_path,
             allow_existing=allow_existing,
@@ -382,6 +349,10 @@ class GoldNoveltyScorer(GoldDoerWithTable):
             batch_size=batch_size,
             num_workers=num_workers,
         )
+        if {self.score_key, self.vectorized_key}.intersection(
+            self.to_keep_schema or {}
+        ):
+            raise ValueError("to_keep_schema cannot redefine score or vector columns.")
 
     @property
     def distribute(self) -> bool:
@@ -399,137 +370,7 @@ class GoldNoveltyScorer(GoldDoerWithTable):
             raise NotImplementedError(
                 "Distributed processing is not implemented for GoldNoveltyScorer."
             )
-        self._distribute = value
-
-    @staticmethod
-    def _normalize_index(value: Any) -> int:
-        """Validate and normalize a scalar integer sample or vector ID."""
-        if isinstance(value, torch.Tensor):
-            if value.numel() != 1:
-                raise ValueError("Sample and vector IDs must be scalar integers.")
-            value = value.item()
-        if isinstance(value, (bool, np.bool_)) or not isinstance(
-            value, (int, np.integer)
-        ):
-            raise ValueError("Sample and vector IDs must be integer scalars.")
-        return int(value)
-
-    @staticmethod
-    def _vector_numpy(value: torch.Tensor | np.ndarray) -> np.ndarray:
-        """Convert retained vectors to supported PixelTable arrays.
-
-        PixelTable does not accept bfloat16 arrays, so those values are widened to
-        float32 without losing their represented values. Other dtypes are preserved.
-        """
-        if isinstance(value, torch.Tensor):
-            if value.dtype is torch.bfloat16:
-                value = value.to(torch.float32)
-            return value.detach().cpu().numpy()
-        return value
-
-    def fit_scorer(self, reference: Dataset | Table) -> None:
-        """Fit reducer and scoring tool on the complete reference vectors.
-
-        Args:
-            reference: Dataset or table of already-vectorized reference rows.
-
-        Raises:
-            ValueError: If the reference is invalid, the reducer cannot transform,
-                or completed destination scores prevent refitting.
-        """
-        existing = None
-        try:
-            existing = pxt.get_table(self.table_path, if_not_exists="ignore")
-        except Error:
-            pass
-        if (
-            self.scorer.fitted
-            and existing is not None
-            and self.score_key in existing.columns()
-        ):
-            if (
-                existing.where(
-                    get_expr_from_column_name(existing, self.score_key) != None  # noqa: E711
-                ).count()
-                > 0
-            ):
-                raise ValueError(
-                    "Cannot refit a scorer after this destination contains completed scores."
-                )
-        if self.reducer is not None and not self.reducer.supports_transform:
-            raise ValueError(
-                "Novelty scoring requires a reducer that supports transform."
-            )
-        if isinstance(reference, Table):
-            reference = GoldPxtTorchDataset(
-                reference.select(
-                    get_expr_from_column_name(reference, self.vectorized_key)
-                ),
-                keep_cache=False,
-            )
-        dataloader = DataLoader(
-            reference,
-            batch_size=self.batch_size,
-            num_workers=self.num_workers,
-            collate_fn=self.collate_fn,
-        )
-        batches = []
-        for batch in dataloader:
-            if self.vectorized_key not in batch:
-                raise ValueError(
-                    f"Dataset does not contain required key {self.vectorized_key}."
-                )
-            self.scorer._validate_input(batch[self.vectorized_key])
-            batches.append(batch[self.vectorized_key])
-        if not batches:
-            raise ValueError("The novelty reference must not be empty.")
-        vectors = torch.cat(batches)
-        if self.reducer is not None:
-            expected_rows = vectors.shape[0]
-            self.reducer.fit(vectors)
-            vectors = self.reducer.transform(vectors)
-            self._validate_reduced(vectors, expected_rows)
-        self.scorer.fit(vectors)
-
-    @staticmethod
-    def _validate_reduced(vectors: torch.Tensor, expected_rows: int) -> None:
-        if (
-            not isinstance(vectors, torch.Tensor)
-            or vectors.ndim != 2
-            or vectors.shape[0] != expected_rows
-            or not vectors.is_floating_point()
-            or not torch.isfinite(vectors).all()
-        ):
-            raise ValueError(
-                "Reducer output must be 2D and preserve the number of rows."
-            )
-
-    def score_in_dataset(
-        self, to_score: Dataset | Table, reference: Dataset | Table | None = None
-    ) -> GoldPxtTorchDataset:
-        """Score vectorized samples and return results as a GoldPxtTorchDataset.
-
-        This is a convenience wrapper that runs `score_in_table` to populate or
-        resume the scoring table, then wraps the results in a GoldPxtTorchDataset.
-        If `drop_table` is True, the table is removed after the dataset is created.
-
-        Args:
-            to_score: Dataset or table of already-vectorized query rows.
-            reference: If provided, fit the reducer and scorer before scoring. An already
-                fitted scorer is refit, subject to the scored-destination guard.
-
-        Returns:
-            Snapshot-backed dataset with IDs and novelty scores.
-
-        Raises:
-            ValueError: If no fitted scorer/reference is available or input/table
-                schema validation fails.
-        """
-        table = self.score_in_table(to_score, reference)
-        dataset = GoldPxtTorchDataset(table, keep_cache=True)
-        if self.drop_table:
-            pxt.drop_table(table)
-        return dataset
+        self._distribute = False
 
     def score_in_table(
         self, to_score: Dataset | Table, reference: Dataset | Table | None = None
@@ -574,11 +415,44 @@ class GoldNoveltyScorer(GoldDoerWithTable):
         scoring_table = self.setup_scoring_table(to_score)
         if reference is not None:
             self.fit_scorer(reference)
-        self._sequential_score(
-            scoring_table,
-            to_score=to_score if isinstance(to_score, Table) else scoring_table,
-        )
+        source_table = to_score if isinstance(to_score, Table) else scoring_table
+        if self.distribute:
+            self._distributed_score(scoring_table, source_table)
+        else:
+            self._sequential_score(scoring_table, source_table)
         return scoring_table
+
+    def score_in_dataset(
+        self, to_score: Dataset | Table, reference: Dataset | Table | None = None
+    ) -> GoldPxtTorchDataset:
+        """Score vectorized samples and return results as a GoldPxtTorchDataset.
+
+        This is a convenience wrapper that runs `score_in_table` to populate or
+        resume the scoring table, then wraps the results in a GoldPxtTorchDataset.
+        If `drop_table` is True, the table is removed after the dataset is created.
+        The cached dataset remains usable after deletion and contains raw per-vector
+        scores. Use `get_novelty_scores` to retrieve scores by vector or sample ID.
+
+        Args:
+            to_score: Dataset or table of already-vectorized query rows.
+            reference: If provided, fit the reducer and scorer before scoring. An already
+                fitted scorer is refit, subject to the scored-destination guard.
+
+        Returns:
+            Snapshot-backed dataset with IDs and novelty scores.
+
+        Raises:
+            ValueError: If no fitted scorer/reference is available or input/table
+                schema validation fails.
+        """
+        scored_table = self.score_in_table(to_score, reference)
+
+        dataset = GoldPxtTorchDataset(scored_table, keep_cache=True)
+
+        if self.drop_table:
+            pxt.drop_table(self.table_path)
+
+        return dataset
 
     def setup_scoring_table(self, to_score: Dataset | Table) -> Table:
         """Set up the scoring table based on the source dataset or table.
@@ -589,7 +463,8 @@ class GoldNoveltyScorer(GoldDoerWithTable):
 
         Returns:
             A PixelTable Table populated with source indices and retained columns.
-            Existing scores are preserved; new rows have null scores.
+            Existing scores are preserved and new rows have null scores. This
+            method stages rows without running the scorer.
 
         Raises:
             ValueError: If `allow_existing` is False and the table already exists,
@@ -608,11 +483,12 @@ class GoldNoveltyScorer(GoldDoerWithTable):
                     f"Table at path {self.table_path} already exists and allow_existing is set to False."
                 )
             check_pxt_table_has_primary_key(old_scoring_table, {"idx_vector"})
+            scoring_table_cols = set(old_scoring_table.columns())
             expected_schema = self._MINIMAL_SCHEMA | (self.to_keep_schema or {})
-            if self.score_key in old_scoring_table.columns():
+            if self.score_key in scoring_table_cols:
                 expected_schema[self.score_key] = pxt.Float
             for key, schema_type in expected_schema.items():
-                if key not in old_scoring_table.columns():
+                if key not in scoring_table_cols:
                     raise ValueError(f"Existing result table is missing column {key}.")
                 expected = ColumnType.normalize_type(schema_type)
                 actual = get_expr_from_column_name(old_scoring_table, key).col_type
@@ -620,7 +496,10 @@ class GoldNoveltyScorer(GoldDoerWithTable):
                     raise ValueError(f"Existing column {key} has an incompatible type.")
 
         if isinstance(to_score, Table):
-            scoring_table = self._scoring_table_from_table(to_score, old_scoring_table)
+            scoring_table = self._scoring_table_from_table(
+                score_from=to_score,
+                old_scoring_table=old_scoring_table,
+            )
         else:
             scoring_table = self._scoring_table_from_dataset(
                 to_score, old_scoring_table
@@ -630,7 +509,19 @@ class GoldNoveltyScorer(GoldDoerWithTable):
     def _scoring_table_from_table(
         self, score_from: Table, old_scoring_table: Table | None
     ) -> Table:
-        """Create or validate the scoring table schema from a PixelTable table."""
+        """Create or validate the scoring table schema from a PixelTable table.
+
+        Args:
+            score_from: The source PixelTable table with query vectors.
+            old_scoring_table: Existing result table when resuming, or None.
+
+        Returns:
+            The scoring table populated with source rows and any existing scores.
+
+        Raises:
+            ValueError: If a required column is missing, a vector column has an
+                incompatible shape, or source rows fail validation.
+        """
         required_columns = {"idx", "idx_vector", self.vectorized_key}
         required_columns.update(self.to_keep_schema or {})
         if missing := required_columns.difference(score_from.columns()):
@@ -646,13 +537,15 @@ class GoldNoveltyScorer(GoldDoerWithTable):
             minimal_schema=minimal_schema,
             primary_key="idx_vector",
         )
-        if self.score_key not in scoring_table.columns():
+        scoring_table_cols = scoring_table.columns()
+        if self.score_key not in scoring_table_cols:
             scoring_table.add_column(if_exists="error", **{self.score_key: pxt.Float})
+
         if self.include_vectorized_in_table:
             vector_type = get_expr_from_column_name(
                 score_from, self.vectorized_key
             ).col_type
-            if self.vectorized_key not in scoring_table.columns():
+            if self.vectorized_key not in scoring_table_cols:
                 scoring_table.add_column(
                     if_exists="error",
                     **{self.vectorized_key: vector_type},  # type: ignore[arg-type]
@@ -680,17 +573,34 @@ class GoldNoveltyScorer(GoldDoerWithTable):
     def _scoring_table_from_dataset(
         self, score_from: Dataset, old_scoring_table: Table | None
     ) -> Table:
-        """Create or validate the scoring table schema from a PyTorch Dataset."""
+        """Create or validate the scoring table schema from a PyTorch Dataset.
+
+        Args:
+            score_from: The source dataset with query vectors.
+            old_scoring_table: Existing result table when resuming, or None.
+
+        Returns:
+            The scoring table populated with source rows and any existing scores.
+            Dataset inputs always retain their vectors in the result table.
+
+        Raises:
+            ValueError: If the dataset is empty, its vectors or identities are
+                invalid, or the result table has an incompatible schema.
+        """
         if hasattr(score_from, "__len__") and len(score_from) == 0:
             raise ValueError("Vector source must not be empty.")
         sample = get_dataset_sample_dict(
             score_from, collate_fn=self.collate_fn, expected=[self.vectorized_key]
         )
-        self.scorer._validate_input(sample[self.vectorized_key])
-        vectorized_value = self._vector_numpy(sample[self.vectorized_key][0])
-        vector_type: type = pxt.Array[
-            tuple(vectorized_value.shape), vectorized_value.dtype.type
-        ]  # type: ignore[misc]
+        sample_vectors = sample[self.vectorized_key]
+        validate_vectorized_input(sample_vectors, "GoldNoveltyScoringTool")
+        sample_vector = sample_vectors[0]
+        vector_dtype = (
+            np.float32
+            if sample_vector.dtype == torch.bfloat16
+            else sample_vector.detach().cpu().numpy().dtype.type
+        )
+        vector_type: type = pxt.Array[tuple(sample_vector.shape), vector_dtype]  # type: ignore[misc]
 
         minimal_schema = self._MINIMAL_SCHEMA.copy()
         if self.to_keep_schema is not None:
@@ -702,7 +612,8 @@ class GoldNoveltyScorer(GoldDoerWithTable):
             minimal_schema=minimal_schema,
             primary_key="idx_vector",
         )
-        if self.vectorized_key not in scoring_table.columns():
+        scoring_table_cols = scoring_table.columns()
+        if self.vectorized_key not in scoring_table_cols:
             scoring_table.add_column(
                 if_exists="error", **{self.vectorized_key: vector_type}
             )
@@ -710,11 +621,13 @@ class GoldNoveltyScorer(GoldDoerWithTable):
             get_expr_from_column_name(scoring_table, self.vectorized_key).col_type
         ):
             raise ValueError("Existing vector column has an incompatible shape.")
-        if self.score_key not in scoring_table.columns():
+        if self.score_key not in scoring_table_cols:
             scoring_table.add_column(if_exists="error", **{self.score_key: pxt.Float})
 
         self._add_rows_to_scoring_table_from_dataset(
-            score_from, scoring_table, include_vectorized=True
+            score_from=score_from,
+            scoring_table=scoring_table,
+            include_vectorized=True,
         )
         return scoring_table
 
@@ -728,6 +641,15 @@ class GoldNoveltyScorer(GoldDoerWithTable):
 
         Missing vector IDs default to row positions; missing sample IDs default to
         vector IDs. All rows are ingested before scoring, independently of `max_batches`.
+
+        Args:
+            score_from: The source dataset with query vectors.
+            scoring_table: The result table to populate.
+            include_vectorized: Whether to copy the vectors into the result table.
+
+        Raises:
+            ValueError: If vectors or required metadata are missing or invalid,
+                or a source vector ID occurs more than once.
         """
         dataloader = DataLoader(
             score_from,
@@ -752,7 +674,7 @@ class GoldNoveltyScorer(GoldDoerWithTable):
                     f"Dataset does not contain required key {self.vectorized_key}."
                 )
             vectors = batch[self.vectorized_key]
-            self.scorer._validate_input(vectors)
+            validate_vectorized_input(vectors, "GoldNoveltyScoringTool")
             if feature_dim is not None and vectors.shape[1] != feature_dim:
                 raise ValueError("All source vectors must have the same feature width.")
             feature_dim = vectors.shape[1]
@@ -764,7 +686,22 @@ class GoldNoveltyScorer(GoldDoerWithTable):
             if "idx" not in batch:
                 batch["idx"] = batch["idx_vector"]
             for key in ("idx", "idx_vector"):
-                batch[key] = [self._normalize_index(value) for value in batch[key]]
+                normalized_indices: list[int] = []
+                for value in batch[key]:
+                    if isinstance(value, torch.Tensor):
+                        if value.numel() != 1:
+                            raise ValueError(
+                                "Sample and vector IDs must be scalar integers."
+                            )
+                        value = value.item()
+                    if isinstance(value, bool) or not isinstance(
+                        value, (int, np.integer)
+                    ):
+                        raise ValueError(
+                            "Sample and vector IDs must be integer scalars."
+                        )
+                    normalized_indices.append(int(value))
+                batch[key] = normalized_indices
             indices = batch["idx_vector"]
             if len(set(indices)) != len(indices) or seen_indices.intersection(indices):
                 raise ValueError("Source idx_vector values must be unique.")
@@ -786,12 +723,14 @@ class GoldNoveltyScorer(GoldDoerWithTable):
                         batch[key] = batch[key].detach().cpu().numpy()
             if include_vectorized:
                 to_insert_keys.append(self.vectorized_key)
-                batch[self.vectorized_key] = self._vector_numpy(
-                    batch[self.vectorized_key]
-                )
-            ready_to_insert.extend(
-                make_batch_ready_for_table(batch, to_insert_keys, "idx_vector")
+                vectors_to_store = batch[self.vectorized_key]
+                if vectors_to_store.dtype == torch.bfloat16:
+                    vectors_to_store = vectors_to_store.to(torch.float32)
+                batch[self.vectorized_key] = vectors_to_store.detach().cpu().numpy()
+            batch_as_list = make_batch_ready_for_table(
+                batch, to_insert_keys, "idx_vector"
             )
+            ready_to_insert.extend(batch_as_list)
             if len(ready_to_insert) >= self.min_pxt_insert_size:
                 scoring_table.insert(ready_to_insert)
                 ready_to_insert = []
@@ -800,61 +739,94 @@ class GoldNoveltyScorer(GoldDoerWithTable):
         if not seen_indices:
             raise ValueError("Vector source must not be empty.")
 
-    def _sequential_score(self, table: Table, to_score: Table) -> None:
-        """Score pending query chunks against the same fitted reference."""
-        score_col = get_expr_from_column_name(table, self.score_key)
-        pending = [
+    def _distributed_score(self, scoring_table: Table, to_score: Table) -> None:
+        """Reject distributed scoring.
+
+        Args:
+            scoring_table: The table in which to store novelty scores.
+            to_score: The source table containing query vectors.
+
+        Raises:
+            NotImplementedError: Distributed scoring is unavailable.
+        """
+        raise NotImplementedError("Distributed novelty scoring is not implemented.")
+
+    def _sequential_score(self, scoring_table: Table, to_score: Table) -> None:
+        """Score pending query chunks against the same fitted reference.
+
+        Each completed chunk is written to PixelTable by vector ID.
+
+        Args:
+            scoring_table: The table in which to store novelty scores.
+            to_score: The source table containing query vectors.
+
+        Raises:
+            ValueError: If a pending vector is missing or scoring returns invalid data.
+        """
+        score_col = get_expr_from_column_name(scoring_table, self.score_key)
+        scoring_pool = scoring_table.where(score_col == None)  # noqa: E711
+        pending_vector_indices = [
             int(row["idx_vector"])
-            for row in table.where(score_col == None)  # noqa: E711
-            .select(table.idx_vector)
-            .collect()
+            for row in scoring_pool.select(scoring_table.idx_vector).collect()
         ]
-        vector_table = table if self.include_vectorized_in_table else to_score
+        if not pending_vector_indices:
+            return
+
+        vector_table = scoring_table if self.include_vectorized_in_table else to_score
         vector_col = get_expr_from_column_name(vector_table, self.vectorized_key)
         batch_size = self.chunk or self.batch_size
-        updates: list[dict[str, Any]] = []
-        for batch_idx, start in enumerate(range(0, len(pending), batch_size)):
-            if self.max_batches is not None and batch_idx >= self.max_batches:
+
+        for chunk_id, start in enumerate(
+            range(0, len(pending_vector_indices), batch_size)
+        ):
+            if self.max_batches is not None and chunk_id >= self.max_batches:
                 break
-            ids = pending[start : start + batch_size]
+            chunk_vector_indices = pending_vector_indices[start : start + batch_size]
             rows = (
-                vector_table.where(vector_table.idx_vector.isin(ids))
+                vector_table.where(vector_table.idx_vector.isin(chunk_vector_indices))
                 .select(vector_table.idx_vector, vector_col)
                 .collect()
             )
-            if len(rows) != len(ids):
+            if len(rows) != len(chunk_vector_indices):
                 raise ValueError(
                     "A pending destination vector is missing from the supplied source."
                 )
+
+            indices = [int(row["idx_vector"]) for row in rows]
             vectors = torch.stack(
                 [torch.as_tensor(row[self.vectorized_key]) for row in rows]
             )
             scores = self._compute_scores(vectors)
-            updates.extend(
-                {
-                    "idx_vector": int(row["idx_vector"]),
-                    self.score_key: float(score.item()),
-                }
-                for row, score in zip(rows, scores)
+            scoring_table.batch_update(
+                [
+                    {"idx_vector": idx, self.score_key: float(score.item())}
+                    for idx, score in zip(indices, scores, strict=True)
+                ]
             )
-            if len(updates) >= self.min_pxt_insert_size:
-                table.batch_update(updates)
-                updates = []
-            logger.info(f"Scored {len(rows)} vectors from batch {batch_idx}")
-        if updates:
-            table.batch_update(updates)
+            logger.info(f"Scored {len(indices)} vectors from chunk {chunk_id}")
 
     def _compute_scores(self, vectors: torch.Tensor) -> torch.Tensor:
-        """Transform query vectors with the fitted reducer and compute their scores."""
+        """Apply the fitted reducer and score query vectors in their input order.
+
+        Args:
+            vectors: Query vectors shaped `(num_vectors, feature_dim)`.
+
+        Returns:
+            A tensor of shape `(num_vectors,)` containing one score per query.
+
+        Raises:
+            ValueError: If the reducer changes the row count or returns invalid
+                vectors, or the scorer fails to return one finite score per query.
+        """
         if self.reducer is not None:
             expected_rows = len(vectors)
             vectors = self.reducer.transform(vectors)
             self._validate_reduced(vectors, expected_rows)
+
         scores = self.scorer.score(vectors)
         if (
             not isinstance(scores, torch.Tensor)
-            or scores.ndim != 1
-            or len(scores) != len(vectors)
+            or scores.shape != (len(vectors),)
             or not torch.isfinite(scores).all()
         ):
             raise ValueError(
@@ -862,63 +834,119 @@ class GoldNoveltyScorer(GoldDoerWithTable):
             )
         return scores
 
-    def estimate_computation_time(self, dataset: Dataset) -> float | None:
-        """Return None because generic scorer/reducer estimation is not state-safe.
+    def fit_scorer(self, reference: Dataset | Table) -> None:
+        """Fit reducer and scoring tool on the complete reference vectors.
 
         Args:
-            dataset: Dataset whose scoring time would be estimated.
+            reference: Dataset or table of already-vectorized reference rows.
 
-        Returns:
-            None; arbitrary tool runtimes cannot be estimated safely.
+        Raises:
+            ValueError: If the reference is invalid, the reducer cannot transform,
+                or completed destination scores prevent refitting.
         """
-        return None
+        try:
+            existing = pxt.get_table(self.table_path, if_not_exists="ignore")
+        except Error:
+            existing = None
+        if (
+            self.scorer.fitted
+            and existing is not None
+            and self.score_key in existing.columns()
+        ):
+            if (
+                existing.where(
+                    get_expr_from_column_name(existing, self.score_key) != None  # noqa: E711
+                ).count()
+                > 0
+            ):
+                raise ValueError(
+                    "Cannot refit a scorer after this destination contains completed scores."
+                )
+        if self.reducer is not None and not self.reducer.supports_transform:
+            raise ValueError(
+                "Novelty scoring requires a reducer that supports transform."
+            )
+        if isinstance(reference, Table):
+            reference = GoldPxtTorchDataset(
+                reference.select(
+                    get_expr_from_column_name(reference, self.vectorized_key)
+                ),
+                keep_cache=False,
+            )
+        dataloader = DataLoader(
+            reference,
+            batch_size=self.batch_size,
+            num_workers=self.num_workers,
+            collate_fn=self.collate_fn,
+        )
+        batches = []
+        for batch in dataloader:
+            if self.vectorized_key not in batch:
+                raise ValueError(
+                    f"Dataset does not contain required key {self.vectorized_key}."
+                )
+            validate_vectorized_input(
+                batch[self.vectorized_key], "GoldNoveltyScoringTool"
+            )
+            batches.append(batch[self.vectorized_key])
+        if not batches:
+            raise ValueError("The novelty reference must not be empty.")
+        vectors = torch.cat(batches)
+        if self.reducer is not None:
+            expected_rows = vectors.shape[0]
+            self.reducer.fit(vectors)
+            vectors = self.reducer.transform(vectors)
+            self._validate_reduced(vectors, expected_rows)
+        self.scorer.fit(vectors)
+
+    @staticmethod
+    def _validate_reduced(vectors: torch.Tensor, expected_rows: int) -> None:
+        """Check that reduction returned one finite floating vector per input row."""
+        if (
+            not isinstance(vectors, torch.Tensor)
+            or vectors.ndim != 2
+            or vectors.shape[0] != expected_rows
+            or not vectors.is_floating_point()
+            or not torch.isfinite(vectors).all()
+        ):
+            raise ValueError(
+                "Reducer output must be 2D and preserve the number of rows."
+            )
 
     @staticmethod
     def get_novelty_scores(
-        table: Table, score_key: str = "novelty"
+        table: Table,
+        score_key: str = "novelty",
+        *,
+        idx_key: Literal["idx", "idx_vector"] = "idx_vector",
     ) -> dict[int, float]:
-        """Get computed scores keyed by `idx_vector`, omitting null rows.
+        """Retrieve computed novelty scores by vector or sample ID.
 
         Args:
-            table: Scored novelty table.
-            score_key: Score column name.
+            table: PixelTable table with raw per-vector scores. Pending rows are
+                omitted.
+            score_key: Score column name. Defaults to "novelty".
+            idx_key: "idx_vector" returns individual vector scores (the default).
+                "idx" returns the maximum available vector score for each sample.
 
         Returns:
-            Mapping from vector IDs to computed scores.
-        """
-        return {
-            int(r["idx_vector"]): float(r[score_key])
-            for r in table.select(
-                table.idx_vector, get_expr_from_column_name(table, score_key)
-            ).collect()
-            if r[score_key] is not None
-        }
-
-    @staticmethod
-    def get_novel_indices(
-        table: Table, threshold: float, idx_key: str = "idx", score_key: str = "novelty"
-    ) -> set[int]:
-        """Return distinct sample/vector IDs with scores strictly above threshold.
-
-        Args:
-            table: Scored novelty table.
-            threshold: Finite distance threshold using strict `score > threshold`.
-            idx_key: Either sample `idx` or individual `idx_vector`.
-            score_key: Score column name.
-
-        Returns:
-            Set of matching IDs. With `idx_key="idx"`, any novel vector marks its sample.
+            A dictionary mapping the requested IDs to their novelty scores.
 
         Raises:
-            ValueError: If the index key is unsupported or the threshold is not finite.
+            ValueError: If the index key is unsupported.
         """
         if idx_key not in ("idx", "idx_vector"):
             raise ValueError("idx_key must be either 'idx' or 'idx_vector'.")
-        if not np.isfinite(threshold):
-            raise ValueError("threshold must be finite.")
-        idx = get_expr_from_column_name(table, idx_key)
-        score = get_expr_from_column_name(table, score_key)
-        return {
-            int(row[idx_key])
-            for row in table.where(score > threshold).select(idx).distinct().collect()
-        }
+        idx_col = get_expr_from_column_name(table, idx_key)
+        score_col = get_expr_from_column_name(table, score_key)
+        rows = table.where(score_col != None).select(idx_col, score_col).collect()  # noqa: E711
+
+        if idx_key == "idx_vector":
+            return {int(row[idx_key]): float(row[score_key]) for row in rows}
+
+        scores: dict[int, float] = {}
+        for row in rows:
+            idx = int(row[idx_key])
+            score = float(row[score_key])
+            scores[idx] = max(scores.get(idx, score), score)
+        return scores

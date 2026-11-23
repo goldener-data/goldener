@@ -132,7 +132,9 @@ class CountingNearestScorer(GoldNearestNeighborNoveltyScoringTool):
         return super().score(x)
 
 
-def test_table_scoring_resumes_pending_rows_and_preserves_vector_ids(clean_unit_test):
+def test_table_scoring_resumes_pending_rows_and_preserves_vector_ids(
+    clean_unit_test, monkeypatch
+):
     reference = pxt.create_table(
         "unit_test.novelty_reference",
         source=[
@@ -194,21 +196,34 @@ def test_table_scoring_resumes_pending_rows_and_preserves_vector_ids(clean_unit_
         chunk=1,
         max_batches=1,
     )
-    result = restarted_scorer.score_in_table(source, reference)
+    score = restarted_tool.score
+
+    def interrupt_after_one_chunk(vectors):
+        if restarted_tool.calls == 1:
+            raise RuntimeError("interrupted")
+        return score(vectors)
+
+    restarted_scorer.max_batches = None
+    with monkeypatch.context() as patch:
+        patch.setattr(restarted_tool, "score", interrupt_after_one_chunk)
+        with pytest.raises(RuntimeError, match="interrupted"):
+            restarted_scorer.score_in_table(source, reference)
     assert restarted_tool.calls == 1
+    partially_scored = GoldNoveltyScorer.get_novelty_scores(result, "novelty_score")
+    assert len(partially_scored) == 2
+    assert partially_scored[100] == 0.0
+
+    restarted_scorer.max_batches = 1
     result = restarted_scorer.score_in_table(source)
     assert restarted_tool.calls == 2
     assert GoldNoveltyScorer.get_novelty_scores(
         result, "novelty_score"
     ) == pytest.approx({100: 0.0, 105: 1.0, 111: 2.0})
+    assert GoldNoveltyScorer.get_novelty_scores(
+        result, "novelty_score", idx_key="idx"
+    ) == pytest.approx({1: 1.0, 2: 2.0})
     result = restarted_scorer.score_in_table(source)
     assert restarted_tool.calls == 2
-    assert GoldNoveltyScorer.get_novel_indices(
-        result, 1.0, score_key="novelty_score"
-    ) == {2}
-    assert GoldNoveltyScorer.get_novel_indices(
-        result, 1.0, idx_key="idx_vector", score_key="novelty_score"
-    ) == {111}
     assert result.count() == 3
     rows = result.select(result.idx_vector, result.features, result.attrs).collect()
     assert {row["idx_vector"] for row in rows} == {100, 105, 111}
@@ -443,7 +458,7 @@ def test_existing_scalar_vector_column_is_rejected(clean_unit_test):
     ("sample", "message"),
     [
         ({"vectorized": torch.tensor(1.0)}, "shape"),
-        ({"vectorized": torch.tensor([1, 2])}, "floating-point"),
+        ({"vectorized": torch.tensor([1, 2])}, "floating point"),
         ({"vectorized": torch.tensor([float("inf"), 0.0])}, "finite"),
         (
             {"vectorized": torch.tensor([1.0, 0.0]), "idx_vector": 1.5},

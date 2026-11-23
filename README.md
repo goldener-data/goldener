@@ -131,52 +131,32 @@ gs = GoldSelector(
 )
 ```
 
-## Scoring novel vectors against a reference
+## Reviewing annotations on new samples
 
-Novelty scoring compares each vector with a fixed bank of reference vectors. The default scorer returns the nearest
-cosine distance; larger values mean greater novelty, but the scores are distances rather than calibrated probabilities.
-When a sample has multiple vectors, use `get_novel_indices(..., idx_key="idx")` to mark the sample novel if any vector
-exceeds the threshold. A zero vector has cosine distance 1 under Goldener's shared cosine distance helper.
+Suppose you receive a new batch of product photos labeled “damaged” and need to check the labels before adding
+the photos to your training set. Use previously reviewed photos with the same label as a reference and prioritize
+new photos that look least like those examples.
+
+`GoldNoveltyScorer` compares the new and reviewed photos using their embeddings. By default, each vector's score
+is its cosine distance to the closest reference vector. If a photo has multiple vectors, retrieving scores by `idx`
+uses the highest vector score for that photo.
 
 ```python
-from goldener import (
-    GoldDescriptor,
-    GoldTensorVectorizationTool,
-    GoldNoveltyScorer,
-    GoldTorchEmbeddingTool,
-    GoldTorchEmbeddingToolConfig,
-)
-from goldener.vectorize import GoldVectorizer
+from goldener import GoldNoveltyScorer
 
-embedder = GoldTorchEmbeddingTool(GoldTorchEmbeddingToolConfig(model=my_model))
-reference_descriptor = GoldDescriptor(
-    table_path="local.reference_descriptions", embedder=embedder
-)
-query_descriptor = GoldDescriptor(
-    table_path="local.query_descriptions", embedder=embedder
-)
-vectorizer = GoldTensorVectorizationTool()
-reference_vectors = GoldVectorizer(
-    table_path="local.reference_vectors", vectorizer=vectorizer
-).vectorize_in_table(reference_descriptor.describe_in_table(reference_dataset))
-query_vectors = GoldVectorizer(
-    table_path="local.query_vectors", vectorizer=vectorizer
-).vectorize_in_table(query_descriptor.describe_in_table(query_dataset))
+# reviewed_vectors and new_vectors are PixelTable tables of photos labeled "damaged",
+# produced with the same embedding model and GoldVectorizer settings.
+scorer = GoldNoveltyScorer(table_path="damage_annotation_scores", chunk=256)
+score_table = scorer.score_in_table(new_vectors, reference=reviewed_vectors)
+sample_scores = scorer.get_novelty_scores(score_table, idx_key="idx")
 
-novelty = GoldNoveltyScorer(table_path="local.novelty_scores", chunk=256)
-scores = novelty.score_in_table(query_vectors, reference=reference_vectors)
-novel_sample_ids = novelty.get_novel_indices(scores, threshold=0.25, idx_key="idx")
+# Review up to 50 new photos, starting with the most unusual.
+review_ids = sorted(sample_scores, key=lambda idx: sample_scores[idx], reverse=True)[:50]
 ```
 
-The complete reference and optional fitted reducer are kept in memory. Query vectors are loaded and scored in chunks
-against that same reference. Results are stored by `idx_vector`, and repeated calls reuse completed scores.
-`max_batches` limits pending score batches per call; all source rows are staged before scoring. After restarting, fit a
-new scorer with the same reference and settings before resuming. Use a new output table to change the reference.
-
-Dataset-backed scoring tables retain original vectors; table-backed results retain them only when
-`include_vectorized_in_table=True`. Retained bfloat16 vectors are stored as float32 because PixelTable does not support
-bfloat16 arrays; scoring uses the stored vector dtype. The nearest-neighbor tool keeps the complete reference in memory
-and batches pairwise distances using `distance_batch_size`. Distributed scoring is not implemented.
+Use `review_ids` to open the flagged photos and compare their annotations with reviewed examples. A high score
+can surface a labeling mistake or a valid example of damage missing from the reference set. Correct the mistakes
+and keep valid examples that expand your training set's coverage.
 
 ## Splitting annotated data in train and validation sets
 
