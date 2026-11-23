@@ -1,5 +1,7 @@
 # Reduce embedding width and keep a common reference space
 
+![Synthetic vibration and temperature traces for a reference time window and a later time window.](illustrations/reduction-signal-windows.jpg)
+
 ## TL;DR
 
 Reduce embedding width to make similarity searches cheaper. Fit a reusable projection on reference data for comparisons over time, or use t-SNE for a one-time view of a collection.

@@ -1,5 +1,7 @@
 # Reweight training samples by embedding density
 
+![An illustrative shipment log with three metro shipments and one each on coastal and rural routes.](illustrations/weighting-shipment-records.jpg)
+
 ## TL;DR
 
 Use `GoldDensityWeigher` to give samples in sparse embedding neighborhoods more influence. Look up weights by sample ID and use them for sampling or loss weighting.

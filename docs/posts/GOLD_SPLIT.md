@@ -1,5 +1,7 @@
 # Split labeled data with semantic coverage in mind
 
+![Three filmstrips show a blue ball rolling past a cardboard box from different viewpoints.](illustrations/splitting-video-frames.jpg)
+
 ## TL;DR
 
 Use `GoldSplitter` to assign samples to disjoint sets with semantic coverage in mind. Earlier sets get first choice, and the last receives the remainder. Establish any grouping or time boundaries before splitting.

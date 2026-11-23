@@ -1,5 +1,7 @@
 # Put different kinds of examples in each training batch
 
+![Six synthetic chest radiographs arranged as four fixed-room samples and two portable samples.](illustrations/batching-radiograph-samples.jpg)
+
 ## TL;DR
 
 Use `GoldClusterizedBatchSampler` to draw from embedding clusters in each training batch. Choose whether to repeat smaller clusters, end the epoch early, or keep drawing from the clusters that still have samples.

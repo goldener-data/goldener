@@ -1,5 +1,7 @@
 # Use embedding clusters to investigate model errors
 
+![Four fictional support tickets with subjects about duplicate charges and missing packages.](illustrations/clustering-ticket-records.jpg)
+
 ## TL;DR
 
 Use `GoldClusterizer` to group similar vectors and retrieve the source samples for review. For monitoring over time, fit a clustering tool once and use `predict` to assign new vectors to the same groups.
