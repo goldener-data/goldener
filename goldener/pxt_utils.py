@@ -448,7 +448,7 @@ def validate_goldener_metadata(
 
     Raises:
         ValueError: If the table has no entry for `doer_id`, or if it records a
-            different input identifier than the one being used.
+            different input identifier or type than the one being used.
     """
     metadata = table.get_metadata().get("custom_metadata")
     entries = metadata.get("goldener") if isinstance(metadata, dict) else None
@@ -459,10 +459,14 @@ def validate_goldener_metadata(
             "Goldener input metadata."
         )
     stored_id = entry.get("input_id")
-    if input_id is not None and not _same_input_id(stored_id, input_id, input_type):
+    stored_type = entry.get("input_type")
+    if input_id is not None and (
+        stored_type != input_type or not _same_input_id(stored_id, input_id, input_type)
+    ):
         raise ValueError(
-            f"Table at {table_path} was created from input {stored_id!r}, "
-            f"not {input_id!r}."
+            f"Table at {table_path} was created from input {stored_id!r} "
+            f"(type {stored_type!r}), not input {input_id!r} "
+            f"(type {input_type!r})."
         )
 
 

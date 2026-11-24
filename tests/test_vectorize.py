@@ -666,6 +666,28 @@ class TestGoldVectorizer:
                 input_type,
             )
 
+        wrong_type_table = pxt.create_table(
+            "unit_test.version_wrong_type",
+            schema=schema,
+            primary_key="idx",
+            custom_metadata={
+                "goldener": {
+                    "GoldVectorizer": {
+                        "input_id": stored_id,
+                        "input_type": "DummyDataset",
+                    }
+                }
+            },
+        )
+        with pytest.raises(ValueError, match="type 'DummyDataset'"):
+            validate_goldener_metadata(
+                wrong_type_table,
+                "unit_test.version_wrong_type",
+                "GoldVectorizer",
+                input_id,
+                input_type,
+            )
+
     def test_vectorize_in_table_with_plain_multilabel_and_default_collate(self):
         """Regression test for #202 (GoldVectorizer flavor).
 
