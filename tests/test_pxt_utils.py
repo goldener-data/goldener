@@ -16,7 +16,7 @@ from goldener.pxt_utils import (
     get_column_distinct_ratios,
     get_array_column_shapes_from_table,
     get_sample_row_from_idx,
-    sample_indices_for_vectors,
+    sample_idx_for_vectors,
     get_valid_table,
     make_batch_ready_for_table,
     get_pxt_table_primary_keys,
@@ -51,10 +51,10 @@ def test_sample_idx_for_vectors_preserves_requested_order():
         if_exists="replace_force",
     )
     try:
-        ids = sample_indices_for_vectors(table, [11, 10, 3])
+        ids = sample_idx_for_vectors(table, [11, 10, 3])
         assert torch.equal(ids, torch.tensor([4, 4, 7]))
         with pytest.raises(ValueError, match="missing sample idx"):
-            sample_indices_for_vectors(table, [11, 99])
+            sample_idx_for_vectors(table, [11, 99])
     finally:
         pxt.drop_dir("test_pxt_utils_idx", force=True)
 
