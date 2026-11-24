@@ -764,7 +764,10 @@ class TestGoldDensityWeigher:
         )
 
     @pytest.mark.parametrize("random_state", [None, 42], ids=["unseeded", "seeded"])
-    def test_interrupted_chunk_resume_skips_committed_tool_calls(self, random_state):
+    @pytest.mark.parametrize("partial_chunk", [False, True], ids=["whole", "partial"])
+    def test_interrupted_chunk_resume_skips_committed_tool_calls(
+        self, random_state, partial_chunk
+    ):
         dataset = VectorDataset(
             [
                 {"idx": index, "vectorized": torch.tensor([float(index)])}
@@ -794,6 +797,13 @@ class TestGoldDensityWeigher:
         with pytest.raises(RuntimeError, match="Not all vectors have scores"):
             GoldDensityWeigher.get_weights_per_idx(interrupted_table)
 
+        if partial_chunk:
+            missing_idx = next(iter(computed))
+            interrupted_table.batch_update(
+                [{"idx_vector": missing_idx, "weight": None}]
+            )
+            del computed[missing_idx]
+
         resumed_tool = InterruptingWeigher(interrupt=False)
         resumed = GoldDensityWeigher(
             table_path,
@@ -804,7 +814,8 @@ class TestGoldDensityWeigher:
         )
         result = resumed.weigh_in_table(dataset)
 
-        assert resumed_tool.calls == 1
+        assert resumed_tool.calls == (2 if partial_chunk else 1)
+        assert resumed_tool.batch_shapes == ([(2, 1)] if partial_chunk else [])
         scores = resumed.get_weights_per_idx(
             result, idx_key="idx_vector", normalize=False
         )
