@@ -328,7 +328,7 @@ def get_sample_row_from_idx(
     return sample
 
 
-def sample_idx_for_vectors(table: Table, idx_vectors: list[int]) -> torch.Tensor:
+def sample_indices_for_vectors(table: Table, idx_vectors: list[int]) -> torch.Tensor:
     """Return sample ids in the same order as `idx_vectors`.
 
     Args:
