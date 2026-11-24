@@ -1,4 +1,5 @@
 import re
+from unittest.mock import Mock
 
 import numpy as np
 import pytest
@@ -740,6 +741,142 @@ class TestGoldClusterizer:
         ]
         assert set(distinct_clusters).issubset(set(range(5)))
 
+        chunk_table = pxt.get_table(f"{table_path}_chunks")
+        assert "chunk" in chunk_table.columns()
+        assert "chunk" not in cluster_table.columns()
+        chunk_values = [
+            row["chunk"] for row in chunk_table.select(chunk_table["chunk"]).collect()
+        ]
+        assert len(chunk_values) == 50
+        assert None not in chunk_values
+        assert len(set(chunk_values)) == 5
+        assert max(chunk_values.count(chunk) for chunk in set(chunk_values)) <= 10
+
+    def test_cluster_in_table_with_chunk_restart(self):
+        table_path = "unit_test.test_cluster_chunk_restart"
+
+        dataset = DummyDataset(
+            [{"vectorized": torch.rand(4), "idx": idx} for idx in range(40)]
+        )
+
+        clusterizer = GoldClusterizer(
+            table_path=table_path,
+            clustering_tool=GoldRandomClusteringTool(random_state=0),
+            allow_existing=True,
+            batch_size=5,
+            chunk=10,
+            random_state=0,
+        )
+        cluster_table = clusterizer.cluster_in_table(dataset, n_clusters=4)
+        original = {
+            row["idx_vector"]: row[clusterizer.cluster_key]
+            for row in cluster_table.select(
+                cluster_table.idx_vector, cluster_table[clusterizer.cluster_key]
+            ).collect()
+        }
+
+        chunk_table = pxt.get_table(f"{table_path}_chunks")
+        chunks: dict[int, list[int]] = {}
+        for row in chunk_table.select(
+            chunk_table.idx_vector, chunk_table["chunk"]
+        ).collect():
+            chunks.setdefault(row["chunk"], []).append(row["idx_vector"])
+        partial_chunk = sorted(chunks)[0]
+        to_clear = sorted(chunks[partial_chunk])[:3]
+        cluster_table.where(cluster_table.idx_vector.isin(to_clear)).update(
+            {cluster_table[clusterizer.cluster_key].display_str(): None}
+        )
+
+        restart_tool = GoldRandomClusteringTool(random_state=0)
+        original_fit = restart_tool.fit
+        restart_tool.fit = Mock(side_effect=original_fit)
+        clusterizer_restart = GoldClusterizer(
+            table_path=table_path,
+            clustering_tool=restart_tool,
+            allow_existing=True,
+            batch_size=5,
+            chunk=10,
+            random_state=0,
+        )
+        cluster_table_restart = clusterizer_restart.cluster_in_table(
+            dataset, n_clusters=4
+        )
+
+        restarted = {
+            row["idx_vector"]: row[clusterizer_restart.cluster_key]
+            for row in cluster_table_restart.select(
+                cluster_table_restart.idx_vector,
+                cluster_table_restart[clusterizer_restart.cluster_key],
+            ).collect()
+        }
+        assert restart_tool.fit.call_count == 1
+        assert restarted == original
+
+    def test_cluster_in_table_with_incomplete_chunk_assignment(self):
+        table_path = "unit_test.test_cluster_chunk_incomplete"
+
+        dataset = DummyDataset(
+            [{"vectorized": torch.rand(4), "idx": idx} for idx in range(50)]
+        )
+
+        clusterizer = GoldClusterizer(
+            table_path=table_path,
+            clustering_tool=GoldRandomClusteringTool(random_state=0),
+            allow_existing=True,
+            batch_size=5,
+            chunk=10,
+            random_state=0,
+        )
+        cluster_table = clusterizer.cluster_in_table(dataset, n_clusters=5)
+
+        chunk_table = pxt.get_table(f"{table_path}_chunks")
+        chunk_rows = [
+            (row["idx_vector"], row["chunk"])
+            for row in chunk_table.select(
+                chunk_table.idx_vector, chunk_table["chunk"]
+            ).collect()
+        ]
+        missing_idx_vector = chunk_rows[0][0]
+        chunk_table.where(chunk_table.idx_vector == missing_idx_vector).update(
+            {chunk_table["chunk"].display_str(): None}
+        )
+        cluster_table.where(cluster_table.idx_vector == missing_idx_vector).update(
+            {cluster_table[clusterizer.cluster_key].display_str(): None}
+        )
+
+        restart_tool = GoldRandomClusteringTool(random_state=0)
+        original_fit = restart_tool.fit
+        restart_tool.fit = Mock(side_effect=original_fit)
+        clusterizer_restart = GoldClusterizer(
+            table_path=table_path,
+            clustering_tool=restart_tool,
+            allow_existing=True,
+            batch_size=5,
+            chunk=10,
+            random_state=0,
+        )
+        cluster_table_restart = clusterizer_restart.cluster_in_table(
+            dataset, n_clusters=5
+        )
+
+        assert restart_tool.fit.call_count == 5
+        assert (
+            chunk_table.where(
+                chunk_table["chunk"] == None  # noqa: E711
+            ).count()
+            == 0
+        )
+        assert (
+            cluster_table_restart.where(
+                cluster_table_restart[clusterizer_restart.cluster_key] == None  # noqa: E711
+            ).count()
+            == 0
+        )
+        chunk_values = [
+            row["chunk"] for row in chunk_table.select(chunk_table["chunk"]).collect()
+        ]
+        assert len(set(chunk_values)) == 5
+
     def test_cluster_in_table_with_chunk_larger_than_total(self):
         table_path = "unit_test.test_cluster_chunk_large"
 
@@ -1041,6 +1178,7 @@ class TestGoldClusterizer:
             clustering_tool=GoldRandomClusteringTool(random_state=0),
             allow_existing=True,
             batch_size=5,
+            chunk=5,
             drop_table=True,
         )
 
@@ -1054,6 +1192,9 @@ class TestGoldClusterizer:
 
         with pytest.raises(pxt.Error):
             pxt.get_table(table_path)
+
+        with pytest.raises(pxt.Error):
+            pxt.get_table(clusterizer.chunk_table_path)
 
     def test_cluster_in_table_with_existing_table_and_disallow(self):
         src_path = "unit_test.src_cluster_table_existing"

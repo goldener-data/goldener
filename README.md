@@ -207,6 +207,8 @@ for cluster_id in range(n_clusters):
 
 ```
 
+When the embeddings do not fit in memory, set `chunk` to cluster them in smaller groups. The chunk assignment is saved in a view of the cluster table named after `table_path` with a `_chunks` suffix, so an interrupted run resumes with the same chunks instead of starting over.
+
 ## Reducing dimensionality
 
 Depending on the dataset (size, data type, task), the computation tackled by Goldener can be quite resource intensive and time consuming. The dimensionality reduction aims to reduce the memory footprint and increase the speed for the downstream task. It can be quite useful to adapt the computation to the hardware constraints or access results in time constrained situation.

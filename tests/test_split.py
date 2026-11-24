@@ -14,7 +14,7 @@ from goldener.embed import GoldTorchEmbeddingToolConfig, GoldTorchEmbeddingTool
 from goldener.torch_utils import collate_keeping_sequences_as_sequences
 from goldener.split import GoldSplitter, GoldSet, check_sets_validity
 from goldener.vectorize import GoldTensorVectorizationTool, GoldVectorizer
-from goldener.select import GoldSelector
+from goldener.select import GoldGreedyKCenterSelectionTool, GoldSelector
 
 COREAX_SKIP_REASON = "GoldSelector's default selection tool needs coreax, which is not installed on Windows"
 requires_coreax = pytest.mark.skipif(sys.platform == "win32", reason=COREAX_SKIP_REASON)
@@ -1017,6 +1017,47 @@ class TestGoldSplitter:
         ]
         # Since we requested 2 clusters, resulting cluster ids should be a subset of {0,1}
         assert set(distinct_clusters).issubset({0, 1})
+
+    def test_split_with_chunked_clusterizer_and_drop_table(self):
+        selector = GoldSelector(
+            table_path="unit_test.selector_split_chunk_drop",
+            selection_tool=GoldGreedyKCenterSelectionTool(device="cpu"),
+            vectorized_key="vectorized",
+            batch_size=2,
+        )
+        clusterizer = GoldClusterizer(
+            table_path="unit_test.clusterizer_split_chunk_drop",
+            clustering_tool=GoldRandomClusteringTool(random_state=0),
+            chunk=4,
+            random_state=0,
+            allow_existing=True,
+        )
+        splitter = GoldSplitter(
+            sets=[GoldSet(name="train", size=0.5), GoldSet(name="val", size=0.5)],
+            descriptor=None,
+            selector=selector,
+            vectorizer=None,
+            clusterizer=clusterizer,
+            n_clusters=2,
+            allow_existing=True,
+            drop_table=True,
+        )
+
+        splitter.split_in_table(
+            to_split=pxt.create_table(
+                "unit_test.clusterizer_split_chunk_drop_source",
+                source=[
+                    {"vectorized": torch.rand(3).numpy(), "idx": idx, "idx_vector": idx}
+                    for idx in range(30)
+                ],
+            )
+        )
+
+        with pytest.raises(pxt.Error):
+            pxt.get_table(clusterizer.table_path)
+
+        with pytest.raises(pxt.Error):
+            pxt.get_table(clusterizer.chunk_table_path)
 
 
 class TestGoldSet:

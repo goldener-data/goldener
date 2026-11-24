@@ -794,7 +794,10 @@ class GoldSplitter(GoldDoer):
                 *([self.descriptor.table_path] if self.descriptor is not None else []),
                 *([self.vectorizer.table_path] if self.vectorizer is not None else []),
                 *(
-                    [self.clusterizer.table_path]
+                    [
+                        self.clusterizer.chunk_table_path,
+                        self.clusterizer.table_path,
+                    ]
                     if self.clusterizer is not None
                     else []
                 ),

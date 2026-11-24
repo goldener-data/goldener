@@ -11,6 +11,7 @@ when selecting or splitting it, and to balance the batches during training (`gol
   assignments locally (one per vector by default, a sample with multiple vectors can then have multiple clusters).
 """
 
+import hashlib
 import math
 from collections import defaultdict
 from abc import ABC, abstractmethod
@@ -36,6 +37,7 @@ from goldener.pxt_utils import (
     make_batch_ready_for_table,
     check_pxt_table_has_primary_key,
     get_sample_row_from_idx,
+    create_pxt_dirs_for_path,
 )
 from goldener.reduce import GoldReductionTool, GoldReductionToolWithFit
 from goldener.torch_utils import get_dataset_sample_dict
@@ -47,6 +49,32 @@ from goldener.utils import (
 
 
 logger = getLogger(__name__)
+
+_CHUNK_KEY = "chunk"
+_CHUNK_TABLE_SUFFIX = "_chunks"
+
+
+def _get_chunk_seed(
+    random_state: int | None,
+    label_value: str | None,
+    chunk_id: int,
+) -> int:
+    """Derive a stable seed for the clustering tool from a persisted chunk.
+
+    The seed only depends on values that are stored with the chunk assignment,
+    so a resumed run reproduces the clustering of a chunk that an uninterrupted
+    run would have produced, even when earlier chunks are skipped.
+
+    Args:
+        random_state: Random state configured on the clusterizer for chunk assignment.
+        label_value: Label the chunk belongs to, or None when no label is used.
+        chunk_id: Identifier of the chunk in the chunk view.
+
+    Returns:
+        An integer seed suitable for `numpy.random.RandomState`.
+    """
+    material = f"{random_state}|{label_value}|{chunk_id}".encode()
+    return int.from_bytes(hashlib.sha256(material).digest()[:4], "big")
 
 
 class GoldClusteringTool(ABC):
@@ -400,7 +428,10 @@ class GoldClusterizer(GoldDoerWithTable):
     present in the table.
 
     If the dataset is too big to fit into memory or the clustering algorithm is too
-    computationally expensive, the clustering can be performed in chunks.
+    computationally expensive, the clustering can be performed in chunks. The chunk
+    assignment is persisted in a `f"{table_path}_chunks"` view of the cluster table,
+    so an interrupted run resumes with the same chunks: fully clustered chunks are
+    skipped and partially clustered chunks are recomputed.
     All torch tensors will be converted to numpy arrays before saving.
 
     The clustering can operate in a sequential (single-process) mode or a
@@ -413,6 +444,10 @@ class GoldClusterizer(GoldDoerWithTable):
         clustering_tool: The GoldClusteringTool implementing the clustering algorithm.
         reducer: Optional GoldReductionTool instance for dimensionality reduction before clustering.
         chunk: Optional chunk size for processing data in chunks to reduce memory consumption.
+            When set, chunk membership is persisted in a `f"{table_path}_chunks"` view of the
+            cluster table with one nullable `chunk` column.
+        chunk_table_path: Read-only path of the view persisting the chunk assignment, derived
+            from `table_path` with a `_chunks` suffix.
         collate_fn: Optional function to collate dataset samples into batches composed of
             dictionaries with at least the key specified by `vectorized_key` returning a PyTorch Tensor.
             If None, `collate_keeping_sequences_as_sequences` is used, which preserves sequence-valued
@@ -433,6 +468,8 @@ class GoldClusterizer(GoldDoerWithTable):
             when using `cluster_in_dataset`. Default is False.
         max_batches: Optional maximum number of batches to process. Useful for testing on a small subset of the dataset.
         random_state: Optional random state for reproducibility during chunk assignment.
+            With `chunk` set, it also seeds the clustering tool from each persisted chunk
+            identity when the tool exposes controllable randomness.
         force_same_cluster: If True, all vectors from the same sample (same `idx`) are assigned
             to the same cluster. The assignment to a cluster depends on the last clusterized vector
             of the sample (suboptimal but easiest solution). Default is False.
@@ -472,6 +509,8 @@ class GoldClusterizer(GoldDoerWithTable):
             clustering_tool: The GoldClusteringTool implementing the clustering algorithm.
             reducer: Optional GoldReductionTool instance for dimensionality reduction before clustering.
             chunk: Optional chunk size for processing data in chunks to reduce memory consumption.
+                When set, chunk membership is persisted in a `f"{table_path}_chunks"` view of the
+                cluster table with one nullable `chunk` column.
             collate_fn: Optional function to collate dataset samples into batches composed of
                 dictionaries with at least the key specified by `vectorized_key` returning a PyTorch Tensor.
                 If None, `collate_keeping_sequences_as_sequences` is used, which preserves sequence-valued
@@ -492,6 +531,8 @@ class GoldClusterizer(GoldDoerWithTable):
                 when using `cluster_in_dataset`. Default is False.
             max_batches: Optional maximum number of batches to process. Useful for testing on a small subset of the dataset.
             random_state: Optional random state for reproducibility during chunk assignment.
+                With `chunk` set, it also seeds the clustering tool from each persisted chunk
+                identity when the tool exposes controllable randomness.
             force_same_cluster: If True, all vectors from the same sample (same `idx`) are assigned
                 to the same cluster. The assignment to a cluster depends on the last clusterized vector
                 of the sample (suboptimal but easiest solution). Default is False.
@@ -529,6 +570,11 @@ class GoldClusterizer(GoldDoerWithTable):
             table_path=table_path,
             label_key=label_key,
         )
+
+    @property
+    def chunk_table_path(self) -> str:
+        """Path of the view persisting the chunk assignment of the cluster table."""
+        return f"{self.table_path}{_CHUNK_TABLE_SUFFIX}"
 
     @property
     def distribute(self) -> bool:
@@ -590,6 +636,7 @@ class GoldClusterizer(GoldDoerWithTable):
         cluster_dataset = GoldPxtTorchDataset(cluster_table, keep_cache=True)
 
         if self.drop_table:
+            self._drop_chunk_table()
             pxt.drop_table(cluster_table)
 
         return cluster_dataset
@@ -610,7 +657,9 @@ class GoldClusterizer(GoldDoerWithTable):
 
         This method is idempotent (i.e., failure proof), meaning that if it is called
         multiple times on the same dataset or table, it will restart the clustering process
-        based on the vectors already present in the PixelTable table.
+        based on the vectors already present in the PixelTable table. When `chunk` is set,
+        the chunk assignment persisted in the `f"{table_path}_chunks"` view is resumed:
+        fully clustered chunks are skipped and partially clustered chunks are recomputed.
 
         Args:
             cluster_from: Dataset or Table to select from. If a Dataset is provided, each item should be a
@@ -760,9 +809,6 @@ class GoldClusterizer(GoldDoerWithTable):
         if self.cluster_key not in cluster_table_cols:
             cluster_table.add_column(if_exists="error", **{self.cluster_key: pxt.Int})
 
-        if "chunk" not in cluster_table_cols:
-            cluster_table.add_column(if_exists="ignore", **{"chunk": pxt.Int})
-
         if (
             self.include_vectorized_in_table
             and self.vectorized_key not in cluster_table_cols
@@ -791,6 +837,9 @@ class GoldClusterizer(GoldDoerWithTable):
                     ]
                 }
             )
+
+        if self.chunk is not None:
+            self._get_chunk_table(cluster_table)
 
         if cluster_table.count() > 0:
             to_cluster_indices = set(
@@ -901,8 +950,8 @@ class GoldClusterizer(GoldDoerWithTable):
         if self.cluster_key not in cluster_table_cols:
             cluster_table.add_column(if_exists="error", **{self.cluster_key: pxt.Int})
 
-        if "chunk" not in cluster_table_cols:
-            cluster_table.add_column(if_exists="ignore", **{"chunk": pxt.Int})
+        if self.chunk is not None:
+            self._get_chunk_table(cluster_table)
 
         self._add_rows_to_cluster_table_from_dataset(
             cluster_from,
@@ -1234,6 +1283,204 @@ class GoldClusterizer(GoldDoerWithTable):
                 restriction_idx_key=restriction_idx_key,
             )
 
+    def _get_chunk_table(self, cluster_table: Table) -> Table:
+        """Return the view storing the chunk assignment of the cluster table.
+
+        The view lives next to the cluster table at `f"{self.table_path}_chunks"`
+        and adds a single nullable `chunk` column. It links the clustered rows
+        without duplicating the vectors. It is created alongside a chunked cluster
+        table and an existing view is reused as is.
+
+        Args:
+            cluster_table: The table holding the clustering results.
+
+        Returns:
+            The view holding the `chunk` column.
+        """
+        chunk_table_path = self.chunk_table_path
+        try:
+            chunk_table = pxt.get_table(chunk_table_path, if_not_exists="ignore")
+        except Error:
+            chunk_table = None
+        if chunk_table is not None:
+            return chunk_table
+
+        create_pxt_dirs_for_path(chunk_table_path)
+        chunk_table = pxt.create_view(
+            chunk_table_path,
+            cluster_table,
+            additional_columns={_CHUNK_KEY: pxt.Int},
+            if_exists="ignore",
+        )
+        assert isinstance(chunk_table, Table)
+        return chunk_table
+
+    def _drop_chunk_table(self) -> None:
+        """Drop the chunk view before dropping its cluster table."""
+        pxt.drop_table(self.chunk_table_path, if_not_exists="ignore")
+
+    def _population_predicate(
+        self,
+        table: Table,
+        label_value: str | None,
+        restrict_to: set[int] | None,
+        restriction_idx_key: str,
+    ) -> Any | None:
+        """Build the predicate selecting the rows a clustering run applies to.
+
+        Args:
+            table: Table whose columns are used to build the predicate.
+            label_value: Optional label value to filter rows.
+            restrict_to: Optional set of indices to restrict the rows to.
+            restriction_idx_key: Column used for the restriction.
+
+        Returns:
+            The combined predicate, or None when it selects every row.
+        """
+        predicates = []
+        if label_value is not None:
+            assert self.label_key is not None
+            label_col = get_expr_from_column_name(table, self.label_key)
+            predicates.append(label_col == label_value)
+        if restrict_to is not None:
+            restricted_idx_col = get_expr_from_column_name(table, restriction_idx_key)
+            predicates.append(restricted_idx_col.isin(restrict_to))
+        if not predicates:
+            return None
+        predicate = predicates[0]
+        for extra in predicates[1:]:
+            predicate = predicate & extra
+        return predicate
+
+    @staticmethod
+    def _set_population_value(
+        table: Table,
+        predicate: Any | None,
+        col_expr: Any,
+        value: Any,
+    ) -> None:
+        """Set a column to a value for the rows selected by a predicate."""
+        values = {col_expr.display_str(): value}
+        if predicate is None:
+            table.update(values)
+        else:
+            table.where(predicate).update(values)
+
+    def _seed_clustering_tool(self, label_value: str | None, chunk_id: int) -> None:
+        """Seed the clustering tool from the persisted chunk identity.
+
+        Tools with controllable randomness are reseeded before each chunk so the
+        result of a chunk does not depend on whether earlier chunks were replayed
+        or skipped. Tools without controllable randomness are left untouched.
+        """
+        update_random_state = getattr(self.clustering_tool, "update_random_state", None)
+        if update_random_state is None:
+            return
+        wrapped_tool = getattr(self.clustering_tool, "tool", None)
+        controllable = getattr(
+            self.clustering_tool, "random_state", None
+        ) is not None or hasattr(wrapped_tool, "random_state")
+        if not controllable:
+            return
+        seed = _get_chunk_seed(self.random_state, label_value, chunk_id)
+        update_random_state(np.random.RandomState(seed).get_state(legacy=False))
+
+    def _persisted_chunk_assignment(
+        self,
+        cluster_table: Table,
+        label_value: str | None,
+        restrict_to: set[int] | None,
+        restriction_idx_key: str,
+    ) -> list[tuple[int, list[int]]]:
+        """Return the persisted chunks that still need to be clustered.
+
+        A complete assignment is reused: fully clustered chunks are skipped and
+        partially clustered chunks have their clusters cleared before being
+        returned for a full recomputation. An incomplete assignment clears every
+        cluster of the population and recomputes the full chunk assignment.
+
+        Args:
+            cluster_table: The table holding the clustering results.
+            label_value: Optional label value to filter rows.
+            restrict_to: Optional set of indices to restrict the rows to.
+            restriction_idx_key: Column used for the restriction.
+
+        Returns:
+            The chunks to cluster, with their persisted chunk identifier.
+        """
+        chunk_table = self._get_chunk_table(cluster_table)
+        chunk_col = get_expr_from_column_name(chunk_table, _CHUNK_KEY)
+        cluster_col = get_expr_from_column_name(chunk_table, self.cluster_key)
+
+        chunk_predicate = self._population_predicate(
+            chunk_table, label_value, restrict_to, restriction_idx_key
+        )
+        population = (
+            chunk_table.where(chunk_predicate)
+            if chunk_predicate is not None
+            else chunk_table
+        )
+        population_rows = [
+            (row["idx_vector"], row[_CHUNK_KEY], row[self.cluster_key])
+            for row in population.select(
+                chunk_table.idx_vector, chunk_col, cluster_col
+            ).collect()
+        ]
+
+        if any(chunk_id is None for _, chunk_id, _ in population_rows):
+            logger.info(
+                "The chunk assignment is incomplete, clearing the clusters and "
+                "recomputing every chunk."
+            )
+            self._set_population_value(
+                cluster_table,
+                self._population_predicate(
+                    cluster_table, label_value, restrict_to, restriction_idx_key
+                ),
+                get_expr_from_column_name(cluster_table, self.cluster_key),
+                None,
+            )
+            new_chunks = get_random_chunk_assignment(
+                to_chunk=sorted(idx_vector for idx_vector, _, _ in population_rows),
+                max_chunk_size=self.chunk,
+                random_state=self.random_state,
+            )
+            for chunk_id, chunk_indices in enumerate(new_chunks):
+                set_value_to_idx_rows(
+                    table=chunk_table,
+                    col_expr=chunk_col,
+                    idx_expr=chunk_table.idx_vector,
+                    indices=set(chunk_indices),
+                    value=chunk_id,
+                )
+            return list(enumerate(new_chunks))
+
+        chunks: dict[int, list[int]] = defaultdict(list)
+        clustered: dict[int, list[int]] = defaultdict(list)
+        for idx_vector, chunk_id, cluster_value in population_rows:
+            chunks[chunk_id].append(idx_vector)
+            if cluster_value is not None:
+                clustered[chunk_id].append(idx_vector)
+
+        to_cluster = []
+        for chunk_id in sorted(chunks):
+            chunk_indices = chunks[chunk_id]
+            if len(clustered[chunk_id]) == len(chunk_indices):
+                logger.info(f"Chunk {chunk_id} is already fully clustered, skipping.")
+                continue
+            if clustered[chunk_id]:
+                logger.info(
+                    f"Chunk {chunk_id} is partially clustered, recomputing it fully."
+                )
+                self._set_population_value(
+                    cluster_table,
+                    cluster_table.idx_vector.isin(clustered[chunk_id]),
+                    get_expr_from_column_name(cluster_table, self.cluster_key),
+                    None,
+                )
+            to_cluster.append((chunk_id, chunk_indices))
+        return to_cluster
+
     def _cluster_label(
         self,
         cluster_from: Table,
@@ -1249,11 +1496,18 @@ class GoldClusterizer(GoldDoerWithTable):
         It processes data in chunks to manage memory, applies optional dimensionality reduction,
         and updates the cluster table with clustered samples.
 
+        With `chunk` set, the chunk assignment is persisted in the chunk view.
+        Fully clustered chunks are skipped, partially clustered chunks are cleared
+        and recomputed, and an incomplete assignment clears the clusters of the
+        whole population before the assignment is recomputed.
+
         Args:
             cluster_from: The source table with vectorized data.
             cluster_table: The table to store clustering results.
             n_clusters: Number of clusters.
             label_value: Optional label value to filter samples by label.
+            restrict_to: Optional set of indices to restrict the clustering to.
+            restriction_idx_key: Column name used to restrict source rows.
 
         Raises:
             ValueError: If an unexpected empty chunk is encountered during clustering.
@@ -1264,20 +1518,14 @@ class GoldClusterizer(GoldDoerWithTable):
         source_idx_col = get_expr_from_column_name(cluster_from, idx_key)
         cluster_idx_col = get_expr_from_column_name(cluster_table, idx_key)
 
-        if label_value is not None:
-            assert self.label_key is not None
-            label_col = get_expr_from_column_name(cluster_table, self.label_key)
-            available_query = (cluster_col == None) & (label_col == label_value)  # noqa: E712 E711
-        else:
-            available_query = cluster_col == None  # noqa: E711
+        population_predicate = self._population_predicate(
+            cluster_table, label_value, restrict_to, restriction_idx_key
+        )
+        available_predicate = cluster_col == None  # noqa: E711
+        if population_predicate is not None:
+            available_predicate = available_predicate & population_predicate
 
-        if restrict_to is not None:
-            restricted_idx_col = get_expr_from_column_name(
-                cluster_table, restriction_idx_key
-            )
-            available_query = available_query & restricted_idx_col.isin(restrict_to)
-
-        to_cluster = cluster_table.where(available_query)
+        to_cluster = cluster_table.where(available_predicate)
         to_cluster_vector_indices = [
             row["idx_vector"]
             for row in to_cluster.select(cluster_table.idx_vector).collect()
@@ -1291,55 +1539,30 @@ class GoldClusterizer(GoldDoerWithTable):
             )
             return
 
-        chunk_col = get_expr_from_column_name(cluster_table, "chunk")
-
         if self.chunk is None:
-            chunk_assignment = [to_cluster_vector_indices]
-        else:
-            persisted = {
-                row["idx_vector"]: row["chunk"]
-                for row in to_cluster.select(
-                    cluster_table.idx_vector, chunk_col
-                ).collect()
-            }
-
-            none_indices = [
-                iv for iv in to_cluster_vector_indices if persisted.get(iv) is None
+            chunk_assignment: list[tuple[int, list[int]]] = [
+                (0, to_cluster_vector_indices)
             ]
+        else:
+            chunk_assignment = self._persisted_chunk_assignment(
+                cluster_table=cluster_table,
+                label_value=label_value,
+                restrict_to=restrict_to,
+                restriction_idx_key=restriction_idx_key,
+            )
 
-            if none_indices:
-                new_chunks = get_random_chunk_assignment(
-                    to_chunk=none_indices,
-                    max_chunk_size=self.chunk,
-                    random_state=self.random_state,
-                )
-                existing_ids = [v for v in persisted.values() if v is not None]
-                next_id = (max(existing_ids) + 1) if existing_ids else 0
-                for chunk in new_chunks:
-                    for iv in chunk:
-                        persisted[iv] = next_id
-                    next_id += 1
-
-                for iv in none_indices:
-                    set_value_to_idx_rows(
-                        table=cluster_table,
-                        col_expr=chunk_col,
-                        idx_expr=cluster_table.idx_vector,
-                        indices={iv},
-                        value=persisted[iv],
-                    )
-
-            groups: dict[int, list[int]] = defaultdict(list)
-            for iv in to_cluster_vector_indices:
-                groups[persisted[iv]].append(iv)
-            chunk_assignment = list(groups.values())
-
-        for chunk_indices in chunk_assignment:
+        for chunk_id, chunk_indices in chunk_assignment:
+            selected = [vectorized_col, cluster_from.idx_vector]
+            if idx_key != "idx_vector":
+                selected.append(source_idx_col)
             to_cluster_from = cluster_from.where(
                 cluster_from.idx_vector.isin(chunk_indices)
-            ).select(vectorized_col, source_idx_col)
+            ).select(*selected)
+            samples = sorted(
+                to_cluster_from.collect(), key=lambda sample: sample["idx_vector"]
+            )
 
-            if to_cluster_from.count() == 0:
+            if not samples:
                 raise ValueError("Unexpected empty chunk for clustering.")
 
             to_cluster_for_chunk = [
@@ -1347,7 +1570,7 @@ class GoldClusterizer(GoldDoerWithTable):
                     torch.from_numpy(sample[self.vectorized_key]),
                     torch.tensor(sample[idx_key]).unsqueeze(0),
                 )
-                for sample in to_cluster_from.collect()
+                for sample in samples
             ]
             vectors_list, indices_list = map(list, zip(*to_cluster_for_chunk))
             vectors = torch.stack(vectors_list, dim=0)
@@ -1360,6 +1583,8 @@ class GoldClusterizer(GoldDoerWithTable):
                     else self.reducer.transform(vectors)
                 )
 
+            if self.chunk is not None:
+                self._seed_clustering_tool(label_value, chunk_id)
             cluster_assignment = self.clustering_tool.fit(vectors, n_clusters)
 
             # update table with cluster information
@@ -1372,15 +1597,6 @@ class GoldClusterizer(GoldDoerWithTable):
                     indices=set(indices_in_cluster),
                     value=cluster_idx,
                 )
-
-            # persist chunk assignment is no longer needed once clustered
-            set_value_to_idx_rows(
-                table=cluster_table,
-                col_expr=chunk_col,
-                idx_expr=cluster_idx_col,
-                indices=set(indices.tolist()),
-                value=None,
-            )
 
     def _distributed_cluster(
         self,
