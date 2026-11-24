@@ -751,7 +751,7 @@ class GoldVectorizer(GoldDoerWithTable):
         if isinstance(to_vectorize, UniqueDataset):
             to_vectorize = to_vectorize.dataset
         self._table_custom_metadata = make_goldener_metadata(
-            self.doer_id, input_id, input_type
+            self._doer_id, input_id, input_type
         )
 
         # If the computation was already started or already done, we resume from there
@@ -768,7 +768,11 @@ class GoldVectorizer(GoldDoerWithTable):
         # vectorized table are expected to have a primary key allowing to idempotent updates
         if old_vectorized_table is not None:
             validate_goldener_metadata(
-                old_vectorized_table, self.table_path, self.doer_id, input_id
+                old_vectorized_table,
+                self.table_path,
+                self._doer_id,
+                input_id,
+                input_type,
             )
             check_pxt_table_has_primary_key(old_vectorized_table, set(["idx_vector"]))
 

@@ -16,7 +16,6 @@ class GoldDoer:
         allow_existing: Whether to allow using existing tables. Defaults to True.
         drop_table: Whether to drop intermediate tables. Defaults to False.
         max_batches: Optional maximum number of batches to process.
-        doer_id: Stable identifier of the doer, recorded in intermediary-table metadata.
     """
 
     def __init__(
@@ -37,7 +36,7 @@ class GoldDoer:
         self.max_batches = max_batches
 
     @property
-    def doer_id(self) -> str:
+    def _doer_id(self) -> str:
         """Return the stable class name used to identify this doer in table metadata."""
         return type(self).__name__
 

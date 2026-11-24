@@ -309,7 +309,7 @@ class GoldDescriptor(GoldDoerWithTable):
         if isinstance(to_describe, UniqueDataset):
             to_describe = to_describe.dataset
         self._table_custom_metadata = make_goldener_metadata(
-            self.doer_id, input_id, input_type
+            self._doer_id, input_id, input_type
         )
 
         # If the computation was already started or already done, we resume from there
@@ -326,7 +326,11 @@ class GoldDescriptor(GoldDoerWithTable):
         # description table are expected to have a primary key allowing to idempotent updates
         if old_description_table is not None:
             validate_goldener_metadata(
-                old_description_table, self.table_path, self.doer_id, input_id
+                old_description_table,
+                self.table_path,
+                self._doer_id,
+                input_id,
+                input_type,
             )
             primary_key = "idx" if self.vectorizer is None else "idx_vector"
             check_pxt_table_has_primary_key(old_description_table, set([primary_key]))

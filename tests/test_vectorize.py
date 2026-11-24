@@ -6,6 +6,7 @@ import pytest
 import torch
 
 from goldener import GoldVectorizer
+from goldener.pxt_utils import get_input_identity, validate_goldener_metadata
 from goldener.torch_utils import UniqueDataset, collate_keeping_sequences_as_sequences
 from goldener.vectorize import (
     Filter2DWithCount,
@@ -589,9 +590,11 @@ class TestGoldVectorizer:
 
         entry = table.get_metadata()["custom_metadata"]["goldener"]["GoldVectorizer"]
         assert entry == {"input_id": "dataset-a", "input_type": "DummyDataset"}
-        assert gv.vectorize_in_table(
-            UniqueDataset(DummyDataset(), "dataset-a")
-        ).count() == table.count()
+        initial_count = table.count()
+        assert (
+            gv.vectorize_in_table(UniqueDataset(DummyDataset(), "dataset-a")).count()
+            == initial_count
+        )
 
         with pytest.raises(ValueError, match="created from input 'dataset-a'"):
             gv.vectorize_in_table(UniqueDataset(DummyDataset(), "dataset-b"))
@@ -620,6 +623,48 @@ class TestGoldVectorizer:
 
         with pytest.raises(ValueError, match="was not created by GoldVectorizer"):
             gv.vectorize_in_table(DummyDataset())
+
+    def test_table_input_identity_allows_version_change(self):
+        schema = {"idx": pxt.Required[pxt.Int]}
+        source = pxt.create_table(
+            "unit_test.version_source", schema=schema, primary_key="idx"
+        )
+        input_id, input_type = get_input_identity(source)
+        stored_id = f"{input_id.rsplit('_', 1)[0]}_1"
+        metadata_table = pxt.create_table(
+            "unit_test.version_metadata",
+            schema=schema,
+            primary_key="idx",
+            custom_metadata={
+                "goldener": {
+                    "GoldVectorizer": {
+                        "input_id": stored_id,
+                        "input_type": input_type,
+                    }
+                }
+            },
+        )
+
+        validate_goldener_metadata(
+            metadata_table,
+            "unit_test.version_metadata",
+            "GoldVectorizer",
+            input_id,
+            input_type,
+        )
+
+        other = pxt.create_table(
+            "unit_test.version_other", schema=schema, primary_key="idx"
+        )
+        other_id, _ = get_input_identity(other)
+        with pytest.raises(ValueError, match="created from input"):
+            validate_goldener_metadata(
+                metadata_table,
+                "unit_test.version_metadata",
+                "GoldVectorizer",
+                other_id,
+                input_type,
+            )
 
     def test_vectorize_in_table_with_plain_multilabel_and_default_collate(self):
         """Regression test for #202 (GoldVectorizer flavor).

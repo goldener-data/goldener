@@ -418,16 +418,33 @@ def make_goldener_metadata(
     return {"goldener": {doer_id: {"input_id": input_id, "input_type": input_type}}}
 
 
+def _same_input_id(stored_id: Any, input_id: str | None, input_type: str) -> bool:
+    """Compare recorded and current input identifiers."""
+    if input_type == "Table" and isinstance(stored_id, str) and input_id is not None:
+        stored_table_id = stored_id.rsplit("_", 1)[0]
+        current_table_id = input_id.rsplit("_", 1)[0]
+        return stored_table_id == current_table_id
+    return stored_id == input_id
+
+
 def validate_goldener_metadata(
-    table: Table, table_path: str, doer_id: str, input_id: str | None
+    table: Table,
+    table_path: str,
+    doer_id: str,
+    input_id: str | None,
+    input_type: str,
 ) -> None:
     """Check that an existing table belongs to the doer and input being reused.
+
+    Pixeltable inputs keep their identity when their version advances, so only
+    the table id part of their recorded `ID_VERSION` value is compared.
 
     Args:
         table: The existing intermediary table.
         table_path: Path of the table, used in error messages.
         doer_id: Stable identifier of the doer reusing the table.
         input_id: Identifier of the current input, or `None` when unnamed.
+        input_type: Name of the current input type.
 
     Raises:
         ValueError: If the table has no entry for `doer_id`, or if it records a
@@ -442,7 +459,7 @@ def validate_goldener_metadata(
             "Goldener input metadata."
         )
     stored_id = entry.get("input_id")
-    if input_id is not None and stored_id != input_id:
+    if input_id is not None and not _same_input_id(stored_id, input_id, input_type):
         raise ValueError(
             f"Table at {table_path} was created from input {stored_id!r}, "
             f"not {input_id!r}."
