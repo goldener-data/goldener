@@ -49,9 +49,12 @@ class GoldNoveltyScoringTool(ABC):
     """Score vectors for novelty using a tool fitted on reference data.
 
     Inputs have shape `(num_vectors, feature_dim)` and scores have shape
-    `(num_vectors,)`. Higher scores indicate greater novelty. Implementations
-    define the meaning and scale of their scores, such as nearest-reference
-    distance or predicted probability of novelty. Fitted state is kept in memory.
+    `(num_vectors,)`. Higher scores indicate greater novelty. I
+
+    Implementations define the meaning and scale of their scores, such as nearest-reference
+    distance or predicted probability of novelty.
+
+    Fitted state is kept in memory.
 
     Attributes:
         device: Device used for computation. Defaults to CPU.
@@ -106,23 +109,23 @@ class GoldNoveltyScoringTool(ABC):
 class GoldNearestNeighborNoveltyScoringTool(GoldNoveltyScoringTool):
     """Novelty scoring from the minimum distance to any fitted reference vector.
 
-    Exact computation stores the complete reference bank in memory. Pairwise
-    temporary allocations are bounded by `distance_batch_size` query and reference
+    Exact computation stores the complete reference bank in memory.
+
+    Pairwise temporary allocations are bounded by `distance_batch_size` query and reference
     rows.
 
     Attributes:
         distance: Pairwise distance metric. Defaults to cosine.
-        device: Device used for tensor computation. Defaults to CPU.
         distance_batch_size: Maximum rows in each query or reference computation
             block. Defaults to 1024.
-        reference_bank: Cloned fitted vectors on the configured device, or None.
+        device: Device used for tensor computation. Defaults to CPU.
     """
 
     def __init__(
         self,
         distance: DistanceType = DistanceType.COSINE,
-        device: torch.device | str = "cpu",
         distance_batch_size: int = 1024,
+        device: torch.device | str = "cpu",
     ) -> None:
         """Initialize the GoldNearestNeighborNoveltyScoringTool.
 
@@ -138,12 +141,12 @@ class GoldNearestNeighborNoveltyScoringTool(GoldNoveltyScoringTool):
         validate_positive_integer(distance_batch_size, "distance_batch_size")
         self.distance = distance
         self.distance_batch_size = distance_batch_size
-        self.reference_bank: torch.Tensor | None = None
+        self._reference_bank: torch.Tensor | None = None
 
     @property
     def fitted(self) -> bool:
         """Whether a reference bank is available."""
-        return self.reference_bank is not None
+        return self._reference_bank is not None
 
     def fit(self, x: torch.Tensor) -> None:
         """Replace the fitted reference bank with an independent clone of `x`.
@@ -157,7 +160,7 @@ class GoldNearestNeighborNoveltyScoringTool(GoldNoveltyScoringTool):
         validate_vectorized_input(x, "GoldNoveltyScoringTool")
         if x.shape[0] == 0:
             raise ValueError("The novelty reference must not be empty.")
-        self.reference_bank = x.detach().to(self.device).clone()
+        self._reference_bank = x.detach().to(self.device).clone()
 
     def score(self, x: torch.Tensor) -> torch.Tensor:
         """Return exact minimum reference distance for each query row.
@@ -174,20 +177,20 @@ class GoldNearestNeighborNoveltyScoringTool(GoldNoveltyScoringTool):
         """
         if not self.fitted:
             raise ValueError("Fit the novelty scorer before calling score.")
-        assert self.reference_bank is not None
+        assert self._reference_bank is not None
         validate_vectorized_input(x, "GoldNoveltyScoringTool")
 
-        if x.shape[1] != self.reference_bank.shape[1]:
+        if x.shape[1] != self._reference_bank.shape[1]:
             raise ValueError(
                 "Query feature_dim must match the fitted reference feature_dim."
             )
         if x.shape[0] == 0:
             return torch.empty((0,), dtype=x.dtype, device=x.device)
 
-        compute_dtype = torch.promote_types(x.dtype, self.reference_bank.dtype)
+        compute_dtype = torch.promote_types(x.dtype, self._reference_bank.dtype)
         if compute_dtype in (torch.float16, torch.bfloat16):
             compute_dtype = torch.float32
-        reference = self.reference_bank.to(dtype=compute_dtype)
+        reference = self._reference_bank.to(dtype=compute_dtype)
         queries = x.detach().to(device=self.device, dtype=compute_dtype)
         reference_batches = reference.split(self.distance_batch_size)
         score_batches = []

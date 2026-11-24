@@ -70,9 +70,9 @@ def test_fit_clones_reference_and_accepts_empty_queries():
     with torch.no_grad():
         reference.zero_()
 
-    assert tool.reference_bank.tolist() == [[1.0, 2.0]]
-    assert not tool.reference_bank.requires_grad
-    assert tool.reference_bank.grad_fn is None
+    assert tool._reference_bank.tolist() == [[1.0, 2.0]]
+    assert not tool._reference_bank.requires_grad
+    assert tool._reference_bank.grad_fn is None
     assert tool.score(torch.empty((0, 2))).shape == (0,)
 
 
