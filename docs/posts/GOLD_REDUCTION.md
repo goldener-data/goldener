@@ -1,5 +1,7 @@
 # Reduce embedding width and keep a common reference space
 
+![Reference and later sensor windows show vibration and temperature traces.](illustrations/reduction-signal-windows.jpg)
+
 Wide embeddings can make repeated similarity searches expensive. Reducing the feature width can save memory and speed up later searches. For example, a job that monitors sensor behavior can compare this week's signal windows with a reference archive in a smaller feature space. Fit the projection once so changes in the coordinates reflect changes in the inputs under that mapping.
 
 `GoldSKLearnReductionTool` wraps PCA and other estimators for PyTorch tensors. Fit PCA once on representative reference vectors, then apply that fitted projection to later windows. For training and validation, learn the mapping on training vectors and reuse it on validation vectors.
@@ -34,6 +36,8 @@ later_reduced = reducer.transform(later)
 assert torch.allclose(reference_reduced[0], later_reduced[0], atol=1e-6)
 print(reference_reduced.shape, later_reduced.shape)  # (6, 2), (2, 2)
 ```
+
+![Six reference vectors and two later vectors share the same two PCA axes. The duplicate vector lands at the same coordinates in both windows.](figures/shared-pca-projection.png)
 
 Reduction expects finite floating tensors of shape `(num_vectors, feature_dim)`. Row order carries sample and vector identity through the projection. Calling `fit` or `fit_transform` again replaces the fitted mapping. The adapter runs the estimator on detached CPU NumPy arrays and returns a tensor on the input device with the input dtype. Convert `bfloat16` inputs to a NumPy-compatible dtype such as `float32` before calling the adapter. Store the fitted estimator (`pca` here) alongside the embedding and preprocessing configuration when later jobs need to use the same space.
 

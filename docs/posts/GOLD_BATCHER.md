@@ -1,5 +1,7 @@
 # Put different kinds of examples in each training batch
 
+![Four fixed-room chest radiographs and two portable chest radiographs.](illustrations/batching-radiograph-samples.jpg)
+
 Shuffling mixes a training set over an epoch, but many batches can still be dominated by a common pattern. A speech command model trained mostly on quiet recordings may see background conversation in very few updates. If embeddings separate those acoustic conditions, drawing across clusters can expose the model to both more regularly.
 
 `GoldClusterizedBatchSampler` groups samples by embedding similarity, then draws across the resulting pools. The cluster count determines how many pools compete for the available batch positions.
@@ -60,6 +62,10 @@ The three `ExhaustedClusterStrategy` policies make different trade-offs on those
 | `RESTART` (default) | Draw four mixed batches by cycling through group B a second time. Both modes appear throughout the epoch, and the smaller pool is oversampled. |
 | `STOP` | Yield the second mixed batch, then stop because group B is exhausted. Two samples from group A go unused in that epoch. |
 | `EXCLUDE` | Draw two mixed batches, then one batch of group A alone. Each sample is used once in this example, and the tail has less variety. Other pool sizes can leave a smaller final batch. |
+
+The same pool sizes can represent four fixed-room scans and two portable scans.
+
+![With four fixed-room scans and two portable scans, RESTART draws eight samples across four mixed batches, STOP draws four across two mixed batches, and EXCLUDE draws six across two mixed batches and one fixed-room-only batch.](figures/batch-exhaustion.png)
 
 Choose based on how much repetition you can tolerate and whether an epoch needs to reach every training sample. For a model that predicts outcomes from user event sequences, `RESTART` can keep a small cluster of long sessions in the mix, but it will repeat those same sessions. Use `EXCLUDE` if you want to use every session without recycling the rare pool and can tolerate less variety near the end of an epoch. With more clusters than batch positions, each update sees a subset of the pools. With fewer clusters, the sampler can draw several examples from a pool within a batch. The example disables shuffling to make the draws easy to inspect. In training, shuffling changes the order of samples within pools and helps vary which pools appear when a batch can only fit some of them.
 
