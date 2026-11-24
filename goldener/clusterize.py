@@ -9,6 +9,7 @@ when selecting or splitting it, and to balance the batches during training (`gol
 - `GoldRandomClusteringTool` chunks the data randomly into clusters of almost equal size.
 - `GoldClusterizer` runs the clustering on a whole dataset of vectors, possibly in chunks, and stores the cluster
   assignments locally (one per vector by default, a sample with multiple vectors can then have multiple clusters).
+  A companion view persists chunk membership for resumed clustering.
 """
 
 import math
@@ -389,6 +390,14 @@ class GoldSKLearnClusteringTool(GoldClusteringTool):
         return torch.from_numpy(self.tool.predict(x_np))
 
 
+@pxt.udf
+def _assign_chunk(
+    idx_vector: int, chunk: int | None, assignments: dict[str, int]
+) -> int | None:
+    """Replace assigned vectors' chunk values while retaining other populations."""
+    return assignments.get(str(idx_vector), chunk)
+
+
 class GoldClusterizer(GoldDoerWithTable):
     """Cluster data points from vectorized samples.
 
@@ -399,7 +408,12 @@ class GoldClusterizer(GoldDoerWithTable):
     present in the table.
 
     If the dataset is too big to fit into memory or the clustering algorithm is too
-    computationally expensive, the clustering can be performed in chunks.
+    computationally expensive, the clustering can be performed in chunks. Chunk membership
+    is stored in a view at `<table_path>_chunks`, which adds a nullable integer `chunk`
+    column to the intermediate table. Complete assignments for pending vectors are reused
+    on resume; incomplete assignments are redrawn in full for the pending population.
+    The column name `chunk` is reserved for this view and cannot be used by configurable
+    column keys or `to_keep_schema`.
     All torch tensors will be converted to numpy arrays before saving.
 
     The clustering can operate in a sequential (single-process) mode or a
@@ -496,12 +510,17 @@ class GoldClusterizer(GoldDoerWithTable):
                 of the sample (suboptimal but easiest solution). Default is False.
 
         Raises:
-            ValueError: If `chunk` is not a positive integer or None.
+            ValueError: If `chunk` is not a positive integer or None, or a configurable
+                column key or `to_keep_schema` uses the reserved name `chunk`.
             NotImplementedError: If `distribute` is True.
             ValueError: If a customizable key uses `idx` or `idx_vector`, collides
                 with an identity column, or shares its value with another key, or
                 if `to_keep_schema` uses one of those columns (see `GoldDoerWithTable`).
         """
+        if "chunk" in (vectorized_key, cluster_key, label_key) or (
+            to_keep_schema is not None and "chunk" in to_keep_schema
+        ):
+            raise ValueError("Column name 'chunk' is reserved for chunk assignments.")
         self.clustering_tool = clustering_tool
         self.reducer = reducer
         validate_positive_integer(chunk, "chunk", allow_none=True)
@@ -589,6 +608,7 @@ class GoldClusterizer(GoldDoerWithTable):
         cluster_dataset = GoldPxtTorchDataset(cluster_table, keep_cache=True)
 
         if self.drop_table:
+            pxt.drop_table(f"{self.table_path}_chunks", if_not_exists="ignore")
             pxt.drop_table(cluster_table)
 
         return cluster_dataset
@@ -1240,7 +1260,9 @@ class GoldClusterizer(GoldDoerWithTable):
 
         This private method implements chunked clustering.
         It processes data in chunks to manage memory, applies optional dimensionality reduction,
-        and updates the cluster table with clustered samples.
+        and updates the cluster table with clustered samples. Chunk assignments for the
+        pending label/restriction population are saved before fitting any chunk. A complete
+        saved assignment is reused; otherwise the full pending population is reassigned.
 
         Args:
             cluster_from: The source table with vectorized data.
@@ -1284,11 +1306,43 @@ class GoldClusterizer(GoldDoerWithTable):
             )
             return
 
-        chunk_assignment = get_random_chunk_assignment(
-            to_chunk=to_cluster_vector_indices,
-            max_chunk_size=self.chunk,
-            random_state=self.random_state,
+        chunks_view = pxt.create_view(
+            f"{self.table_path}_chunks",
+            cluster_table,
+            additional_columns={"chunk": pxt.Int},
+            if_exists="ignore",
         )
+        assert chunks_view is not None
+        chunk_rows = (
+            chunks_view.where(chunks_view.idx_vector.isin(to_cluster_vector_indices))
+            .select(chunks_view.idx_vector, chunks_view.chunk)
+            .collect()
+        )
+        if all(row["chunk"] is not None for row in chunk_rows):
+            saved_chunks: dict[int, list[int]] = {}
+            for row in chunk_rows:
+                saved_chunks.setdefault(row["chunk"], []).append(row["idx_vector"])
+            chunk_assignment = [saved_chunks[key] for key in sorted(saved_chunks)]
+        else:
+            chunk_assignment = get_random_chunk_assignment(
+                to_chunk=to_cluster_vector_indices,
+                max_chunk_size=self.chunk,
+                random_state=self.random_state,
+            )
+            chunk_by_vector = {
+                str(idx_vector): chunk_idx
+                for chunk_idx, chunk_indices in enumerate(chunk_assignment)
+                for idx_vector in chunk_indices
+            }
+
+            # An unfiltered update avoids PixelTable conflicts on inherited view columns.
+            chunks_view.update(
+                {
+                    "chunk": _assign_chunk(
+                        chunks_view.idx_vector, chunks_view.chunk, chunk_by_vector
+                    )
+                }
+            )
 
         for chunk_indices in chunk_assignment:
             to_cluster_from = cluster_from.where(
