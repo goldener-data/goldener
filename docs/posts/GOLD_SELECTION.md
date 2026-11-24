@@ -56,5 +56,3 @@ Use an integer `select_size` for a fixed budget or a float for a fraction of dis
 Greedy K-center emphasizes coverage. `GoldGreedyKernelPointsSelectionTool` aims to approximate a distribution in its chosen kernel space. For a large pool, chunking limits the per-chunk computation and makes coverage decisions within smaller pools. Reducing vector width also saves work, with the risk of erasing distinctions you need. [Coreset selection survey](https://arxiv.org/abs/2505.17799) · [Reducing the dimensionality of embeddings](GOLD_REDUCTION.md)
 
 For monitoring, review the selected IDs to discover failure modes and collect examples for follow-up. Coverage selection changes the mixture you inspect, so draw a separate random audit sample from the deployment population when estimating deployment error rates. If the samples are already labeled and you need disjoint training and evaluation sets, use the same selection stage inside `GoldSplitter`. [Splitting labeled data with Goldener](GOLD_SPLIT.md)
-
-Original post by [Yann Chéné](https://huggingface.co/Yann-CV). Sponsored by [Pixeltable](https://www.pixeltable.com/).
