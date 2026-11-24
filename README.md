@@ -118,6 +118,16 @@ selected = GoldSelector.get_selection_indices(
 
 ```
 
+Intermediate tables record the doer and the input identifier in their metadata. Pixeltable inputs are identified
+automatically from their table id and version. For a PyTorch dataset, wrap it in `UniqueDataset` with a stable
+identifier so the same table cannot silently be reused with a different dataset:
+
+```python
+from goldener import UniqueDataset
+
+description = gd.describe_in_table(UniqueDataset(dataset, "my-dataset-v1"))
+```
+
 By default, `GoldSelector` uses `GoldGreedyKernelPointsSelectionTool`, which relies on Coreax. Coreax is not
 installed on Windows, so on Windows replace the `GoldSelector` above with one that uses another selection tool:
 

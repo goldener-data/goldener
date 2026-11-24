@@ -6,7 +6,7 @@ import pytest
 import torch
 
 from goldener import GoldVectorizer
-from goldener.torch_utils import collate_keeping_sequences_as_sequences
+from goldener.torch_utils import UniqueDataset, collate_keeping_sequences_as_sequences
 from goldener.vectorize import (
     Filter2DWithCount,
     FilterLocation,
@@ -579,6 +579,47 @@ class TestGoldVectorizer:
             collate_fn=custom_collate_fn,
         )
         assert gv.collate_fn is custom_collate_fn
+
+    def test_intermediary_table_metadata_checks_identified_input(self):
+        gv = GoldVectorizer(
+            table_path="unit_test.test_input_identity",
+            vectorizer=GoldTensorVectorizationTool(),
+        )
+        table = gv.vectorize_in_table(UniqueDataset(DummyDataset(), "dataset-a"))
+
+        entry = table.get_metadata()["custom_metadata"]["goldener"]["GoldVectorizer"]
+        assert entry == {"input_id": "dataset-a", "input_type": "DummyDataset"}
+        assert gv.vectorize_in_table(
+            UniqueDataset(DummyDataset(), "dataset-a")
+        ).count() == table.count()
+
+        with pytest.raises(ValueError, match="created from input 'dataset-a'"):
+            gv.vectorize_in_table(UniqueDataset(DummyDataset(), "dataset-b"))
+
+    def test_intermediary_table_rejects_another_doer(self):
+        pxt.create_table(
+            "unit_test.foreign_table",
+            schema={
+                "idx": pxt.Required[pxt.Int],
+                "idx_vector": pxt.Required[pxt.Int],
+            },
+            primary_key="idx_vector",
+            custom_metadata={
+                "goldener": {
+                    "GoldDescriptor": {
+                        "input_id": "dataset-a",
+                        "input_type": "DummyDataset",
+                    }
+                }
+            },
+        )
+        gv = GoldVectorizer(
+            table_path="unit_test.foreign_table",
+            vectorizer=GoldTensorVectorizationTool(),
+        )
+
+        with pytest.raises(ValueError, match="was not created by GoldVectorizer"):
+            gv.vectorize_in_table(DummyDataset())
 
     def test_vectorize_in_table_with_plain_multilabel_and_default_collate(self):
         """Regression test for #202 (GoldVectorizer flavor).

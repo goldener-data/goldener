@@ -19,6 +19,7 @@ import torch
 from pixeltable.type_system import ArrayType
 from pixeltable.utils.pytorch import PixeltablePytorchDataset
 
+from goldener.torch_utils import UniqueDataset
 from goldener.utils import get_ratios_for_counts
 
 
@@ -380,10 +381,79 @@ def count_computed_elements(table: Table, col_expr: Expr, idx_col: Expr) -> int:
     )
 
 
+def get_input_identity(data: Any) -> tuple[str | None, str]:
+    """Return the identifier and type of an input to a persisted GoldDoer.
+
+    A `UniqueDataset` carries the identifier supplied by the user. A Pixeltable
+    table is identified by its table id and current version. Other datasets have
+    no identifier, so reuse of their intermediate table is not checked.
+
+    Args:
+        data: The dataset or Pixeltable table passed to a doer.
+
+    Returns:
+        A pair containing the input identifier, or `None` when unavailable, and
+        the name of the input type.
+    """
+    if isinstance(data, UniqueDataset):
+        return data.dataset_id, type(data.dataset).__name__
+    if isinstance(data, Table):
+        return f"{data._id}_{data.get_metadata()['version']}", "Table"
+    return None, type(data).__name__
+
+
+def make_goldener_metadata(
+    doer_id: str, input_id: str | None, input_type: str
+) -> dict[str, Any]:
+    """Build the table metadata recording which doer consumed which input.
+
+    Args:
+        doer_id: Stable identifier of the doer writing the table.
+        input_id: Identifier of the input, or `None` when the input is unnamed.
+        input_type: Name of the input type.
+
+    Returns:
+        Custom metadata to attach to a newly created intermediary table.
+    """
+    return {"goldener": {doer_id: {"input_id": input_id, "input_type": input_type}}}
+
+
+def validate_goldener_metadata(
+    table: Table, table_path: str, doer_id: str, input_id: str | None
+) -> None:
+    """Check that an existing table belongs to the doer and input being reused.
+
+    Args:
+        table: The existing intermediary table.
+        table_path: Path of the table, used in error messages.
+        doer_id: Stable identifier of the doer reusing the table.
+        input_id: Identifier of the current input, or `None` when unnamed.
+
+    Raises:
+        ValueError: If the table has no entry for `doer_id`, or if it records a
+            different input identifier than the one being used.
+    """
+    metadata = table.get_metadata().get("custom_metadata")
+    entries = metadata.get("goldener") if isinstance(metadata, dict) else None
+    entry = entries.get(doer_id) if isinstance(entries, dict) else None
+    if not isinstance(entry, dict):
+        raise ValueError(
+            f"Table at {table_path} was not created by {doer_id}, or has no "
+            "Goldener input metadata."
+        )
+    stored_id = entry.get("input_id")
+    if input_id is not None and stored_id != input_id:
+        raise ValueError(
+            f"Table at {table_path} was created from input {stored_id!r}, "
+            f"not {input_id!r}."
+        )
+
+
 def get_valid_table(
     table: Table | str,
     minimal_schema: dict[str, type],
     primary_key: str | None = None,
+    custom_metadata: dict[str, Any] | None = None,
 ) -> Table:
     """Get a valid PixelTable view for a given table.
 
@@ -391,6 +461,8 @@ def get_valid_table(
         table: The PixelTable table.
         minimal_schema: A dictionary representing the minimal expected schema
             (keys are column names, values are expected types).
+        primary_key: Optional primary key column of a newly created table.
+        custom_metadata: Optional metadata attached when creating the table.
 
     Returns:
         A valid PixelTable view for the given table.
@@ -413,6 +485,7 @@ def get_valid_table(
             table,
             schema=minimal_schema,
             primary_key=primary_key,
+            custom_metadata=custom_metadata,
         )
         assert isinstance(created_table, Table)
         table = created_table

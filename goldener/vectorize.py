@@ -37,13 +37,16 @@ from goldener.embed import EmbeddingFusionStrategy, GoldEmbeddingFusionTool
 from goldener.select import GoldSelectionTool
 from goldener.pxt_utils import (
     GoldPxtTorchDataset,
-    count_computed_elements,
-    get_valid_table,
-    get_sample_row_from_idx,
-    get_expr_from_column_name,
-    make_batch_ready_for_table,
     check_pxt_table_has_primary_key,
+    count_computed_elements,
+    get_expr_from_column_name,
+    get_input_identity,
     get_max_value_in_column,
+    get_sample_row_from_idx,
+    get_valid_table,
+    make_batch_ready_for_table,
+    make_goldener_metadata,
+    validate_goldener_metadata,
 )
 from goldener.torch_utils import (
     collate_keeping_sequences_as_sequences,
@@ -561,7 +564,6 @@ class GoldVectorizer(GoldDoerWithTable):
     _MINIMAL_SCHEMA: dict[str, type] = {
         "idx": pxt.Required[pxt.Int],
         "idx_vector": pxt.Required[pxt.Int],
-        "dataset_id": pxt.String,
     }
 
     def __init__(
@@ -586,7 +588,6 @@ class GoldVectorizer(GoldDoerWithTable):
         drop_table: bool = False,
         max_batches: int | None = None,
         estimation_time_batch_count: int = 2,
-        dataset_id: str | None = None,
     ) -> None:
         """Initialize the GoldVectorizer.
 
@@ -639,7 +640,7 @@ class GoldVectorizer(GoldDoerWithTable):
             estimation_time_batch_count, "estimation_time_batch_count"
         )
         self.estimation_time_batch_count = estimation_time_batch_count
-        self.dataset_id = dataset_id
+        self._table_custom_metadata: dict[str, Any] = {}
         super().__init__(
             allow_existing=allow_existing,
             drop_table=drop_table,
@@ -674,7 +675,7 @@ class GoldVectorizer(GoldDoerWithTable):
 
     def vectorize_in_dataset(
         self,
-        to_vectorize: Dataset | Table,
+        to_vectorize: Dataset | UniqueDataset | Table,
         restrict_to: set[int] | None = None,
     ) -> GoldPxtTorchDataset:
         """Extract and flatten vectors from samples and return results as a GoldPxtTorchDataset.
@@ -689,10 +690,10 @@ class GoldVectorizer(GoldDoerWithTable):
         the table will be removed after the dataset is created.
 
         Args:
-            to_vectorize: Dataset or Table to be vectorized. If a Dataset is provided, each item should be a
-                dictionary with at least the key specified by `data_key` after applying the collate_fn.
-                If a Table is provided,
-                it should contain both 'idx' and `data_key` columns.
+            to_vectorize: Dataset, UniqueDataset or Table to be vectorized. If a Dataset is provided, each item
+                should be a dictionary with at least the key specified by `data_key` after applying the collate_fn.
+                Wrap a Dataset in `UniqueDataset` to identify it when reusing an intermediary table.
+                If a Table is provided, it should contain both 'idx' and `data_key` columns.
             restrict_to: Optional set of sample indices (`idx`) to restrict the
                 vectorization to. If provided, only the selected samples will be vectorized.
 
@@ -714,7 +715,7 @@ class GoldVectorizer(GoldDoerWithTable):
 
     def vectorize_in_table(
         self,
-        to_vectorize: Dataset | Table,
+        to_vectorize: Dataset | UniqueDataset | Table,
         restrict_to: set[int] | None = None,
     ) -> Table:
         """Extract and flatten vectors from samples and store results in a PixelTable table.
@@ -728,21 +729,30 @@ class GoldVectorizer(GoldDoerWithTable):
         already present in the PixelTable table.
 
         Args:
-            to_vectorize: Dataset or Table to be vectorized. If a Dataset is provided, each item should be a
-                dictionary with at least the key specified by `data_key` after applying the collate_fn.
-                If a Table is provided,
-                it should contain both 'idx' and `data_key` columns.
+            to_vectorize: Dataset, UniqueDataset or Table to be vectorized. If a Dataset is provided, each item
+                should be a dictionary with at least the key specified by `data_key` after applying the collate_fn.
+                Wrap a Dataset in `UniqueDataset` to identify it when reusing an intermediary table.
+                If a Table is provided, it should contain both 'idx' and `data_key` columns.
             restrict_to: Optional set of sample indices (`idx`) to restrict the
                 vectorization to. If provided, only the selected samples will be vectorized.
 
         Returns:
             A PixelTable Table containing at least the vectorized data in the `vectorized_key` column
                 and `idx` (index of the sample) and `idx_vector` (index of the vector) columns as well.
+                Its metadata records the doer and input identifiers.
 
         Raises:
             ValueError: If `allow_existing` is False and the table at `table_path` already exists,
-                or if an existing vectorized table is missing the required `idx_vector` primary key.
+                if an existing vectorized table is missing the required `idx_vector` primary key,
+                or if that table was created by another doer or another identified input.
         """
+
+        input_id, input_type = get_input_identity(to_vectorize)
+        if isinstance(to_vectorize, UniqueDataset):
+            to_vectorize = to_vectorize.dataset
+        self._table_custom_metadata = make_goldener_metadata(
+            self.doer_id, input_id, input_type
+        )
 
         # If the computation was already started or already done, we resume from there
         logger.info(f"Loading the existing vectorized table from {self.table_path}")
@@ -757,6 +767,9 @@ class GoldVectorizer(GoldDoerWithTable):
 
         # vectorized table are expected to have a primary key allowing to idempotent updates
         if old_vectorized_table is not None:
+            validate_goldener_metadata(
+                old_vectorized_table, self.table_path, self.doer_id, input_id
+            )
             check_pxt_table_has_primary_key(old_vectorized_table, set(["idx_vector"]))
 
         if not self.allow_existing and old_vectorized_table is not None:
@@ -764,34 +777,6 @@ class GoldVectorizer(GoldDoerWithTable):
                 f"Table at path {self.table_path} already exists and "
                 "allow_existing is set to False."
             )
-
-        resolved_dataset_id = self.dataset_id
-        if isinstance(to_vectorize, UniqueDataset):
-            if resolved_dataset_id is None:
-                resolved_dataset_id = to_vectorize.dataset_id
-            to_vectorize = to_vectorize.dataset
-
-        self._dataset_id = resolved_dataset_id
-
-        # validate dataset id against an existing table
-        if (
-            old_vectorized_table is not None
-            and resolved_dataset_id is not None
-            and "dataset_id" in old_vectorized_table.columns()
-        ):
-            stored = {
-                row["dataset_id"]
-                for row in old_vectorized_table.select(old_vectorized_table.dataset_id)
-                .distinct()
-                .collect()
-            }
-            stored.discard(None)
-            if stored and resolved_dataset_id not in stored:
-                raise ValueError(
-                    f"The vectorized table at {self.table_path} was created "
-                    f"from a different dataset (stored id(s): {sorted(stored)}, "
-                    f"provided: {resolved_dataset_id!r})."
-                )
 
         # get the table and dataset to execute the vectorize pipeline
         to_vectorize_dataset: Dataset | GoldPxtTorchDataset
@@ -886,11 +871,6 @@ class GoldVectorizer(GoldDoerWithTable):
                 }
             )
 
-        if "dataset_id" not in vectorized_table.columns():
-            vectorized_table.add_column(
-                if_exists="ignore", **{"dataset_id": pxt.String}
-            )
-
         return vectorized_table
 
     def _vectorized_table_from_dataset(
@@ -938,11 +918,6 @@ class GoldVectorizer(GoldDoerWithTable):
                 }
             )
 
-        if "dataset_id" not in vectorized_table.columns():
-            vectorized_table.add_column(
-                if_exists="ignore", **{"dataset_id": pxt.String}
-            )
-
         return vectorized_table
 
     def _get_vectorized_valid_table(self, old_vectorized_table: Table | None) -> Table:
@@ -956,6 +931,7 @@ class GoldVectorizer(GoldDoerWithTable):
             else self.table_path,
             minimal_schema=minimal_schema,
             primary_key="idx_vector",
+            custom_metadata=self._table_custom_metadata,
         )
 
     def _distributed_vectorize(
@@ -993,11 +969,6 @@ class GoldVectorizer(GoldDoerWithTable):
             starts = batch_idx * self.batch_size
             batch["idx"] = [starts + idx for idx in range(len(batch[self.data_key]))]
 
-        batch["dataset_id"] = [
-            getattr(self, "_dataset_id", self.dataset_id)
-            for _ in range(len(batch[self.data_key]))
-        ]
-
         if restrict_to is not None:
             to_remove = {
                 int(idx.item()) if isinstance(idx, torch.Tensor) else int(idx)
@@ -1030,7 +1001,7 @@ class GoldVectorizer(GoldDoerWithTable):
             data_key=self.data_key,
             vectorized_key=self.vectorized_key,
             target_key=self.target_key,
-            to_keep=to_keep_keys + ["dataset_id"],
+            to_keep=to_keep_keys,
             starts=start_idx,
             target_to_label=self.target_to_label,
             merge_multilabels=self.merge_multilabels,
@@ -1044,7 +1015,7 @@ class GoldVectorizer(GoldDoerWithTable):
 
         start_idx = max(batch["idx_vector"]) + 1
 
-        to_insert_keys = [self.vectorized_key, "idx", "dataset_id"] + to_keep_keys
+        to_insert_keys = [self.vectorized_key, "idx"] + to_keep_keys
         batch_as_list = make_batch_ready_for_table(batch, to_insert_keys, "idx_vector")
 
         return batch_as_list, start_idx

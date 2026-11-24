@@ -25,13 +25,16 @@ from goldener.do import GoldDoerWithTable
 from goldener.embed import GoldEmbeddingTool
 from goldener.pxt_utils import (
     GoldPxtTorchDataset,
+    check_pxt_table_has_primary_key,
     count_computed_elements,
     get_expr_from_column_name,
+    get_input_identity,
+    get_max_value_in_column,
     get_sample_row_from_idx,
     get_valid_table,
     make_batch_ready_for_table,
-    check_pxt_table_has_primary_key,
-    get_max_value_in_column,
+    make_goldener_metadata,
+    validate_goldener_metadata,
 )
 from goldener.torch_utils import (
     collate_keeping_sequences_as_sequences,
@@ -103,11 +106,6 @@ class GoldDescriptor(GoldDoerWithTable):
             computation time. Default is 2.
     """
 
-    _MINIMAL_SCHEMA: dict[str, type] = {
-        "idx": pxt.Required[pxt.Int],
-        "dataset_id": pxt.String,
-    }
-
     def __init__(
         self,
         table_path: str,
@@ -134,7 +132,6 @@ class GoldDescriptor(GoldDoerWithTable):
         device: torch.device | None = None,
         max_batches: int | None = None,
         estimation_time_batch_count: int = 2,
-        dataset_id: str | None = None,
     ):
         """Initialize the GoldDescriptor.
 
@@ -199,7 +196,7 @@ class GoldDescriptor(GoldDoerWithTable):
             estimation_time_batch_count, "estimation_time_batch_count"
         )
         self.estimation_time_batch_count = estimation_time_batch_count
-        self.dataset_id = dataset_id
+        self._table_custom_metadata: dict[str, Any] = {}
 
         if device is None:
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -237,7 +234,7 @@ class GoldDescriptor(GoldDoerWithTable):
 
     def describe_in_dataset(
         self,
-        to_describe: Dataset | Table,
+        to_describe: Dataset | UniqueDataset | Table,
         restrict_to: set[int] | None = None,
     ) -> GoldPxtTorchDataset:
         """Compute embeddings from samples and return results as a GoldPxtTorchDataset.
@@ -252,10 +249,10 @@ class GoldDescriptor(GoldDoerWithTable):
         the table will be removed after the dataset is created.
 
         Args:
-            to_describe: Dataset or Table to be described. If a Dataset is provided, each item should be a
-                dictionary with at least the key specified by `data_key` after applying the collate_fn.
-                If a Table is provided,
-                it should contain both 'idx' and `data_key` columns.
+            to_describe: Dataset, UniqueDataset or Table to be described. If a Dataset is provided, each item
+                should be a dictionary with at least the key specified by `data_key` after applying the collate_fn.
+                Wrap a Dataset in `UniqueDataset` to identify it when reusing an intermediary table.
+                If a Table is provided, it should contain both 'idx' and `data_key` columns.
             restrict_to: Optional set of sample indices (`idx`) to restrict the
                 description to. If provided, only the selected samples will be described.
 
@@ -278,7 +275,7 @@ class GoldDescriptor(GoldDoerWithTable):
 
     def describe_in_table(
         self,
-        to_describe: Dataset | Table,
+        to_describe: Dataset | UniqueDataset | Table,
         restrict_to: set[int] | None = None,
     ) -> Table:
         """Compute embeddings from samples and store results in a PixelTable table.
@@ -292,28 +289,28 @@ class GoldDescriptor(GoldDoerWithTable):
         already present in the PixelTable table.
 
         Args:
-            to_describe: Dataset or Table to be described. If a Dataset is provided, each item should be a
-                dictionary with at least the key specified by `data_key` after applying the collate_fn.
-                If a Table is provided,
-                it should contain both 'idx' and `data_key` columns.
+            to_describe: Dataset, UniqueDataset or Table to be described. If a Dataset is provided, each item
+                should be a dictionary with at least the key specified by `data_key` after applying the collate_fn.
+                Wrap a Dataset in `UniqueDataset` to identify it when reusing an intermediary table.
+                If a Table is provided, it should contain both 'idx' and `data_key` columns.
             restrict_to: Optional set of sample indices (`idx`) to restrict the
                 description to. If provided, only the selected samples will be described.
 
         Returns:
             A PixelTable Table containing at least the computed embeddings in the `description_key` column
-                and an `idx` column as well.
+                and an `idx` column as well. Its metadata records the doer and input identifiers.
 
         Raises:
             ValueError: If `allow_existing` is False and the table at `table_path` already exists,
-                or if an existing description table does not have the expected primary key.
+                if an existing description table does not have the expected primary key, or if
+                that table was created by another doer or another identified input.
         """
-        resolved_dataset_id = self.dataset_id
+        input_id, input_type = get_input_identity(to_describe)
         if isinstance(to_describe, UniqueDataset):
-            if resolved_dataset_id is None:
-                resolved_dataset_id = to_describe.dataset_id
             to_describe = to_describe.dataset
-
-        self._dataset_id = resolved_dataset_id
+        self._table_custom_metadata = make_goldener_metadata(
+            self.doer_id, input_id, input_type
+        )
 
         # If the computation was already started or already done, we resume from there
         logger.info(f"Loading the existing description table from {self.table_path}")
@@ -328,28 +325,11 @@ class GoldDescriptor(GoldDoerWithTable):
 
         # description table are expected to have a primary key allowing to idempotent updates
         if old_description_table is not None:
+            validate_goldener_metadata(
+                old_description_table, self.table_path, self.doer_id, input_id
+            )
             primary_key = "idx" if self.vectorizer is None else "idx_vector"
             check_pxt_table_has_primary_key(old_description_table, set([primary_key]))
-
-            if (
-                resolved_dataset_id is not None
-                and "dataset_id" in old_description_table.columns()
-            ):
-                stored = {
-                    row["dataset_id"]
-                    for row in old_description_table.select(
-                        old_description_table.dataset_id
-                    )
-                    .distinct()
-                    .collect()
-                }
-                stored.discard(None)
-                if stored and resolved_dataset_id not in stored:
-                    raise ValueError(
-                        f"The description table at {self.table_path} was created "
-                        f"from a different dataset (stored id(s): {sorted(stored)}, "
-                        f"provided: {resolved_dataset_id!r})."
-                    )
 
         if not self.allow_existing and old_description_table is not None:
             raise ValueError(
@@ -530,20 +510,14 @@ class GoldDescriptor(GoldDoerWithTable):
         if self.to_keep_schema is not None:
             minimal_schema |= self.to_keep_schema
 
-        description_table = get_valid_table(
+        return get_valid_table(
             table=old_description_table
             if old_description_table is not None
             else self.table_path,
             minimal_schema=minimal_schema,
             primary_key="idx" if self.vectorizer is None else "idx_vector",
+            custom_metadata=self._table_custom_metadata,
         )
-
-        if "dataset_id" not in description_table.columns():
-            description_table.add_column(
-                if_exists="ignore", **{"dataset_id": pxt.String}
-            )
-
-        return description_table
 
     def _distributed_describe(
         self,
@@ -580,13 +554,6 @@ class GoldDescriptor(GoldDoerWithTable):
         if "idx" not in batch:
             starts = batch_idx * self.batch_size
             batch["idx"] = [starts + idx for idx in range(len(batch[self.data_key]))]
-
-        # track the source dataset id for safeguarding against reuse with a
-        # different dataset on the same intermediary table
-        batch["dataset_id"] = [
-            getattr(self, "_dataset_id", self.dataset_id)
-            for _ in range(len(batch[self.data_key]))
-        ]
 
         if restrict_to is not None:
             to_remove = {
@@ -629,7 +596,7 @@ class GoldDescriptor(GoldDoerWithTable):
             list(self.to_keep_schema.keys()) if self.to_keep_schema is not None else []
         )
         if self.vectorizer is None:
-            to_insert_keys = [self.description_key, "dataset_id"] + to_keep_keys
+            to_insert_keys = [self.description_key] + to_keep_keys
 
             batch_as_list = make_batch_ready_for_table(
                 batch,
@@ -643,7 +610,7 @@ class GoldDescriptor(GoldDoerWithTable):
                 data_key=self.description_key,
                 vectorized_key=self.description_key,
                 target_key=self.target_key,
-                to_keep=to_keep_keys + ["dataset_id"],
+                to_keep=to_keep_keys,
                 starts=start_idx,
                 label_key=self.label_key,
                 target_to_label=self.target_to_label,
@@ -657,7 +624,7 @@ class GoldDescriptor(GoldDoerWithTable):
 
             start_idx = max(batch["idx_vector"]) + 1
 
-            to_insert_keys = [self.description_key, "idx", "dataset_id"] + to_keep_keys
+            to_insert_keys = [self.description_key, "idx"] + to_keep_keys
             batch_as_list = make_batch_ready_for_table(
                 batch,
                 to_insert_keys,
