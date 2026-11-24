@@ -919,6 +919,8 @@ class TestGoldClusterizer:
         chunk_values = [
             row["chunk"] for row in chunk_table.select(chunk_table["chunk"]).collect()
         ]
+        assert len(chunk_values) == 50
+        assert None not in chunk_values
         assert len(set(chunk_values)) == 5
         assert max(chunk_values.count(chunk) for chunk in set(chunk_values)) <= 10
         assert (
