@@ -545,15 +545,15 @@ class GoldZCoreSelectionTool(GoldSelectionTool):
 
     @property
     def random_state(self) -> Mapping[str, Any]:
-        """Return a snapshot of the current random generator state.
+        """Return a copy of the current random generator state.
 
-        Reading this property does not advance the generator. The result is the
+        Reading this property does not advance the generator. The copy is the
         current `numpy.random.Generator` bit generator state, as returned by
         `numpy.random.Generator.bit_generator.state`. It is not the seed passed
         to `__init__`.
 
         Returns:
-            A snapshot of the current random generator state.
+            A copy of the current random generator state.
         """
         return self.np_generator.bit_generator.state
 
