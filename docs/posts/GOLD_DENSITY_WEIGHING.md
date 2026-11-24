@@ -136,6 +136,6 @@ Filtering with `label_key` and `label_value` recalculates the normalization maxi
 
 Set `weighing_batch_size` to score fewer queries at once using the same reference population. Exact search still does pairwise work that grows quadratically with population size. Set `chunk` to give each query a smaller reference population, which can change its score. The minimum neighbor count applies within every scored chunk or label group.
 
-To resume, run the weigher with the same result table, source data, and scoring settings. Goldener reuses saved raw scores and computes scores for vectors that are still missing them. For stored embeddings, configure `vectorized_key` to match the vector column in your source dataset or Pixeltable table.
+To resume, run the weigher with the same result table, source data, and scoring settings. Goldener reuses saved raw scores and scores pending vectors against other pending vectors. A small pending group can fail the neighbor requirement. To recompute scores against the full reference population, use a fresh result table with `chunk=None`. When `label_key` is set, the reference population is all vectors with the same label. For stored embeddings, configure `vectorized_key` to match the vector column in your source dataset or Pixeltable table.
 
 To control which modes appear together in each training batch, use a cluster-balanced batch sampler. [Building batches from embedding clusters](GOLD_BATCHER.md)

@@ -35,7 +35,7 @@ assert torch.allclose(reference_reduced[0], later_reduced[0], atol=1e-6)
 print(reference_reduced.shape, later_reduced.shape)  # (6, 2), (2, 2)
 ```
 
-Reduction expects finite floating tensors of shape `(num_vectors, feature_dim)`. Row order carries sample and vector identity through the projection. Calling `fit` or `fit_transform` again replaces the fitted mapping. The adapter runs the estimator on detached CPU NumPy arrays and returns a tensor on the input device with the input dtype. Store the fitted estimator (`pca` here) alongside the embedding and preprocessing configuration when later jobs need to use the same space.
+Reduction expects finite floating tensors of shape `(num_vectors, feature_dim)`. Row order carries sample and vector identity through the projection. Calling `fit` or `fit_transform` again replaces the fitted mapping. The adapter runs the estimator on detached CPU NumPy arrays and returns a tensor on the input device with the input dtype. Convert `bfloat16` inputs to a NumPy-compatible dtype such as `float32` before calling the adapter. Store the fitted estimator (`pca` here) alongside the embedding and preprocessing configuration when later jobs need to use the same space.
 
 ## Choose a projection that fits the job
 
@@ -46,7 +46,7 @@ Reduction expects finite floating tensors of shape `(num_vectors, feature_dim)`.
 | UMAP | Learns a nonlinear embedding that emphasizes local neighborhoods. | Transforms points into the fitted embedding. [UMAP paper](https://arxiv.org/abs/1802.03426) |
 | t-SNE | Builds a visualization of the rows in one fit. | Goldener warns and refits if you call `transform`, creating a new map. Use `fit_transform` for a one-off plot. [t-SNE paper](https://www.jmlr.org/papers/v9/vandermaaten08a.html) |
 
-`GoldTorchModuleReductionTool` provides the same `transform` entry point for a PyTorch module you already have, such as a trained projection head. The module handles its own device and dtype. Supply a module that returns one row per input row in the same order. The wrapper applies the module as provided.
+`GoldTorchModuleReductionTool` provides the same `transform` entry point for a PyTorch module you already have, such as a trained projection head. Match the module's device and dtype to the input before calling `transform`. Supply a module that returns one row per input row in the same order. The wrapper applies the module as provided.
 
 ## Check what the smaller vectors preserve
 
