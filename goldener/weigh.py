@@ -41,7 +41,7 @@ from goldener.pxt_utils import (
     get_valid_table,
     make_batch_ready_for_table,
     get_sample_row_from_idx,
-    sample_idx_for_vectors,
+    sample_indices_for_vectors,
 )
 from goldener.reduce import GoldReductionTool, GoldReductionToolWithFit
 from goldener.distance import DistanceType
@@ -419,7 +419,8 @@ class GoldDensityWeigher(GoldDoerWithTable):
     stored in a local PixelTable table (specified by `table_path`) so that the
     weighing process is idempotent: repeated calls reuse completed scores
     without duplicating or recomputing them. Inputs and scoring settings must
-    remain unchanged when resuming an existing result table.
+    remain unchanged when resuming an existing result table. Each chunk retains
+    all its vectors as references, and only missing scores are computed.
 
     If the data is too large to fit into memory or the weighing algorithm is
     too computationally expensive, weighing can be performed in chunks.
@@ -442,12 +443,13 @@ class GoldDensityWeigher(GoldDoerWithTable):
         exclude_same_sample: Whether to pass each vector's sample `idx` into the
             weighing tool. Defaults to `False`.
         weighing_batch_size: Positive integer query batch size, or `None` (default)
-            to call `weigh` once per chunk. Every query batch uses the full chunk.
+            to score all missing weights in a chunk in one call. Every query
+            batch uses the full chunk.
         reducer: Optional dimensionality reduction tool. Defaults to `None`.
             A fittable reducer is applied with `fit_transform` on each chunk;
             a transform-only reducer is applied with `transform`.
-        chunk: Positive integer maximum number of pending vectors per independent
-            chunk. `None` (default) uses one pending population per label.
+        chunk: Positive integer maximum number of vectors per independent
+            chunk. `None` (default) uses one reference population per label.
         collate_fn: Optional function to collate dataset samples into batches composed of
             dictionaries with at least the key specified by `vectorized_key` returning a PyTorch Tensor.
             If None, `collate_keeping_sequences_as_sequences` is used, which preserves sequence-valued
@@ -467,7 +469,7 @@ class GoldDensityWeigher(GoldDoerWithTable):
         drop_table: Whether to drop the weighing table after creating the dataset with weighing results. It is only applied
             when using `weigh_in_dataset`. Default is False.
         max_batches: Optional maximum number of batches to process. Useful for testing on a small subset of the dataset.
-        random_state: Optional random state for reproducibility during chunk assignment. Default is None.
+        random_state: Seed for chunk assignment. None uses seed 0 for reproducible restarts.
     """
 
     _MINIMAL_SCHEMA: dict[str, type] = {
@@ -509,7 +511,7 @@ class GoldDensityWeigher(GoldDoerWithTable):
                 fittable reducer is applied with `fit_transform` on each chunk;
                 a transform-only reducer is applied with `transform`.
             chunk: Optional maximum number of vectors per independently scored chunk.
-                If None, all vectors ingested by one call are placed in one chunk.
+                If None, all vectors in a label population are placed in one chunk.
             collate_fn: Optional collate function for the DataLoader.
                 If None, `collate_keeping_sequences_as_sequences` is used.
             vectorized_key: Key pointing to the vector for weighing. Defaults to "vectorized".
@@ -526,7 +528,7 @@ class GoldDensityWeigher(GoldDoerWithTable):
             drop_table: Whether to drop the table after dataset creation when using
                 `weigh_in_dataset`. Defaults to False.
             max_batches: Optional maximum number of batches to process. If None, all batches are ingested.
-            random_state: Optional random state for reproducibility during chunk assignment. Default is None.
+            random_state: Seed for chunk assignment. None uses seed 0 for reproducible restarts.
                 The seed is reused for each new chunk assignment.
             exclude_same_sample: Whether to pass each vector's sample `idx` into
                 `weigher`. Defaults to `False`, which calls the tool without sample
@@ -1072,8 +1074,8 @@ class GoldDensityWeigher(GoldDoerWithTable):
     ) -> None:
         """Perform chunked density weighing for a specific label or all data.
 
-        Pending vectors are processed in chunks with optional dimensionality
-        reduction, and scores are stored by vector index.
+        All vectors in each chunk participate in optional dimensionality reduction
+        and serve as references. Only vectors without scores are queried and updated.
 
         Args:
             weigh_from: The source table with vectorized data.
@@ -1091,32 +1093,33 @@ class GoldDensityWeigher(GoldDoerWithTable):
         )
         vectorized_col = get_expr_from_column_name(vector_table, self.vectorized_key)
 
-        # do not recompute weights for already processed vectors
-        available_query = weight_col == None  # noqa: E711
+        vector_ids = weighing_table.select(weighing_table.idx_vector)
+        weighing_pool = vector_ids
+        pending_filter = weight_col == None  # noqa: E711
         label_scope = ""
         if label_value is not None:
             assert self.label_key is not None
             label_col = get_expr_from_column_name(weighing_table, self.label_key)
-            available_query = available_query & (label_col == label_value)
+            label_filter = label_col == label_value
+            weighing_pool = vector_ids.where(label_filter)
+            pending_filter = pending_filter & label_filter
             label_scope = f" for label '{label_value}'"
 
-        weighing_pool = weighing_table.where(available_query)
-
-        # when all vectors are already computed skip the label
-        if weighing_pool.count() == 0:
+        pending = {
+            int(row["idx_vector"]) for row in vector_ids.where(pending_filter).collect()
+        }
+        if not pending:
             return
 
         logger.info(f"Starting density weighing{label_scope}")
-        to_weigh_vector_indices = [
-            int(row["idx_vector"])
-            for row in weighing_pool.select(weighing_table.idx_vector).collect()
-        ]
         chunk_assignment = get_random_chunk_assignment(
-            to_chunk=sorted(to_weigh_vector_indices),
+            to_chunk=sorted(int(row["idx_vector"]) for row in weighing_pool.collect()),
             max_chunk_size=self.chunk,
-            random_state=self.random_state,
+            random_state=0 if self.random_state is None else self.random_state,
         )
         for chunk_id, chunk_vector_indices in enumerate(chunk_assignment):
+            if pending.isdisjoint(chunk_vector_indices):
+                continue
             logger.info(
                 f"Weighing {len(chunk_vector_indices)} vectors{label_scope} "
                 f"from chunk {chunk_id}"
@@ -1125,9 +1128,11 @@ class GoldDensityWeigher(GoldDoerWithTable):
             to_weigh_from = vector_table.where(
                 vector_table.idx_vector.isin(chunk_vector_indices)
             ).select(vector_table.idx_vector, vectorized_col)
-            to_weigh_for_chunk = to_weigh_from.collect()
+            to_weigh_for_chunk = to_weigh_from.order_by(
+                vector_table.idx_vector
+            ).collect()
 
-            indices = [int(row["idx_vector"]) for row in to_weigh_for_chunk]
+            vector_indices = [int(row["idx_vector"]) for row in to_weigh_for_chunk]
             vectors = torch.stack(
                 [
                     torch.as_tensor(row[self.vectorized_key])
@@ -1135,24 +1140,35 @@ class GoldDensityWeigher(GoldDoerWithTable):
                 ],
                 dim=0,
             )
-            sample_idx = (
-                sample_idx_for_vectors(weighing_table, indices)
+            sample_indices = (
+                sample_indices_for_vectors(weighing_table, vector_indices)
                 if self.exclude_same_sample
                 else None
             )
-            scores = self._compute_weights(vectors, sample_idx)
+            query_positions = [
+                pos for pos, idx in enumerate(vector_indices) if idx in pending
+            ]
+            query_indices = [vector_indices[pos] for pos in query_positions]
+            scores = self._compute_weights(
+                vectors,
+                sample_indices,
+                query_positions if len(query_positions) < len(vector_indices) else None,
+            )
             weighing_table.batch_update(
                 [
-                    {"idx_vector": idx, self.weight_key: float(score.item())}
-                    for idx, score in zip(indices, scores)
+                    {"idx_vector": idx_vector, self.weight_key: float(score.item())}
+                    for idx_vector, score in zip(query_indices, scores)
                 ]
             )
             logger.info(
-                f"Weighed {len(indices)} vectors after the current chunk{label_scope}"
+                f"Weighed {len(query_indices)} vectors after the current chunk{label_scope}"
             )
 
     def _compute_weights(
-        self, vectors: torch.Tensor, sample_idx: torch.Tensor | None = None
+        self,
+        vectors: torch.Tensor,
+        sample_idx: torch.Tensor | None = None,
+        query_positions: list[int] | None = None,
     ) -> torch.Tensor:
         """Apply the weighing algorithm.
 
@@ -1167,15 +1183,15 @@ class GoldDensityWeigher(GoldDoerWithTable):
             sample_idx: Optional sample id per input row. Forwarded when
                 `exclude_same_sample` is true, and omitted otherwise. The tool
                 treats omitted ids as independent rows.
+            query_positions: Positions to score within the chunk, or None for all rows.
 
         Returns:
-            A tensor shaped `(num_vectors,)` containing weighing score
-            per input vector, in the same row order.
+            A one-dimensional tensor containing one score per query, in query order.
 
         Raises:
             ValueError: If the reducer does not return a two-dimensional tensor with the
                 same number of rows, the weighing tool does not return one finite
-                nonnegative score per input vector, or same-sample exclusion is
+                nonnegative score per query, or same-sample exclusion is
                 missing sample ids.
         """
         expected_rows = len(vectors)
@@ -1195,27 +1211,26 @@ class GoldDensityWeigher(GoldDoerWithTable):
             raise ValueError(
                 "Reducer output must be 2D and preserve the number of rows."
             )
+
         if self.exclude_same_sample and sample_idx is None:
             raise ValueError("sample_idx is required when exclude_same_sample is True.")
-        if self.weighing_batch_size is None:
-            batches = [vectors]
-        else:
-            batches = list(vectors.split(self.weighing_batch_size))
-        batch_ids = (
-            None
-            if sample_idx is None
-            else (
-                [sample_idx]
-                if self.weighing_batch_size is None
-                else list(sample_idx.split(self.weighing_batch_size))
-            )
+
+        queries = vectors if query_positions is None else vectors[query_positions]
+        query_ids = (
+            sample_idx
+            if sample_idx is None or query_positions is None
+            else sample_idx[query_positions]
         )
+
+        batch_size = self.weighing_batch_size or len(queries)
+        batches = queries.split(batch_size)
+        batch_ids = None if query_ids is None else query_ids.split(batch_size)
         results = []
         for index, batch in enumerate(batches):
             one_batch_ids = None if batch_ids is None else batch_ids[index]
             scores = (
                 self.weigher.weigh(vectors, sample_idx=sample_idx)
-                if self.weighing_batch_size is None
+                if self.weighing_batch_size is None and query_positions is None
                 else self.weigher.weigh_batch(
                     vectors,
                     batch,
