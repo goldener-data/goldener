@@ -1,5 +1,7 @@
 # Use embedding clusters to investigate model errors
 
+![Four example support tickets describe two duplicate charges and two missing deliveries.](illustrations/clustering-ticket-records.jpg)
+
 An error rate tells you how often a model fails. To decide what to fix, you need to see which errors have something in common. If a classifier sends many support tickets to the wrong queue, grouping their text embeddings can help you find repeated patterns. Read tickets in one cluster to see whether a new form template makes different requests look alike or whether one routing rule needs a clearer definition.
 
 `GoldClusterizer` stores those assignments so you can retrieve members by sample ID. You can use the same workflow before training to find borderline examples and write annotation guidelines.
@@ -46,6 +48,8 @@ assert {frozenset(ids) for ids in groups.values()} == {
 for cluster_id, ids in groups.items():
     print(cluster_id, sorted(ids))
 ```
+
+![The eight ticket embeddings form two groups. One contains IDs 11, 24, 37, and 48. The other contains IDs 59, 63, 72, and 80.](figures/ticket-clusters.png)
 
 The two neighborhoods each yield four IDs. In a real queue, use the IDs to open the original inputs. Review several members and some borderline cases before using a cluster to write an annotation guideline or change a routing rule. The fit produces cluster numbers. The review establishes what the groups mean.
 

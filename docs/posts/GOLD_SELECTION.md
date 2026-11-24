@@ -1,5 +1,7 @@
 # Choose what to label with embedding-based selection
 
+![Six camera-trap images show two daylight deer sightings, two infrared raccoon sightings, and two dusk fox sightings.](illustrations/selection-camera-trap-images.jpg)
+
 You can afford to label only a fraction of an unlabeled pool. When near-duplicates dominate, a random draw can spend much of the budget on examples that teach the model similar things. If you train a multilingual product search ranker, a queue dominated by common queries can hide regional product names and less common ways to describe the same item. Selecting for coverage can bring those queries to annotators when they form distinct neighborhoods.
 
 Goldener compares vectors from a pretrained model and selects actual samples for review. The same workflow can build a monitoring queue for investigating unfamiliar inputs.
@@ -38,6 +40,10 @@ print(sorted(review_ids))
 ```
 
 Greedy K-center picks one sample from each of the three neighborhoods in this example. After choosing the first center, it repeatedly picks the candidate farthest from its *nearest* chosen center. Once a neighborhood has a center, taking another near-duplicate usually contributes less coverage. An isolated corrupt input can also look far away, so inspect the selected examples before labeling.
+
+In the camera-trap example, each image has two crop vectors. The annotation budget counts images, so all crops from a selected image share its assignment.
+
+![One image from each camera-trap group enters the annotation queue. Both crop vectors for each selected image are marked, and archive image 999 is outside the candidate pool.](figures/camera-trap-image-selection.png)
 
 ## Choose the representation and the objective
 

@@ -1,5 +1,7 @@
 # Split labeled data with semantic coverage in mind
 
+![Three filmstrips show a ball passing a box from different viewpoints.](illustrations/splitting-video-frames.jpg)
+
 A train and validation split can match label counts while missing variation within a label. For a video activity classifier, a small validation set could contain plenty of clips of the common activities, filmed mostly from a single viewpoint. Once you have set aside independent recordings for validation, embedding-based selection can help you choose clips that cover several viewpoints from those recordings.
 
 `GoldSplitter` uses a selection algorithm to fill named sets in the order you supply. Give the first set a coverage objective, then decide whether the remaining data is suitable for the role you assign it.
@@ -47,6 +49,8 @@ assert splits["validation"].isdisjoint(splits["train"])
 assert {pos // 3 for pos in splits["validation"]} == {0, 1, 2}
 print(len(validation), len(training))  # 3 6
 ```
+
+![Validation takes one clip from each of three embedding neighborhoods. The other two clips in each neighborhood go to training.](figures/validation-neighborhoods.png)
 
 `get_split_indices` groups the stored assignments by set name and returns sets of sample IDs. This example makes those IDs the dataset positions so they work directly in `Subset`. For catalog IDs, look up their dataset positions first.
 
