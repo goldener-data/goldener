@@ -14,7 +14,7 @@ import math
 import sys
 from abc import ABC, abstractmethod
 from logging import getLogger
-from typing import TYPE_CHECKING, Callable, Any
+from typing import TYPE_CHECKING, Callable, Any, Mapping
 
 import numpy as np
 import pixeltable as pxt
@@ -544,8 +544,8 @@ class GoldZCoreSelectionTool(GoldSelectionTool):
         self.np_generator = np.random.default_rng(seed=random_state)
 
     @property
-    def random_state(self) -> dict[str, Any]:
-        """Return the current random generator state.
+    def random_state(self) -> Mapping[str, Any]:
+        """Return a snapshot of the current random generator state.
 
         Reading this property does not advance the generator. The result is the
         current `numpy.random.Generator` bit generator state, as returned by
@@ -553,11 +553,11 @@ class GoldZCoreSelectionTool(GoldSelectionTool):
         to `__init__`.
 
         Returns:
-            The current random generator state.
+            A snapshot of the current random generator state.
         """
         return self.np_generator.bit_generator.state
 
-    def update_random_state(self, state: dict[str, Any]) -> None:
+    def update_random_state(self, state: Mapping[str, Any]) -> None:
         """Restore the random generator state from a previous snapshot.
 
         The next `select` uses the restored state.
