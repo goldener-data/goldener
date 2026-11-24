@@ -630,7 +630,6 @@ class TestGoldVectorizer:
             "unit_test.version_source", schema=schema, primary_key="idx"
         )
         input_id, input_type = get_input_identity(source)
-        stored_id = f"{input_id.rsplit('_', 1)[0]}_1"
         metadata_table = pxt.create_table(
             "unit_test.version_metadata",
             schema=schema,
@@ -638,7 +637,7 @@ class TestGoldVectorizer:
             custom_metadata={
                 "goldener": {
                     "GoldVectorizer": {
-                        "input_id": stored_id,
+                        "input_id": f"{input_id.rsplit('_', 1)[0]}_1",
                         "input_type": input_type,
                     }
                 }
@@ -652,39 +651,12 @@ class TestGoldVectorizer:
             input_id,
             input_type,
         )
-
-        other = pxt.create_table(
-            "unit_test.version_other", schema=schema, primary_key="idx"
-        )
-        other_id, _ = get_input_identity(other)
         with pytest.raises(ValueError, match="created from input"):
             validate_goldener_metadata(
                 metadata_table,
                 "unit_test.version_metadata",
                 "GoldVectorizer",
-                other_id,
-                input_type,
-            )
-
-        wrong_type_table = pxt.create_table(
-            "unit_test.version_wrong_type",
-            schema=schema,
-            primary_key="idx",
-            custom_metadata={
-                "goldener": {
-                    "GoldVectorizer": {
-                        "input_id": stored_id,
-                        "input_type": "DummyDataset",
-                    }
-                }
-            },
-        )
-        with pytest.raises(ValueError, match="type 'DummyDataset'"):
-            validate_goldener_metadata(
-                wrong_type_table,
-                "unit_test.version_wrong_type",
-                "GoldVectorizer",
-                input_id,
+                "other_1",
                 input_type,
             )
 

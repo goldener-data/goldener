@@ -382,18 +382,16 @@ def count_computed_elements(table: Table, col_expr: Expr, idx_col: Expr) -> int:
 
 
 def get_input_identity(data: Any) -> tuple[str | None, str]:
-    """Return the identifier and type of an input to a persisted GoldDoer.
+    """Return the identifier and type used for an input in table metadata.
 
-    A `UniqueDataset` carries the identifier supplied by the user. A Pixeltable
-    table is identified by its table id and current version. Other datasets have
-    no identifier, so reuse of their intermediate table is not checked.
+    `UniqueDataset` uses the supplied identifier, and Pixeltable tables use
+    their table id and version. Other datasets have no identifier.
 
     Args:
-        data: The dataset or Pixeltable table passed to a doer.
+        data: The input passed to a doer.
 
     Returns:
-        A pair containing the input identifier, or `None` when unavailable, and
-        the name of the input type.
+        The identifier, or `None`, and the input type name.
     """
     if isinstance(data, UniqueDataset):
         return data.dataset_id, type(data.dataset).__name__
@@ -405,15 +403,15 @@ def get_input_identity(data: Any) -> tuple[str | None, str]:
 def make_goldener_metadata(
     doer_id: str, input_id: str | None, input_type: str
 ) -> dict[str, Any]:
-    """Build the table metadata recording which doer consumed which input.
+    """Build metadata identifying the doer and input of a table.
 
     Args:
-        doer_id: Stable identifier of the doer writing the table.
-        input_id: Identifier of the input, or `None` when the input is unnamed.
+        doer_id: Identifier of the doer writing the table.
+        input_id: Identifier of the input, or `None` when unnamed.
         input_type: Name of the input type.
 
     Returns:
-        Custom metadata to attach to a newly created intermediary table.
+        Custom metadata for a newly created table.
     """
     return {"goldener": {doer_id: {"input_id": input_id, "input_type": input_type}}}
 
@@ -434,21 +432,19 @@ def validate_goldener_metadata(
     input_id: str | None,
     input_type: str,
 ) -> None:
-    """Check that an existing table belongs to the doer and input being reused.
+    """Verify an existing table belongs to this doer and input.
 
-    Pixeltable inputs keep their identity when their version advances, so only
-    the table id part of their recorded `ID_VERSION` value is compared.
+    Pixeltable table ids are compared without their version suffix.
 
     Args:
         table: The existing intermediary table.
         table_path: Path of the table, used in error messages.
-        doer_id: Stable identifier of the doer reusing the table.
+        doer_id: Identifier of the doer reusing the table.
         input_id: Identifier of the current input, or `None` when unnamed.
         input_type: Name of the current input type.
 
     Raises:
-        ValueError: If the table has no entry for `doer_id`, or if it records a
-            different input identifier or type than the one being used.
+        ValueError: If the table records a different doer, input id, or input type.
     """
     metadata = table.get_metadata().get("custom_metadata")
     entries = metadata.get("goldener") if isinstance(metadata, dict) else None

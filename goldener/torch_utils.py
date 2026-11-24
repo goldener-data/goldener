@@ -305,22 +305,20 @@ def shuffle_list(items: list[T], generator: torch.Generator) -> list[T]:
 class UniqueDataset:
     """Associate a dataset with a user-provided identifier.
 
-    A persisted `GoldDoer` records the identifier and input type in its
-    intermediary table metadata and rejects reuse of that table with a
-    different identifier. The wrapper is not itself a dataset: doers unwrap it
-    before iterating over `dataset`.
+    Persisted doers record that identifier in their table metadata and reject
+    reuse of the table with a different identified input.
 
     Attributes:
-        dataset: The wrapped PyTorch dataset.
-        dataset_id: The unique identifier of the wrapped dataset.
+        dataset: The wrapped dataset.
+        dataset_id: The identifier of the wrapped dataset.
     """
 
     def __init__(self, dataset: Dataset, dataset_id: str) -> None:
-        """Initialize the UniqueDataset.
+        """Initialize a UniqueDataset.
 
         Args:
-            dataset: The PyTorch dataset to wrap.
-            dataset_id: The unique identifier of the dataset.
+            dataset: The dataset to wrap.
+            dataset_id: The identifier of the dataset.
 
         Raises:
             ValueError: If `dataset_id` is empty.

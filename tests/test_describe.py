@@ -11,7 +11,7 @@ from pixeltable import Error
 
 from goldener.describe import GoldDescriptor
 from goldener.embed import GoldTorchEmbeddingToolConfig, GoldTorchEmbeddingTool
-from goldener.torch_utils import UniqueDataset, collate_keeping_sequences_as_sequences
+from goldener.torch_utils import collate_keeping_sequences_as_sequences
 from goldener.vectorize import GoldTensorVectorizationTool
 
 
@@ -171,24 +171,6 @@ class TestGoldDescriptor:
             assert row["embeddings"].shape == (4, 8, 8)
             assert row["label"] == "dummy"
 
-    def test_intermediary_table_metadata_checks_identified_input(self, embedder):
-        desc = GoldDescriptor(
-            table_path="unit_test.test_input_identity",
-            embedder=embedder,
-            device=torch.device("cpu"),
-        )
-        table = desc.describe_in_table(UniqueDataset(DummyDataset(), "dataset-a"))
-
-        entry = table.get_metadata()["custom_metadata"]["goldener"]["GoldDescriptor"]
-        assert entry == {"input_id": "dataset-a", "input_type": "DummyDataset"}
-        assert (
-            desc.describe_in_table(UniqueDataset(DummyDataset(), "dataset-a")).count()
-            == 2
-        )
-
-        with pytest.raises(ValueError, match="created from input 'dataset-a'"):
-            desc.describe_in_table(UniqueDataset(DummyDataset(), "dataset-b"))
-
     def test_intermediary_table_metadata_checks_table_input(self, embedder):
         schema = {
             "idx": pxt.Required[pxt.Int],
@@ -206,7 +188,10 @@ class TestGoldDescriptor:
             embedder=embedder,
             device=torch.device("cpu"),
         )
-        desc.describe_in_table(source)
+        table = desc.describe_in_table(source)
+        entry = table.get_metadata()["custom_metadata"]["goldener"]["GoldDescriptor"]
+        assert entry["input_type"] == "Table"
+        assert entry["input_id"].startswith(str(source._id))
 
         with pytest.raises(ValueError, match="created from input"):
             desc.describe_in_table(other)

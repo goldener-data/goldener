@@ -322,7 +322,5 @@ class TestUniqueDataset:
 
         assert identified.dataset is dataset
         assert identified.dataset_id == "dataset-a"
-
-    def test_rejects_empty_identifier(self):
         with pytest.raises(ValueError, match="dataset_id must be a non-empty string"):
             UniqueDataset([], "")

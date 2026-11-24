@@ -118,9 +118,7 @@ selected = GoldSelector.get_selection_indices(
 
 ```
 
-Intermediate tables record the doer and the input identifier in their metadata. Pixeltable inputs are identified
-automatically from their table id and version. For a PyTorch dataset, wrap it in `UniqueDataset` with a stable
-identifier so the same table cannot silently be reused with a different dataset:
+Intermediate tables record the doer and input identifier in their metadata, so a different identified input cannot silently reuse stored results. Pixeltable inputs are identified automatically. For a PyTorch dataset, use a stable identifier:
 
 ```python
 from goldener import UniqueDataset

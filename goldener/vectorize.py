@@ -37,14 +37,14 @@ from goldener.embed import EmbeddingFusionStrategy, GoldEmbeddingFusionTool
 from goldener.select import GoldSelectionTool
 from goldener.pxt_utils import (
     GoldPxtTorchDataset,
-    check_pxt_table_has_primary_key,
     count_computed_elements,
-    get_expr_from_column_name,
-    get_input_identity,
-    get_max_value_in_column,
-    get_sample_row_from_idx,
     get_valid_table,
+    get_sample_row_from_idx,
+    get_expr_from_column_name,
     make_batch_ready_for_table,
+    check_pxt_table_has_primary_key,
+    get_max_value_in_column,
+    get_input_identity,
     make_goldener_metadata,
     validate_goldener_metadata,
 )
