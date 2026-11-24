@@ -877,6 +877,57 @@ class TestGoldClusterizer:
         ]
         assert len(set(chunk_values)) == 5
 
+    def test_cluster_in_table_recomputes_oversized_chunk_assignment(self):
+        table_path = "unit_test.test_cluster_chunk_oversized"
+
+        dataset = DummyDataset(
+            [{"vectorized": torch.rand(4), "idx": idx} for idx in range(50)]
+        )
+
+        clusterizer = GoldClusterizer(
+            table_path=table_path,
+            clustering_tool=GoldRandomClusteringTool(random_state=0),
+            allow_existing=True,
+            batch_size=5,
+            chunk=10,
+            random_state=0,
+        )
+        cluster_table = clusterizer.cluster_in_table(dataset, n_clusters=5)
+
+        chunk_table = pxt.get_table(f"{table_path}_chunks")
+        chunk_table.update({chunk_table["chunk"].display_str(): 0})
+        cluster_table.update(
+            {cluster_table[clusterizer.cluster_key].display_str(): None}
+        )
+
+        restart_tool = GoldRandomClusteringTool(random_state=0)
+        original_fit = restart_tool.fit
+        restart_tool.fit = Mock(side_effect=original_fit)
+        clusterizer_restart = GoldClusterizer(
+            table_path=table_path,
+            clustering_tool=restart_tool,
+            allow_existing=True,
+            batch_size=5,
+            chunk=10,
+            random_state=0,
+        )
+        cluster_table_restart = clusterizer_restart.cluster_in_table(
+            dataset, n_clusters=5
+        )
+
+        assert restart_tool.fit.call_count == 5
+        chunk_values = [
+            row["chunk"] for row in chunk_table.select(chunk_table["chunk"]).collect()
+        ]
+        assert len(set(chunk_values)) == 5
+        assert max(chunk_values.count(chunk) for chunk in set(chunk_values)) <= 10
+        assert (
+            cluster_table_restart.where(
+                cluster_table_restart[clusterizer_restart.cluster_key] == None  # noqa: E711
+            ).count()
+            == 0
+        )
+
     def test_cluster_in_table_with_chunk_larger_than_total(self):
         table_path = "unit_test.test_cluster_chunk_large"
 

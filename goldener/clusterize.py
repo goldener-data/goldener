@@ -1385,6 +1385,40 @@ class GoldClusterizer(GoldDoerWithTable):
         seed = _get_chunk_seed(self.random_state, label_value, chunk_id)
         update_random_state(np.random.RandomState(seed).get_state(legacy=False))
 
+    def _recompute_chunk_assignment(
+        self,
+        cluster_table: Table,
+        chunk_table: Table,
+        chunk_col: Any,
+        label_value: str | None,
+        restrict_to: set[int] | None,
+        restriction_idx_key: str,
+        population_rows: list[tuple[int, int | None, int | None]],
+    ) -> list[tuple[int, list[int]]]:
+        """Clear the population's clusters and rebuild its chunk assignment."""
+        self._set_population_value(
+            cluster_table,
+            self._population_predicate(
+                cluster_table, label_value, restrict_to, restriction_idx_key
+            ),
+            get_expr_from_column_name(cluster_table, self.cluster_key),
+            None,
+        )
+        new_chunks = get_random_chunk_assignment(
+            to_chunk=sorted(idx_vector for idx_vector, _, _ in population_rows),
+            max_chunk_size=self.chunk,
+            random_state=self.random_state,
+        )
+        for chunk_id, chunk_indices in enumerate(new_chunks):
+            set_value_to_idx_rows(
+                table=chunk_table,
+                col_expr=chunk_col,
+                idx_expr=chunk_table.idx_vector,
+                indices=set(chunk_indices),
+                value=chunk_id,
+            )
+        return list(enumerate(new_chunks))
+
     def _persisted_chunk_assignment(
         self,
         cluster_table: Table,
@@ -1396,8 +1430,10 @@ class GoldClusterizer(GoldDoerWithTable):
 
         A complete assignment is reused: fully clustered chunks are skipped and
         partially clustered chunks have their clusters cleared before being
-        returned for a full recomputation. An incomplete assignment clears every
-        cluster of the population and recomputes the full chunk assignment.
+        returned for a full recomputation. An incomplete assignment, or chunks
+        assembled from different populations that exceed the configured chunk
+        size, clears every cluster of the population and recomputes the full
+        chunk assignment.
 
         Args:
             cluster_table: The table holding the clustering results.
@@ -1428,32 +1464,15 @@ class GoldClusterizer(GoldDoerWithTable):
         ]
 
         if any(chunk_id is None for _, chunk_id, _ in population_rows):
-            logger.info(
-                "The chunk assignment is incomplete, clearing the clusters and "
-                "recomputing every chunk."
-            )
-            self._set_population_value(
+            return self._recompute_chunk_assignment(
                 cluster_table,
-                self._population_predicate(
-                    cluster_table, label_value, restrict_to, restriction_idx_key
-                ),
-                get_expr_from_column_name(cluster_table, self.cluster_key),
-                None,
+                chunk_table,
+                chunk_col,
+                label_value,
+                restrict_to,
+                restriction_idx_key,
+                population_rows,
             )
-            new_chunks = get_random_chunk_assignment(
-                to_chunk=sorted(idx_vector for idx_vector, _, _ in population_rows),
-                max_chunk_size=self.chunk,
-                random_state=self.random_state,
-            )
-            for chunk_id, chunk_indices in enumerate(new_chunks):
-                set_value_to_idx_rows(
-                    table=chunk_table,
-                    col_expr=chunk_col,
-                    idx_expr=chunk_table.idx_vector,
-                    indices=set(chunk_indices),
-                    value=chunk_id,
-                )
-            return list(enumerate(new_chunks))
 
         chunks: dict[int, list[int]] = defaultdict(list)
         clustered: dict[int, list[int]] = defaultdict(list)
@@ -1461,6 +1480,24 @@ class GoldClusterizer(GoldDoerWithTable):
             chunks[chunk_id].append(idx_vector)
             if cluster_value is not None:
                 clustered[chunk_id].append(idx_vector)
+
+        if any(
+            self.chunk is not None and len(chunk_indices) > self.chunk
+            for chunk_indices in chunks.values()
+        ):
+            logger.info(
+                "The chunk assignment exceeds the configured chunk size, clearing "
+                "the clusters and recomputing every chunk."
+            )
+            return self._recompute_chunk_assignment(
+                cluster_table,
+                chunk_table,
+                chunk_col,
+                label_value,
+                restrict_to,
+                restriction_idx_key,
+                population_rows,
+            )
 
         to_cluster = []
         for chunk_id in sorted(chunks):
