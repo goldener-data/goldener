@@ -405,7 +405,7 @@ class TestGoldClusterizedBatchSampler:
 
     @pytest.mark.parametrize(
         "strategy",
-        [ExhaustedClusterStrategy.RESTART, ExhaustedClusterStrategy.EXCLUDE],
+        list(ExhaustedClusterStrategy),
         ids=lambda strategy: strategy.value,
     )
     def test_get_sampling_details(self, strategy):
@@ -417,10 +417,13 @@ class TestGoldClusterizedBatchSampler:
         assert torch.equal(generator.get_state(), state)
 
         first_epoch_steps = details["steps_per_epoch"][0]
+        state = generator.get_state()
         assert batch_sampler.get_sampling_details(n_steps=first_epoch_steps + 1) == {
             "steps_per_epoch": [first_epoch_steps, 1],
             "samples_per_step": details["samples_per_step"][: first_epoch_steps + 1],
         }
+
+        assert torch.equal(generator.get_state(), state)
 
         epochs = [list(batch_sampler) for _ in range(2)]
         assert details == get_sampling_details_from_epochs(epochs)
