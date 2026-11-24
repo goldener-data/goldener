@@ -69,5 +69,3 @@ In the example, validation gets first choice across the three modes. Reverse the
 A coverage-oriented validation set can expose failures on familiar modes. Keep all clips from a held-out video recording out of training, including clips you skip when choosing a diagnostic review subset. With tabular transaction data, use a later holdout if the question is how a model handles changes in customer behavior after deployment. Keep the date boundary intact when selecting training examples. The splitter tracks samples by ID, so grouping related records and enforcing a time boundary happen outside this workflow.
 
 Use a holdout that reflects the population you want to score when the result needs to estimate deployment performance. The diagnostic validation set above is intentionally chosen for variation. Joseph and Vakayil study another approach to geometry-based splitting, using support points to reflect the full dataset's distribution. [SPlit: An optimal method for data splitting](https://doi.org/10.1080/00401706.2021.1921037)
-
-Original post by [Yann Chéné](https://huggingface.co/Yann-CV). Sponsored by [Pixeltable](https://www.pixeltable.com/).
