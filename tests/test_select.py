@@ -1410,6 +1410,8 @@ class TestGoldZCoreSelectionTool:
         tool.update_random_state(initial)
         assert tool.random_state == initial
         assert tool.select(x, k=5) == first
+        held = tool.random_state
+        assert tool.random_state == held
 
     def test_select_n_dim_for_score_exceeds_feature_dim(self):
         device = torch.device("cpu")
