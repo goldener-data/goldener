@@ -512,7 +512,7 @@ class GoldClusterizer(GoldDoerWithTable):
         "idx": pxt.Required[pxt.Int],
         "idx_vector": pxt.Required[pxt.Int],
     }
-    _RESERVED_KEYS: frozenset[str] = frozenset({"idx", "idx_vector", "chunks"})
+    _RESERVED_KEYS: frozenset[str] = frozenset({"idx", "idx_vector", "chunk"})
 
     def __init__(
         self,
