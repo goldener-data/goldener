@@ -992,21 +992,8 @@ class TestGoldSplitter:
                 ],
             )
 
-        # validate using clustering and then restart while already done
         splitter.split_in_table(to_split=to_split)
-        split_table = splitter.split_in_table(to_split=to_split)
 
-        splitted = splitter.get_split_indices(
-            split_table,
-            selection_key=splitter.selector.selection_key,
-            idx_key="idx",
-        )
-
-        assert set(splitted.keys()) == {"train", "val"}
-        assert len(splitted["train"]) == 15
-        assert len(splitted["val"]) == 15
-
-        # Check that the clusterizer table was created and has clusters assigned
         cluster_table = pxt.get_table(clusterizer.table_path)
         assert cluster_table.count() > 0
         distinct_clusters = [
@@ -1017,6 +1004,23 @@ class TestGoldSplitter:
         ]
         # Since we requested 2 clusters, resulting cluster ids should be a subset of {0,1}
         assert set(distinct_clusters).issubset({0, 1})
+
+        splitter.drop_table = True
+        split_table = splitter.split_in_table(to_split=to_split)
+        splitted = splitter.get_split_indices(
+            split_table,
+            selection_key=splitter.selector.selection_key,
+            idx_key="idx",
+        )
+        assert set(splitted.keys()) == {"train", "val"}
+        assert len(splitted["train"]) == 15
+        assert len(splitted["val"]) == 15
+        assert pxt.get_table(clusterizer.table_path, if_not_exists="ignore") is None
+        assert (
+            pxt.get_table(f"{clusterizer.table_path}_chunks", if_not_exists="ignore")
+            is None
+        )
+        assert split_table.count() == 120
 
 
 class TestGoldSet:
