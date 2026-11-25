@@ -516,17 +516,17 @@ class TestGoldClusterizer:
         [
             *[
                 pytest.param(
-                    kwargs,
-                    "Column name 'chunk' is reserved for chunk assignments",
+                    {key: "chunk"},
+                    f"{key}='chunk' collides with the identity column 'chunk'",
                     id=f"reserved_chunk_{key}",
                 )
-                for key, kwargs in [
-                    ("cluster", {"cluster_key": "chunk"}),
-                    ("vectors", {"vectorized_key": "chunk"}),
-                    ("label", {"label_key": "chunk"}),
-                    ("kept", {"to_keep_schema": {"chunk": pxt.Int}}),
-                ]
+                for key in ["cluster_key", "vectorized_key", "label_key"]
             ],
+            pytest.param(
+                {"to_keep_schema": {"chunk": pxt.Int}},
+                r"cannot redefine the identity columns \['chunk'\]",
+                id="reserved_chunk_kept",
+            ),
             pytest.param(
                 {"cluster_key": "idx_vector"},
                 r"cluster_key='idx_vector' collides with the identity column",
