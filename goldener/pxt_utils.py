@@ -414,10 +414,18 @@ def get_input_identity(data: UniqueDataset | Table) -> tuple[str, str]:
 
     Returns:
         The input identifier and type name.
+
+    Raises:
+        ValueError: If `data` is not a `UniqueDataset` or `Table`.
     """
     if isinstance(data, UniqueDataset):
         return get_unique_dataset_identity(data)
-    return get_table_identity(data)
+    if isinstance(data, Table):
+        return get_table_identity(data)
+    raise ValueError(
+        f"Expected `UniqueDataset` or `Table`, got {type(data).__name__}. "
+        "Wrap dataset inputs in `UniqueDataset` with a stable identifier."
+    )
 
 
 def make_goldener_metadata(

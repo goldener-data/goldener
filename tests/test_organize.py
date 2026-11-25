@@ -15,7 +15,7 @@ from goldener.organize import (
     ExhaustedClusterStrategy,
     get_indices_per_cluster_for_subset,
 )
-from goldener.torch_utils import collate_keeping_sequences_as_sequences
+from goldener.torch_utils import UniqueDataset, collate_keeping_sequences_as_sequences
 from goldener.vectorize import GoldVectorizer, GoldTensorVectorizationTool
 
 
@@ -215,17 +215,20 @@ class TestGoldClusterizedBatchSampler:
         assert shuffled_indices != shuffled_again_indices
 
     def test_with_descriptor_and_vectorizer(self, descriptor, vectorizer, clusterizer):
-        dataset = DummyDataset(
-            [
-                {
-                    "data": torch.rand(
-                        4,
-                        1,
-                    ),
-                    "idx": idx,
-                }
-                for idx in range(20)
-            ]
+        dataset = UniqueDataset(
+            DummyDataset(
+                [
+                    {
+                        "data": torch.rand(
+                            4,
+                            1,
+                        ),
+                        "idx": idx,
+                    }
+                    for idx in range(20)
+                ]
+            ),
+            "dataset-id",
         )
         batch_sampler = GoldClusterizedBatchSampler(
             dataset=dataset,

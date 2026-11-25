@@ -487,6 +487,16 @@ class TestGetMaxValueInColumn:
         pxt.drop_dir("test_max_value", force=True)
 
 
+class TestGetInputIdentity:
+    def test_rejects_plain_dataset(self):
+        from torch.utils.data import TensorDataset
+        from goldener.pxt_utils import get_input_identity
+
+        ds = TensorDataset(torch.zeros(4))
+        with pytest.raises(ValueError, match="UniqueDataset|Table"):
+            get_input_identity(ds)
+
+
 class TestValidateGoldenerMetadata:
     def setup_method(self):
         pxt.drop_dir("unit_test", force=True)

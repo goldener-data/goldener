@@ -434,6 +434,15 @@ class GoldSplitter(GoldDoer):
             ValueError: If any set results in zero samples due to its ratio, if label_key is not found,
             or if label stratification results in zero samples for any label in a set.
         """
+        if (self.descriptor is not None or self.vectorizer is not None) and not isinstance(
+            to_split, (UniqueDataset, Table)
+        ):
+            raise ValueError(
+                "When a descriptor or vectorizer is provided, the input must be a "
+                "UniqueDataset or Table, not a plain Dataset. Wrap the dataset in a "
+                "UniqueDataset with a stable identifier to preserve input identity "
+                "across recompute/resume boundaries."
+            )
         input_id = (
             self.descriptor.table_path
             if self.descriptor is not None

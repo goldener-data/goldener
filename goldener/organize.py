@@ -148,10 +148,18 @@ class GoldClusterizedBatchSampler(Sampler):
 
         # clusterize the dataset
         logger.info("Computing the clusters for the GoldClusterizedBatchSampler")
+        if descriptor is not None and not isinstance(dataset, UniqueDataset):
+            raise ValueError(
+                "When a descriptor is provided, the dataset must be wrapped in a "
+                "UniqueDataset with a stable identifier. Do not synthesize the ID "
+                "from the table path, as this makes different datasets indistinguishable."
+            )
         description: Dataset | Table
         if descriptor is not None:
+            # Runtime check above guarantees dataset is UniqueDataset here;
+            # mypy narrowing is limited since the parameter type is Dataset.
             description = descriptor.describe_in_table(
-                UniqueDataset(dataset, descriptor.table_path)
+                dataset  # type: ignore[arg-type]
             )
         else:
             description = dataset
