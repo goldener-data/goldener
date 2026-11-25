@@ -22,11 +22,11 @@ from pixeltable.utils.pytorch import PixeltablePytorchDataset
 from goldener.utils import get_ratios_for_counts
 
 
-def get_expr_from_column_name(table: Table | Query, column_name: str) -> Expr:
+def get_expr_from_column_name(table: Table, column_name: str) -> Expr:
     """Get the expression object for a given column name in a PixelTable table.
 
     Args:
-        table: The PixelTable table or query.
+        table: The PixelTable table.
         column_name: The name of the column.
 
     Returns:
@@ -35,17 +35,10 @@ def get_expr_from_column_name(table: Table | Query, column_name: str) -> Expr:
     Raises:
         ValueError: If the column name does not exist in the table schema.
     """
-    try:
-        return getattr(table, column_name)
-    except AttributeError:
-        if isinstance(table, Table):
-            raise ValueError(
-                f"Column '{column_name}' does not exist in the table schema."
-            )
-        else:
-            raise ValueError(
-                f"Column '{column_name}' does not exist in the query schema."
-            )
+    if column_name not in table.columns():
+        raise ValueError(f"Column '{column_name}' does not exist in the table schema.")
+
+    return getattr(table, column_name)
 
 
 def create_pxt_dirs_for_path(table_path: str) -> None:
