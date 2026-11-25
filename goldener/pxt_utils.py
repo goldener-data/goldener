@@ -444,7 +444,8 @@ def validate_goldener_metadata(
         input_type: Name of the current input type.
 
     Raises:
-        ValueError: If the table records a different doer, input id, or input type.
+        ValueError: If the table has no Goldener metadata for the doer, or records
+            a different doer, input id, or input type.
     """
     metadata = table.get_metadata().get("custom_metadata")
     entries = metadata.get("goldener") if isinstance(metadata, dict) else None
