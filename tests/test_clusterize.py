@@ -767,7 +767,12 @@ class TestGoldClusterizer:
         assert len(completed) == 4
         pending_query = view.cluster == None  # noqa: E711
         if label_key is not None:
-            pending_query = pending_query & (view.label == "0")
+            completed_rows = (
+                view.where(view.cluster != None)  # noqa: E711
+                .select(view.label)
+                .collect()
+            )
+            pending_query = pending_query & (view.label == completed_rows[0]["label"])
         pending = {row["idx_vector"] for row in view.where(pending_query).collect()}
         assert all(saved[idx] is not None for idx in pending)
         if incomplete:
