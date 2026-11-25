@@ -13,6 +13,7 @@ from goldener.clusterize import (
     GoldClusterizer,
     GoldSKLearnClusteringTool,
     get_random_chunk_assignment,
+    get_chunk_assignments_from_table,
 )
 from goldener.reduce import GoldSKLearnReductionTool
 from goldener.pxt_utils import GoldPxtTorchDataset
@@ -431,6 +432,58 @@ class TestGoldSKLearnClusteringTool:
         assert torch.equal(first, expected)
 
 
+class TestGetChunkAssignmentsFromTable:
+    def setup_method(self):
+        pxt.drop_dir("unit_test", force=True)
+        pxt.create_dir("unit_test", if_exists="ignore")
+
+    def teardown_method(self):
+        pxt.drop_dir("unit_test", force=True)
+
+    def test_saved_chunk_assignments_use_chunk_order_without_repartitioning(self):
+        table = pxt.create_table(
+            "unit_test.saved_chunks",
+            source=[
+                {"idx_vector": 40, "chunk": 8, "other": 1},
+                {"idx_vector": 10, "chunk": 2, "other": 2},
+                {"idx_vector": 70, "chunk": 8, "other": 3},
+            ],
+        )
+
+        chunks = get_chunk_assignments_from_table(table, max_chunk_size=1)
+
+        assert [set(chunk) for chunk in chunks] == [{10}, {40, 70}]
+        assert (
+            get_chunk_assignments_from_table(
+                table, restrict_to={40, 70}, max_chunk_size=1
+            )
+            == chunks[1:]
+        )
+
+    def test_incomplete_chunk_assignments_are_repartitioned_and_saved(self):
+        table = pxt.create_table(
+            "unit_test.incomplete_chunks",
+            source=[
+                {"idx_vector": 40, "chunk": 8},
+                {"idx_vector": 10, "chunk": None},
+                {"idx_vector": 70, "chunk": 8},
+            ],
+        )
+
+        chunks = get_chunk_assignments_from_table(
+            table, max_chunk_size=2, random_state=0
+        )
+
+        assert sorted(idx for chunk in chunks for idx in chunk) == [10, 40, 70]
+        assert sorted(map(len, chunks)) == [1, 2]
+        assert {row["idx_vector"]: row["chunk"] for row in table.collect()} == {
+            idx: chunk_idx for chunk_idx, chunk in enumerate(chunks) for idx in chunk
+        }
+        assert [set(chunk) for chunk in get_chunk_assignments_from_table(table)] == [
+            set(chunk) for chunk in chunks
+        ]
+
+
 class TestGoldClusterizer:
     def setup_method(self):
         pxt.drop_dir("unit_test", force=True)
@@ -461,6 +514,19 @@ class TestGoldClusterizer:
     @pytest.mark.parametrize(
         "kwargs, match",
         [
+            *[
+                pytest.param(
+                    {key: "chunk"},
+                    f"{key}='chunk' collides with the identity column 'chunk'",
+                    id=f"reserved_chunk_{key}",
+                )
+                for key in ["cluster_key", "vectorized_key", "label_key"]
+            ],
+            pytest.param(
+                {"to_keep_schema": {"chunk": pxt.Int}},
+                r"cannot redefine the identity columns \['chunk'\]",
+                id="reserved_chunk_kept",
+            ),
             pytest.param(
                 {"cluster_key": "idx_vector"},
                 r"cluster_key='idx_vector' collides with the identity column",
@@ -705,76 +771,104 @@ class TestGoldClusterizer:
         with pytest.raises(ValueError, match="n_clusters to be greater than 1"):
             clusterizer.cluster_in_table(dataset, n_clusters=1)
 
-    def test_cluster_in_table_with_chunk(self):
-        table_path = "unit_test.test_cluster_chunk"
-
+    @pytest.mark.parametrize("incomplete", [False, True], ids=["reuse", "redraw"])
+    @pytest.mark.parametrize("label_key", [None, "label"], ids=["all", "per_label"])
+    def test_chunk_assignment_survives_interrupted_clustering(
+        self, monkeypatch, incomplete, label_key
+    ):
+        table_path = "unit_test.interrupted_chunks"
         dataset = DummyDataset(
-            [{"vectorized": torch.rand(4), "idx": idx} for idx in range(50)]
+            [
+                {
+                    "vectorized": torch.tensor([float(idx), 0.0]),
+                    "idx": idx,
+                    "label": str(idx % 2),
+                }
+                for idx in range(24)
+            ]
         )
-
+        tool = GoldRandomClusteringTool(random_state=0)
         clusterizer = GoldClusterizer(
             table_path=table_path,
-            clustering_tool=GoldRandomClusteringTool(random_state=0),
-            allow_existing=True,
-            batch_size=10,
-            chunk=10,
+            clustering_tool=tool,
+            chunk=4,
+            label_key=label_key,
         )
+        original_fit = tool.fit
+        fitted_chunks = []
 
-        cluster_table = clusterizer.cluster_in_table(dataset, n_clusters=5)
+        def interrupted_fit(x, n_clusters):
+            if fitted_chunks:
+                raise RuntimeError("interrupted clustering")
+            fitted_chunks.append(set(x[:, 0].tolist()))
+            return original_fit(x, n_clusters)
 
-        assert cluster_table.count() == 50
-        assert (
-            cluster_table.where(
-                cluster_table[clusterizer.cluster_key] != None  # noqa: E711
+        monkeypatch.setattr(tool, "fit", interrupted_fit)
+        with pytest.raises(RuntimeError, match="interrupted clustering"):
+            clusterizer.cluster_in_table(dataset, n_clusters=2)
+
+        table = pxt.get_table(table_path)
+        view = pxt.get_table(f"{table_path}_chunks")
+        saved = {
+            row["idx_vector"]: row["chunk"]
+            for row in view.select(view.idx_vector, view.chunk).collect()
+        }
+        completed = {
+            row["idx_vector"]: row["cluster"]
+            for row in table.where(table.cluster != None).collect()  # noqa: E711
+        }
+        assert len(completed) == 4
+        pending_query = view.cluster == None  # noqa: E711
+        if label_key is not None:
+            completed_rows = (
+                view.where(view.cluster != None)  # noqa: E711
+                .select(view.label)
+                .collect()
             )
-            .select(cluster_table.idx)
-            .distinct()
-            .count()
-            == 50
+            pending_query = pending_query & (view.label == completed_rows[0]["label"])
+        pending = {row["idx_vector"] for row in view.where(pending_query).collect()}
+        assert all(saved[idx] is not None for idx in pending)
+        if incomplete:
+            view.where(view.idx_vector.isin(pending)).update({"chunk": 99})
+            view.where(view.idx_vector == min(pending)).update({"chunk": None})
+
+        draws = []
+
+        def draw_chunks(to_chunk, max_chunk_size, random_state):
+            draws.append(set(to_chunk))
+            return get_random_chunk_assignment(to_chunk, max_chunk_size, random_state=1)
+
+        def record_fit(x, n_clusters):
+            fitted_chunks.append(set(x[:, 0].tolist()))
+            return original_fit(x, n_clusters)
+
+        monkeypatch.setattr(
+            "goldener.clusterize.get_random_chunk_assignment", draw_chunks
         )
-        distinct_clusters = [
-            row[clusterizer.cluster_key]
-            for row in cluster_table.select(cluster_table[clusterizer.cluster_key])
-            .distinct()
-            .collect()
-        ]
-        assert set(distinct_clusters).issubset(set(range(5)))
+        monkeypatch.setattr(tool, "fit", record_fit)
+        clusterizer.cluster_in_table(dataset, n_clusters=2)
 
-    def test_cluster_in_table_with_chunk_larger_than_total(self):
-        table_path = "unit_test.test_cluster_chunk_large"
-
-        dataset = DummyDataset(
-            [{"vectorized": torch.rand(4), "idx": idx} for idx in range(15)]
+        assert table.where(table.cluster == None).count() == 0  # noqa: E711
+        assert {
+            row["idx_vector"]: row["cluster"]
+            for row in table.where(table.idx_vector.isin(completed)).collect()
+        } == completed
+        assert all(
+            row["chunk"] == saved[row["idx_vector"]]
+            for row in view.where(view.idx_vector.isin(completed)).collect()
         )
-
-        clusterizer = GoldClusterizer(
-            table_path=table_path,
-            clustering_tool=GoldRandomClusteringTool(random_state=0),
-            allow_existing=True,
-            batch_size=5,
-            chunk=100,
-        )
-
-        cluster_table = clusterizer.cluster_in_table(dataset, n_clusters=3)
-
-        assert cluster_table.count() == 15
-        clustered = (
-            cluster_table.where(
-                cluster_table[clusterizer.cluster_key] != None  # noqa: E711
-            )
-            .select(cluster_table.idx)
-            .distinct()
-            .count()
-        )
-        assert clustered == 15
-
-        distinct_clusters = [
-            row[clusterizer.cluster_key]
-            for row in cluster_table.select(cluster_table[clusterizer.cluster_key])
-            .distinct()
-            .collect()
-        ]
-        assert set(distinct_clusters).issubset(set(range(3)))
+        resumed = {
+            row["idx_vector"]: row["chunk"]
+            for row in view.where(view.idx_vector.isin(pending)).collect()
+        }
+        assert (pending in draws) == incomplete
+        expected_chunks = {}
+        for idx, chunk_idx in resumed.items():
+            expected_chunks.setdefault(chunk_idx, set()).add(float(idx))
+        for expected in expected_chunks.values():
+            assert expected in fitted_chunks[1:]
+        if not incomplete:
+            assert resumed == {idx: saved[idx] for idx in pending}
 
     def test_cluster_in_table_force_same_cluster(self):
         src_path = "unit_test.src_cluster_force_table"
@@ -1054,6 +1148,8 @@ class TestGoldClusterizer:
 
         with pytest.raises(pxt.Error):
             pxt.get_table(table_path)
+        with pytest.raises(pxt.Error):
+            pxt.get_table(f"{table_path}_chunks")
 
     def test_cluster_in_table_with_existing_table_and_disallow(self):
         src_path = "unit_test.src_cluster_table_existing"
@@ -1078,53 +1174,63 @@ class TestGoldClusterizer:
         ):
             clusterizer.cluster_in_table(src_table, n_clusters=2)
 
-    def test_cluster_in_table_with_restart_allowed(self):
+    @pytest.mark.parametrize(
+        "chunk, expected_chunk_count",
+        [
+            pytest.param(None, 1, id="unchunked"),
+            pytest.param(10, 3, id="multiple_chunks"),
+            pytest.param(100, 1, id="chunk_larger_than_population"),
+        ],
+    )
+    def test_cluster_in_table_with_restart_allowed(self, chunk, expected_chunk_count):
         table_path = "unit_test.test_cluster_restart_allowed"
-
         dataset = DummyDataset(
             [{"vectorized": torch.rand(4), "idx": idx} for idx in range(30)]
         )
-
         clusterizer = GoldClusterizer(
             table_path=table_path,
             clustering_tool=GoldRandomClusteringTool(random_state=0),
             allow_existing=False,
             batch_size=5,
+            chunk=chunk,
         )
 
-        cluster_table_1 = clusterizer.cluster_in_table(dataset, n_clusters=3)
-
-        assert cluster_table_1.count() == 30
-        clustered_count_1 = (
-            cluster_table_1.where(
-                cluster_table_1[clusterizer.cluster_key] != None  # noqa: E711
-            )
-            .select(cluster_table_1.idx)
-            .distinct()
-            .count()
-        )
-        assert clustered_count_1 == 30
+        cluster_table = clusterizer.cluster_in_table(dataset, n_clusters=3)
+        view = pxt.get_table(f"{table_path}_chunks")
+        assert set(view.columns()) == set(cluster_table.columns()) | {"chunk"}
+        assert "chunk" not in cluster_table.columns()
+        saved = {
+            row["idx_vector"]: (row["idx"], row["cluster"], row["chunk"])
+            for row in view.select(
+                view.idx_vector, view.idx, view.cluster, view.chunk
+            ).collect()
+        }
+        assert cluster_table.count() == len(saved) == 30
+        assert {idx for idx, _, _ in saved.values()} == set(range(30))
+        assert {cluster for _, cluster, _ in saved.values()} <= set(range(3))
+        chunk_sizes = {}
+        for _, _, chunk_idx in saved.values():
+            assert isinstance(chunk_idx, int)
+            chunk_sizes[chunk_idx] = chunk_sizes.get(chunk_idx, 0) + 1
+        assert len(chunk_sizes) == expected_chunk_count
+        assert max(chunk_sizes.values()) <= (chunk if chunk is not None else 30)
 
         clusterizer_restart = GoldClusterizer(
             table_path=table_path,
             clustering_tool=GoldRandomClusteringTool(random_state=0),
             allow_existing=True,
             batch_size=5,
+            chunk=chunk,
         )
+        restarted_table = clusterizer_restart.cluster_in_table(dataset, n_clusters=3)
 
-        cluster_table_2 = clusterizer_restart.cluster_in_table(dataset, n_clusters=3)
-
-        assert cluster_table_2.count() == 30
-        clustered_count_2 = (
-            cluster_table_2.where(
-                cluster_table_2[clusterizer_restart.cluster_key] != None  # noqa: E711
-            )
-            .select(cluster_table_2.idx)
-            .distinct()
-            .count()
-        )
-        assert clustered_count_2 == 30
-        assert clustered_count_2 == clustered_count_1
+        assert restarted_table.count() == 30
+        assert {
+            row["idx_vector"]: (row["idx"], row["cluster"], row["chunk"])
+            for row in view.select(
+                view.idx_vector, view.idx, view.cluster, view.chunk
+            ).collect()
+        } == saved
 
     def test_cluster_in_table_with_class_key(self):
         table_path = "unit_test.test_cluster_with_class"

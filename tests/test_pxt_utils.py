@@ -23,6 +23,7 @@ from goldener.pxt_utils import (
     check_pxt_table_has_primary_key,
     get_max_value_in_column,
     count_computed_elements,
+    get_chunk_view,
 )
 
 
@@ -506,3 +507,35 @@ class TestCountComputedElements:
         )
 
         assert count_computed_elements(table, table.value, table.idx) == 2
+
+
+class TestGetChunkView:
+    def test_get_chunk_view_creates_view_if_not_exists(self, test_table):
+        view = get_chunk_view(test_table)
+
+        assert view is not None
+        assert "chunk" in view.columns()
+
+    def test_get_chunk_view_reuses_saved_values(self, test_table):
+        view = get_chunk_view(test_table)
+        view.update({"chunk": 7})
+
+        reused = get_chunk_view(test_table)
+
+        assert [row["chunk"] for row in reused.select(reused.chunk).collect()] == [7]
+        assert "chunk" not in test_table.columns()
+
+    @pytest.mark.parametrize(
+        "additional_columns", [{}, {"chunk": pxt.Int, "extra": pxt.Int}]
+    )
+    def test_get_chunk_view_rejects_incompatible_existing_view(
+        self, test_table, additional_columns
+    ):
+        pxt.create_view(
+            "test_pxt_utils.test_table_chunks",
+            test_table,
+            additional_columns=additional_columns,
+        )
+
+        with pytest.raises(ValueError, match="has unexpected columns"):
+            get_chunk_view(test_table)
