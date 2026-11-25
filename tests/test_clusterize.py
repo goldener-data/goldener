@@ -13,6 +13,7 @@ from goldener.clusterize import (
     GoldClusterizer,
     GoldSKLearnClusteringTool,
     get_random_chunk_assignment,
+    get_chunk_assignments_from_table,
 )
 from goldener.reduce import GoldSKLearnReductionTool
 from goldener.pxt_utils import GoldPxtTorchDataset
@@ -429,6 +430,58 @@ class TestGoldSKLearnClusteringTool:
 
         expected = GoldSKLearnClusteringTool(make_estimator(), random_state=0).fit(x, 4)
         assert torch.equal(first, expected)
+
+
+class TestGetChunkAssignmentsFromTable:
+    def setup_method(self):
+        pxt.drop_dir("unit_test", force=True)
+        pxt.create_dir("unit_test", if_exists="ignore")
+
+    def teardown_method(self):
+        pxt.drop_dir("unit_test", force=True)
+
+    def test_saved_chunk_assignments_use_chunk_order_without_repartitioning(self):
+        table = pxt.create_table(
+            "unit_test.saved_chunks",
+            source=[
+                {"idx_vector": 40, "chunk": 8, "other": 1},
+                {"idx_vector": 10, "chunk": 2, "other": 2},
+                {"idx_vector": 70, "chunk": 8, "other": 3},
+            ],
+        )
+
+        chunks = get_chunk_assignments_from_table(table, max_chunk_size=1)
+
+        assert [set(chunk) for chunk in chunks] == [{10}, {40, 70}]
+        assert (
+            get_chunk_assignments_from_table(
+                table, restrict_to={40, 70}, max_chunk_size=1
+            )
+            == chunks[1:]
+        )
+
+    def test_incomplete_chunk_assignments_are_repartitioned_and_saved(self):
+        table = pxt.create_table(
+            "unit_test.incomplete_chunks",
+            source=[
+                {"idx_vector": 40, "chunk": 8},
+                {"idx_vector": 10, "chunk": None},
+                {"idx_vector": 70, "chunk": 8},
+            ],
+        )
+
+        chunks = get_chunk_assignments_from_table(
+            table, max_chunk_size=2, random_state=0
+        )
+
+        assert sorted(idx for chunk in chunks for idx in chunk) == [10, 40, 70]
+        assert sorted(map(len, chunks)) == [1, 2]
+        assert {row["idx_vector"]: row["chunk"] for row in table.collect()} == {
+            idx: chunk_idx for chunk_idx, chunk in enumerate(chunks) for idx in chunk
+        }
+        assert [set(chunk) for chunk in get_chunk_assignments_from_table(table)] == [
+            set(chunk) for chunk in chunks
+        ]
 
 
 class TestGoldClusterizer:

@@ -22,11 +22,11 @@ from pixeltable.utils.pytorch import PixeltablePytorchDataset
 from goldener.utils import get_ratios_for_counts
 
 
-def get_expr_from_column_name(table: Table, column_name: str) -> Expr:
+def get_expr_from_column_name(table: Table | Query, column_name: str) -> Expr:
     """Get the expression object for a given column name in a PixelTable table.
 
     Args:
-        table: The PixelTable table.
+        table: The PixelTable table or query.
         column_name: The name of the column.
 
     Returns:
@@ -35,10 +35,17 @@ def get_expr_from_column_name(table: Table, column_name: str) -> Expr:
     Raises:
         ValueError: If the column name does not exist in the table schema.
     """
-    if column_name not in table.columns():
-        raise ValueError(f"Column '{column_name}' does not exist in the table schema.")
-
-    return getattr(table, column_name)
+    try:
+        return getattr(table, column_name)
+    except AttributeError:
+        if isinstance(table, Table):
+            raise ValueError(
+                f"Column '{column_name}' does not exist in the table schema."
+            )
+        else:
+            raise ValueError(
+                f"Column '{column_name}' does not exist in the query schema."
+            )
 
 
 def create_pxt_dirs_for_path(table_path: str) -> None:
@@ -525,3 +532,40 @@ def get_max_value_in_column(
         raise TypeError("The maximum value is not an integer.")
 
     return max_value
+
+
+def get_chunk_view(
+    table: Table,
+) -> Table:
+    """Get a view of the PixelTable table with only the chunk and idx_vector columns.
+
+    Args:
+        table: The PixelTable table to add a view from
+
+    Returns:
+        A PixelTable view containing an addition chunk column.
+    """
+
+    chunks_view = pxt.create_view(
+        f"{table.get_metadata()['path']}_chunks",
+        table,
+        additional_columns={"chunk": pxt.Int},
+        if_exists="ignore",
+    )
+    assert chunks_view is not None
+    # the view can only have the "chunk" column as an additional column
+    if set(chunks_view.columns()).difference(set(table.columns())) != {"chunk"}:
+        raise ValueError(
+            f"Chunk view {chunks_view.get_metadata()['path']} has unexpected columns: {chunks_view.columns()}"
+        )
+
+    assert chunks_view is not None
+    return chunks_view
+
+
+@pxt.udf
+def assign_chunk(
+    idx_vector: int, chunk: int | None, assignments: dict[str, int]
+) -> int | None:
+    """Replace assigned vectors' chunk values while retaining other populations."""
+    return assignments.get(str(idx_vector), chunk)

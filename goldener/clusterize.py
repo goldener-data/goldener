@@ -14,6 +14,7 @@ when selecting or splitting it, and to balance the batches during training (`gol
 
 import math
 from abc import ABC, abstractmethod
+from collections import defaultdict
 from logging import getLogger
 from typing import Callable, Any
 
@@ -36,6 +37,8 @@ from goldener.pxt_utils import (
     make_batch_ready_for_table,
     check_pxt_table_has_primary_key,
     get_sample_row_from_idx,
+    assign_chunk,
+    get_chunk_view,
 )
 from goldener.reduce import GoldReductionTool, GoldReductionToolWithFit
 from goldener.torch_utils import get_dataset_sample_dict
@@ -245,6 +248,68 @@ def get_random_chunk_assignment(
     ]
 
 
+def get_chunk_assignments_from_table(
+    table: Table,
+    restrict_to: set[int] | None = None,
+    max_chunk_size: int | None = None,
+    random_state: int | None = None,
+) -> list[list[int]]:
+    """Get the chunk assignments from a PixelTable table.
+
+    When all idx_vector have their chunk, they are returned as is.
+    When some idx_vector have no chunk, they are randomly assigned to
+    chunks of size at most max_chunk_size.
+
+    Args:
+        table: The PixelTable table to get the chunk assignments from.
+        restrict_to: Optional set of idx_vector values to restrict the chunk assignments to.
+        max_chunk_size: Maximum size of each chunk. If None, all indices are returned
+            in a single chunk.
+        random_state: Optional random state for reproducibility during chunk assignment.
+
+    Returns:
+        A list of chunks, where each chunk is a list of indices
+        from the table randomly assigned.
+    """
+    saved_chunks: dict[int | None, list[int]] = defaultdict(list)
+    query = (
+        table.where(table.idx_vector.isin(restrict_to))
+        if restrict_to is not None
+        else table
+    )
+
+    for row in query.select(table.idx_vector, table.chunk).collect():
+        saved_chunks[row["chunk"]].append(row["idx_vector"])
+
+    if None not in saved_chunks:
+        return [
+            saved_chunks[key]
+            for key in sorted([key for key in saved_chunks if key is not None])
+        ]
+
+    chunk_assignment = get_random_chunk_assignment(
+        to_chunk=sorted(
+            [
+                idx_vector
+                for chunk_indices in saved_chunks.values()
+                for idx_vector in chunk_indices
+            ]
+        ),
+        max_chunk_size=max_chunk_size,
+        random_state=random_state,
+    )
+    chunk_by_vector = {
+        str(idx_vector): chunk_idx
+        for chunk_idx, chunk_indices in enumerate(chunk_assignment)
+        for idx_vector in chunk_indices
+    }
+    table.update(
+        {"chunk": assign_chunk(table.idx_vector, table.chunk, chunk_by_vector)}
+    )
+
+    return chunk_assignment
+
+
 class GoldSKLearnClusteringTool(GoldClusteringTool):
     """Cluster data using a wrapped scikit-learn clustering estimator.
 
@@ -390,14 +455,6 @@ class GoldSKLearnClusteringTool(GoldClusteringTool):
         return torch.from_numpy(self.tool.predict(x_np))
 
 
-@pxt.udf
-def _assign_chunk(
-    idx_vector: int, chunk: int | None, assignments: dict[str, int]
-) -> int | None:
-    """Replace assigned vectors' chunk values while retaining other populations."""
-    return assignments.get(str(idx_vector), chunk)
-
-
 class GoldClusterizer(GoldDoerWithTable):
     """Cluster data points from vectorized samples.
 
@@ -455,6 +512,7 @@ class GoldClusterizer(GoldDoerWithTable):
         "idx": pxt.Required[pxt.Int],
         "idx_vector": pxt.Required[pxt.Int],
     }
+    _RESERVED_KEYS: frozenset[str] = frozenset({"idx", "idx_vector", "chunks"})
 
     def __init__(
         self,
@@ -517,10 +575,6 @@ class GoldClusterizer(GoldDoerWithTable):
                 with an identity column, or shares its value with another key, or
                 if `to_keep_schema` uses one of those columns (see `GoldDoerWithTable`).
         """
-        if "chunk" in (vectorized_key, cluster_key, label_key) or (
-            to_keep_schema is not None and "chunk" in to_keep_schema
-        ):
-            raise ValueError("Column name 'chunk' is reserved for chunk assignments.")
         self.clustering_tool = clustering_tool
         self.reducer = reducer
         validate_positive_integer(chunk, "chunk", allow_none=True)
@@ -1306,43 +1360,14 @@ class GoldClusterizer(GoldDoerWithTable):
             )
             return
 
-        chunks_view = pxt.create_view(
-            f"{self.table_path}_chunks",
-            cluster_table,
-            additional_columns={"chunk": pxt.Int},
-            if_exists="ignore",
+        # define the chunk assignment in a view of the cluster table
+        chunks_view = get_chunk_view(cluster_table)
+        chunk_assignment = get_chunk_assignments_from_table(
+            chunks_view,
+            restrict_to=set(to_cluster_vector_indices),
+            max_chunk_size=self.chunk,
+            random_state=self.random_state,
         )
-        assert chunks_view is not None
-        chunk_rows = (
-            chunks_view.where(chunks_view.idx_vector.isin(to_cluster_vector_indices))
-            .select(chunks_view.idx_vector, chunks_view.chunk)
-            .collect()
-        )
-        if all(row["chunk"] is not None for row in chunk_rows):
-            saved_chunks: dict[int, list[int]] = {}
-            for row in chunk_rows:
-                saved_chunks.setdefault(row["chunk"], []).append(row["idx_vector"])
-            chunk_assignment = [saved_chunks[key] for key in sorted(saved_chunks)]
-        else:
-            chunk_assignment = get_random_chunk_assignment(
-                to_chunk=to_cluster_vector_indices,
-                max_chunk_size=self.chunk,
-                random_state=self.random_state,
-            )
-            chunk_by_vector = {
-                str(idx_vector): chunk_idx
-                for chunk_idx, chunk_indices in enumerate(chunk_assignment)
-                for idx_vector in chunk_indices
-            }
-
-            # An unfiltered update avoids PixelTable conflicts on inherited view columns.
-            chunks_view.update(
-                {
-                    "chunk": _assign_chunk(
-                        chunks_view.idx_vector, chunks_view.chunk, chunk_by_vector
-                    )
-                }
-            )
 
         for chunk_indices in chunk_assignment:
             to_cluster_from = cluster_from.where(
