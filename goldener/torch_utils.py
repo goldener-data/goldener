@@ -1,7 +1,8 @@
 """Utilities to work with PyTorch tensors and datasets.
 
 This module gathers helpers to collate batches, convert tensors from/to numpy vectors and access the samples of
-datasets, as well as `ResetableTorchIterableDataset`, an iterable dataset that can be re-initialized.
+datasets, as well as `ResetableTorchIterableDataset`, an iterable dataset that can be re-initialized, and
+`UniqueDataset`, which attaches a user-provided identifier to a dataset.
 """
 
 from collections.abc import Sequence
@@ -299,3 +300,30 @@ def shuffle_list(items: list[T], generator: torch.Generator) -> list[T]:
     return [
         items[int(i)] for i in torch.randperm(len(items), generator=generator).tolist()
     ]
+
+
+class UniqueDataset:
+    """Associate a dataset with a user-provided identifier.
+
+    Persisted doers record that identifier in their table metadata and reject
+    reuse of the table with a different identified input.
+
+    Attributes:
+        dataset: The wrapped dataset.
+        dataset_id: The identifier of the wrapped dataset.
+    """
+
+    def __init__(self, dataset: Dataset, dataset_id: str) -> None:
+        """Initialize a UniqueDataset.
+
+        Args:
+            dataset: The dataset to wrap.
+            dataset_id: The identifier of the dataset.
+
+        Raises:
+            ValueError: If `dataset_id` is empty.
+        """
+        if not dataset_id:
+            raise ValueError("dataset_id must be a non-empty string.")
+        self.dataset = dataset
+        self.dataset_id = dataset_id

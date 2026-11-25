@@ -35,6 +35,11 @@ class GoldDoer:
         self.drop_table = drop_table
         self.max_batches = max_batches
 
+    @property
+    def _doer_id(self) -> str:
+        """Return the stable class name used to identify this doer in table metadata."""
+        return type(self).__name__
+
 
 class GoldDoerWithTable(GoldDoer):
     """Shared initialization for data-orchestration features that populate intermediate tables.

@@ -13,6 +13,7 @@ from goldener.torch_utils import (
     ResetableTorchIterableDataset,
     get_unique_values_in_tensor,
     shuffle_list,
+    UniqueDataset,
 )
 
 
@@ -312,3 +313,14 @@ class TestShuffleList:
     def test_singleton_list(self):
         out = shuffle_list([42], generator=torch.Generator().manual_seed(0))
         assert out == [42]
+
+
+class TestUniqueDataset:
+    def test_keeps_dataset_and_identifier(self):
+        dataset = [{"data": torch.zeros(2)}]
+        identified = UniqueDataset(dataset, "dataset-a")
+
+        assert identified.dataset is dataset
+        assert identified.dataset_id == "dataset-a"
+        with pytest.raises(ValueError, match="dataset_id must be a non-empty string"):
+            UniqueDataset([], "")

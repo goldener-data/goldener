@@ -171,6 +171,31 @@ class TestGoldDescriptor:
             assert row["embeddings"].shape == (4, 8, 8)
             assert row["label"] == "dummy"
 
+    def test_intermediary_table_metadata_checks_table_input(self, embedder):
+        schema = {
+            "idx": pxt.Required[pxt.Int],
+            "data": pxt.Array[(3, 8, 8), pxt.Float],
+        }
+        source = pxt.create_table(
+            "unit_test.source_a", schema=schema, primary_key="idx"
+        )
+        source.insert([{"idx": 0, "data": np.zeros((3, 8, 8), dtype=np.float32)}])
+        other = pxt.create_table("unit_test.source_b", schema=schema, primary_key="idx")
+        other.insert([{"idx": 0, "data": np.zeros((3, 8, 8), dtype=np.float32)}])
+
+        desc = GoldDescriptor(
+            table_path="unit_test.test_table_input_identity",
+            embedder=embedder,
+            device=torch.device("cpu"),
+        )
+        table = desc.describe_in_table(source)
+        entry = table.get_metadata()["custom_metadata"]["goldener"]["GoldDescriptor"]
+        assert entry["input_type"] == "Table"
+        assert entry["input_id"].startswith(str(source._id))
+
+        with pytest.raises(ValueError, match="created from input"):
+            desc.describe_in_table(other)
+
     def test_describe_in_table_without_idx(self, embedder):
         def collate_fn(batch):
             data = torch.stack([b["data"] for b in batch], dim=0)

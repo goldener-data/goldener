@@ -54,7 +54,7 @@ from goldener.select import (
     GoldGreedyKernelPointsSelectionTool,
 )
 from goldener.split import GoldSet, GoldSplitter
-from goldener.torch_utils import ResetableTorchIterableDataset
+from goldener.torch_utils import ResetableTorchIterableDataset, UniqueDataset
 from goldener.vectorize import (
     Filter2DWithCount,
     FilterLocation,
@@ -96,6 +96,7 @@ __all__ = (
     "GoldSet",
     "GoldSplitter",
     "ResetableTorchIterableDataset",
+    "UniqueDataset",
     "Filter2DWithCount",
     "FilterLocation",
     "Vectorized",

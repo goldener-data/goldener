@@ -89,6 +89,7 @@ from goldener import (
     GoldTorchEmbeddingTool,
     GoldTorchEmbeddingToolConfig,
     GoldTensorVectorizationTool,
+    UniqueDataset,
 )
 
 # my_model, my_layers, and dataset are user-supplied.
@@ -109,7 +110,7 @@ gs = GoldSelector(
     vectorized_key=gd.description_key,
 )
 
-description = gd.describe_in_table(dataset)
+description = gd.describe_in_table(UniqueDataset(dataset, "my-dataset-v1"))
 selection_table = gs.select_in_table(description, 100, "to_annotate")
 selected = GoldSelector.get_selection_indices(
     selection_table,
@@ -117,6 +118,8 @@ selected = GoldSelector.get_selection_indices(
 )
 
 ```
+
+Intermediate tables record the doer and input identifier in their metadata, so a different identified input cannot silently reuse stored results. Pixeltable inputs are identified automatically. For a PyTorch dataset, wrap it in `UniqueDataset` with a stable identifier, as shown above.
 
 By default, `GoldSelector` uses `GoldGreedyKernelPointsSelectionTool`, which relies on Coreax. Coreax is not
 installed on Windows, so on Windows replace the `GoldSelector` above with one that uses another selection tool:
