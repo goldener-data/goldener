@@ -499,7 +499,7 @@ class InvalidOutputScorer(GoldNearestNeighborNoveltyScoringTool):
     def __init__(self, output):
         super().__init__()
         self.output = output
-        self.reference_bank = torch.ones((1, 2))
+        self.fit(torch.ones((1, 2)))
 
     def score(self, x):
         match self.output:

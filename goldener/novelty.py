@@ -160,7 +160,7 @@ class GoldNearestNeighborNoveltyScoringTool(GoldNoveltyScoringTool):
         validate_vectorized_input(x, "GoldNoveltyScoringTool")
         if x.shape[0] == 0:
             raise ValueError("The novelty reference must not be empty.")
-        self._reference_bank = x.detach().to(self.device).clone()
+        self._reference_bank = x.detach().to(self.device).clone().to(torch.float32)
 
     def score(self, x: torch.Tensor) -> torch.Tensor:
         """Return exact minimum reference distance for each query row.
@@ -177,25 +177,25 @@ class GoldNearestNeighborNoveltyScoringTool(GoldNoveltyScoringTool):
         """
         if not self.fitted:
             raise ValueError("Fit the novelty scorer before calling score.")
+
         assert self._reference_bank is not None
         validate_vectorized_input(x, "GoldNoveltyScoringTool")
 
+        if x.shape[0] == 0:
+            raise ValueError("The novelty query must not be empty.")
         if x.shape[1] != self._reference_bank.shape[1]:
             raise ValueError(
                 "Query feature_dim must match the fitted reference feature_dim."
             )
-        if x.shape[0] == 0:
-            return torch.empty((0,), dtype=x.dtype, device=x.device)
 
-        compute_dtype = torch.promote_types(x.dtype, self._reference_bank.dtype)
-        if compute_dtype in (torch.float16, torch.bfloat16):
-            compute_dtype = torch.float32
-        reference = self._reference_bank.to(dtype=compute_dtype)
-        queries = x.detach().to(device=self.device, dtype=compute_dtype)
+        reference = self._reference_bank
+        queries = x.detach().to(device=self.device, dtype=torch.float32)
+
         reference_batches = reference.split(self.distance_batch_size)
         score_batches = []
         distance_func = self.distance.distance_function
         for query_batch in queries.split(self.distance_batch_size):
+            # initial to the minimum possible distance (first batch set the first real value)
             nearest = query_batch.new_full((len(query_batch),), torch.inf)
             for reference_batch in reference_batches:
                 distances = distance_func(query_batch, reference_batch)
@@ -204,11 +204,7 @@ class GoldNearestNeighborNoveltyScoringTool(GoldNoveltyScoringTool):
                 nearest = torch.minimum(nearest, distances.amin(dim=1))
             score_batches.append(nearest)
 
-        result = torch.cat(score_batches).to(x)
-        if not torch.isfinite(result).all():
-            raise ValueError(
-                "Computed novelty scores are not finite in the input dtype."
-            )
+        result = torch.cat(score_batches).to(x.device)
         return result
 
 
