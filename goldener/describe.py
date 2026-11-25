@@ -234,7 +234,7 @@ class GoldDescriptor(GoldDoerWithTable):
 
     def describe_in_dataset(
         self,
-        to_describe: Dataset | UniqueDataset | Table,
+        to_describe: UniqueDataset | Table,
         restrict_to: set[int] | None = None,
     ) -> GoldPxtTorchDataset:
         """Compute embeddings from samples and return results as a GoldPxtTorchDataset.
@@ -249,10 +249,9 @@ class GoldDescriptor(GoldDoerWithTable):
         the table will be removed after the dataset is created.
 
         Args:
-            to_describe: Dataset, UniqueDataset or Table to be described. If a Dataset is provided, each item
-                should be a dictionary with at least the key specified by `data_key` after applying the collate_fn.
-                Wrap a Dataset in `UniqueDataset` to identify it when reusing an intermediary table.
-                If a Table is provided, it should contain both 'idx' and `data_key` columns.
+            to_describe: UniqueDataset or Table to be described. Wrap a Dataset in
+                `UniqueDataset` to identify it when reusing an intermediary table.
+                A Table should contain both `idx` and `data_key` columns.
             restrict_to: Optional set of sample indices (`idx`) to restrict the
                 description to. If provided, only the selected samples will be described.
 
@@ -275,7 +274,7 @@ class GoldDescriptor(GoldDoerWithTable):
 
     def describe_in_table(
         self,
-        to_describe: Dataset | UniqueDataset | Table,
+        to_describe: UniqueDataset | Table,
         restrict_to: set[int] | None = None,
     ) -> Table:
         """Compute embeddings from samples and store results in a PixelTable table.
@@ -289,10 +288,9 @@ class GoldDescriptor(GoldDoerWithTable):
         already present in the PixelTable table.
 
         Args:
-            to_describe: Dataset, UniqueDataset or Table to be described. If a Dataset is provided, each item
-                should be a dictionary with at least the key specified by `data_key` after applying the collate_fn.
-                Wrap a Dataset in `UniqueDataset` to identify it when reusing an intermediary table.
-                If a Table is provided, it should contain both 'idx' and `data_key` columns.
+            to_describe: UniqueDataset or Table to be described. Wrap a Dataset in
+                `UniqueDataset` to identify it when reusing an intermediary table.
+                A Table should contain both `idx` and `data_key` columns.
             restrict_to: Optional set of sample indices (`idx`) to restrict the
                 description to. If provided, only the selected samples will be described.
 
@@ -306,10 +304,13 @@ class GoldDescriptor(GoldDoerWithTable):
                 that table was created by another doer or another identified input.
         """
         input_id, input_type = get_input_identity(to_describe)
-        if isinstance(to_describe, UniqueDataset):
-            to_describe = to_describe.dataset
+        input_data = (
+            to_describe.dataset
+            if isinstance(to_describe, UniqueDataset)
+            else to_describe
+        )
         self._table_custom_metadata = make_goldener_metadata(
-            self._doer_id, input_id, input_type
+            self.doer_id, input_id, input_type
         )
 
         # If the computation was already started or already done, we resume from there
@@ -328,7 +329,7 @@ class GoldDescriptor(GoldDoerWithTable):
             validate_goldener_metadata(
                 old_description_table,
                 self.table_path,
-                self._doer_id,
+                self.doer_id,
                 input_id,
                 input_type,
             )
@@ -343,20 +344,20 @@ class GoldDescriptor(GoldDoerWithTable):
 
         # get the table and dataset to execute the description pipeline
         to_describe_dataset: GoldPxtTorchDataset | Dataset
-        if isinstance(to_describe, Table):
+        if isinstance(input_data, Table):
             description_table = self._description_table_from_table(
-                to_describe, old_description_table
+                input_data, old_description_table
             )
 
-            if description_table.count() > 0 and "idx" in to_describe.columns():
-                source_for_indices: Table | Query = to_describe
+            if description_table.count() > 0 and "idx" in input_data.columns():
+                source_for_indices: Table | Query = input_data
                 if restrict_to is not None:
-                    source_for_indices = to_describe.where(
-                        to_describe.idx.isin(restrict_to)
+                    source_for_indices = input_data.where(
+                        input_data.idx.isin(restrict_to)
                     )
                 to_describe_indices = {
                     row["idx"]
-                    for row in source_for_indices.select(to_describe.idx).collect()
+                    for row in source_for_indices.select(input_data.idx).collect()
                 }
                 already_described = set(
                     [
@@ -372,10 +373,10 @@ class GoldDescriptor(GoldDoerWithTable):
                     )
                     return description_table
 
-            to_describe_dataset = GoldPxtTorchDataset(to_describe)
+            to_describe_dataset = GoldPxtTorchDataset(input_data)
 
         else:
-            to_describe_dataset = to_describe
+            to_describe_dataset = input_data
             description_table = self._description_table_from_dataset(
                 to_describe_dataset, old_description_table
             )

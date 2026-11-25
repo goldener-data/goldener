@@ -8,11 +8,19 @@ import torch
 
 import pixeltable as pxt
 from pixeltable import Error
+from torch.utils.data import Dataset
 
 from goldener.describe import GoldDescriptor
 from goldener.embed import GoldTorchEmbeddingToolConfig, GoldTorchEmbeddingTool
-from goldener.torch_utils import collate_keeping_sequences_as_sequences
+from goldener.torch_utils import (
+    UniqueDataset,
+    collate_keeping_sequences_as_sequences,
+)
 from goldener.vectorize import GoldTensorVectorizationTool
+
+
+def identified(dataset: Dataset) -> UniqueDataset:
+    return UniqueDataset(dataset, "dataset")
 
 
 class DummyModel(torch.nn.Module):
@@ -163,7 +171,7 @@ class TestGoldDescriptor:
             device=torch.device("cpu"),
             allow_existing=False,
         )
-        table = desc.describe_in_table(DummyDataset())
+        table = desc.describe_in_table(identified(DummyDataset()))
 
         assert table.count() == 2
         for i, row in enumerate(table.collect()):
@@ -189,7 +197,7 @@ class TestGoldDescriptor:
             device=torch.device("cpu"),
         )
         table = desc.describe_in_table(source)
-        entry = table.get_metadata()["custom_metadata"]["goldener"]["GoldDescriptor"]
+        entry = table.get_metadata()["custom_metadata"]["goldener"][desc.doer_id]
         assert entry["input_type"] == "Table"
         assert entry["input_id"].startswith(str(source._id))
 
@@ -211,7 +219,7 @@ class TestGoldDescriptor:
         )
 
         table = desc.describe_in_table(
-            DummyDataset(dataset_len=10),
+            identified(DummyDataset(dataset_len=10)),
         )
         assert table.count() == 10
         for i, row in enumerate(table.collect()):
@@ -227,7 +235,7 @@ class TestGoldDescriptor:
             allow_existing=False,
         )
         with pytest.raises(ValueError, match="Sample must be a dictionary"):
-            desc.describe_in_table(DummyDataset())
+            desc.describe_in_table(identified(DummyDataset()))
 
     def test_describe_in_table_with_missing_data_key(self, embedder):
         desc = GoldDescriptor(
@@ -239,7 +247,7 @@ class TestGoldDescriptor:
         )
         with pytest.raises(ValueError, match="Sample is missing expected keys"):
             desc.describe_in_table(
-                DummyDataset(),
+                identified(DummyDataset()),
             )
 
     def test_describe_in_table_with_collate_fn(self, embedder):
@@ -259,7 +267,7 @@ class TestGoldDescriptor:
         )
 
         table = desc.describe_in_table(
-            DummyDataset(),
+            identified(DummyDataset()),
         )
         assert table.count() == 2
         for i, row in enumerate(table.collect()):
@@ -285,7 +293,7 @@ class TestGoldDescriptor:
             max_batches=2,
         )
 
-        table = desc.describe_in_table(DummyDataset(dataset_len=10))
+        table = desc.describe_in_table(identified(DummyDataset(dataset_len=10)))
 
         assert table.count() == 4
         for i, row in enumerate(table.collect()):
@@ -334,7 +342,7 @@ class TestGoldDescriptor:
         )
 
         description_table = desc.describe_in_table(
-            DummyDataset(dataset_len=6), restrict_to={1, 4}
+            identified(DummyDataset(dataset_len=6)), restrict_to={1, 4}
         )
 
         assert description_table.count() == 2
@@ -377,13 +385,13 @@ class TestGoldDescriptor:
             max_batches=2,
         )
         dataset = DummyDataset(dataset_len=10)
-        description_table = desc.describe_in_table(dataset)
+        description_table = desc.describe_in_table(identified(dataset))
 
         assert description_table.count() == 4
         for i, row in enumerate(description_table.collect()):
             assert row["idx"] == i
         desc.max_batches = None
-        description_table = desc.describe_in_table(dataset)
+        description_table = desc.describe_in_table(identified(dataset))
 
         assert description_table.count() == 10
         for i, row in enumerate(description_table.collect()):
@@ -401,12 +409,12 @@ class TestGoldDescriptor:
             max_batches=2,
         )
         dataset = DummyDataset(dataset_len=10)
-        desc.describe_in_table(dataset)
+        desc.describe_in_table(identified(dataset))
 
         with pytest.raises(
             ValueError, match="already exists and allow_existing is set to False"
         ):
-            desc.describe_in_table(dataset)
+            desc.describe_in_table(identified(dataset))
 
     def test_describe_in_dataset(self, embedder):
         desc = GoldDescriptor(
@@ -419,7 +427,7 @@ class TestGoldDescriptor:
             drop_table=True,
         )
 
-        dataset = desc.describe_in_dataset(DummyDataset())
+        dataset = desc.describe_in_dataset(identified(DummyDataset()))
 
         for i, sample in enumerate(iter(dataset)):
             assert sample["idx"] == i
@@ -470,7 +478,7 @@ class TestGoldDescriptor:
             device=torch.device("cpu"),
             allow_existing=False,
         )
-        table = desc.describe_in_table(DummyDataset(add_target=True))
+        table = desc.describe_in_table(identified(DummyDataset(add_target=True)))
 
         assert table.count() == 128
         for i, row in enumerate(table.collect()):
@@ -498,7 +506,7 @@ class TestGoldDescriptor:
             device=torch.device("cpu"),
             allow_existing=False,
         )
-        table = desc.describe_in_table(DummyDataset(add_target=True))
+        table = desc.describe_in_table(identified(DummyDataset(add_target=True)))
 
         assert table.count() == 128
         for i, row in enumerate(table.collect()):
@@ -517,7 +525,7 @@ class TestGoldDescriptor:
             device=torch.device("cpu"),
             allow_existing=False,
         )
-        table = desc.describe_in_table(DummyDataset())
+        table = desc.describe_in_table(identified(DummyDataset()))
 
         assert table.count() == 128
         for i, row in enumerate(table.collect()):
@@ -903,7 +911,7 @@ class TestGoldDescriptor:
             drop_table=True,
         )
 
-        description = desc.describe_in_table(MultiLabelDataset())
+        description = desc.describe_in_table(identified(MultiLabelDataset()))
 
         labels_by_idx = defaultdict(set)
         for row in description.collect():
@@ -943,13 +951,13 @@ class TestGoldDescriptor:
             max_batches=2,
         )
         dataset = DummyDataset(dataset_len=10)
-        description_table = desc.describe_in_table(dataset)
+        description_table = desc.describe_in_table(identified(dataset))
 
         assert description_table.count() == 4 * 8 * 8
         for i, row in enumerate(description_table.collect()):
             assert row["idx_vector"] == i
         desc.max_batches = None
-        description_table = desc.describe_in_table(dataset)
+        description_table = desc.describe_in_table(identified(dataset))
 
         assert description_table.count() == 10 * 8 * 8
         for i, row in enumerate(description_table.collect()):
@@ -965,7 +973,7 @@ class TestGoldDescriptor:
             device=torch.device("cpu"),
             allow_existing=False,
         )
-        table = desc.describe_in_table(DummyMultiSizeDataset())
+        table = desc.describe_in_table(identified(DummyMultiSizeDataset()))
 
         assert table.count() == 2
         rows = table.collect()
@@ -1029,7 +1037,7 @@ class TestEstimateComputationTime:
             max_batches=max_batches,
         )
         if max_batches is not None:
-            desc.describe_in_dataset(DummyDataset(dataset_len=10))
+            desc.describe_in_dataset(identified(DummyDataset(dataset_len=10)))
 
         ticks = iter([0.0, 1.0])
         monkeypatch.setattr(

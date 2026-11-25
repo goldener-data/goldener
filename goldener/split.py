@@ -27,7 +27,10 @@ from goldener.pxt_utils import (
     GoldPxtTorchDataset,
 )
 from goldener.select import GoldSelector
-from goldener.torch_utils import collate_keeping_sequences_as_sequences
+from goldener.torch_utils import (
+    UniqueDataset,
+    collate_keeping_sequences_as_sequences,
+)
 from goldener.utils import (
     check_sampling_size,
     check_all_same_type,
@@ -431,16 +434,38 @@ class GoldSplitter(GoldDoer):
             ValueError: If any set results in zero samples due to its ratio, if label_key is not found,
             or if label stratification results in zero samples for any label in a set.
         """
+        input_id = (
+            self.descriptor.table_path
+            if self.descriptor is not None
+            else self.vectorizer.table_path
+            if self.vectorizer is not None
+            else self.doer_id
+        )
+        described_input = (
+            to_split
+            if isinstance(to_split, Table)
+            else UniqueDataset(to_split, input_id)
+        )
         description = (
-            self.descriptor.describe_in_table(to_split)
+            self.descriptor.describe_in_table(described_input)
             if self.descriptor is not None
             else to_split
         )
 
-        vectorized = (
-            self.vectorizer.vectorize_in_table(description)
+        vectorized_input = (
+            description
+            if isinstance(description, Table)
+            else UniqueDataset(description, input_id)
+        )
+        vectorized_table = (
+            self.vectorizer.vectorize_in_table(vectorized_input)
             if self.vectorizer is not None
-            else description
+            else vectorized_input
+        )
+        vectorized = (
+            vectorized_table.dataset
+            if isinstance(vectorized_table, UniqueDataset)
+            else vectorized_table
         )
 
         clusterized = None

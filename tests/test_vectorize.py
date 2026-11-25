@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import pixeltable as pxt
 import pytest
 import torch
+from torch.utils.data import Dataset
 
 from goldener import GoldVectorizer
 from goldener.pxt_utils import get_input_identity, validate_goldener_metadata
@@ -16,6 +17,10 @@ from goldener.vectorize import (
     unwrap_vectors_in_batch,
     vectorize_and_unwrap_in_batch,
 )
+
+
+def identified(dataset: Dataset) -> UniqueDataset:
+    return UniqueDataset(dataset, "dataset")
 
 
 class TestGoldTensorVectorizationTool:
@@ -588,7 +593,7 @@ class TestGoldVectorizer:
         )
         table = gv.vectorize_in_table(UniqueDataset(DummyDataset(), "dataset-a"))
 
-        entry = table.get_metadata()["custom_metadata"]["goldener"]["GoldVectorizer"]
+        entry = table.get_metadata()["custom_metadata"]["goldener"][gv.doer_id]
         assert entry == {"input_id": "dataset-a", "input_type": "DummyDataset"}
         initial_count = table.count()
         assert (
@@ -621,8 +626,8 @@ class TestGoldVectorizer:
             vectorizer=GoldTensorVectorizationTool(),
         )
 
-        with pytest.raises(ValueError, match="was not created by GoldVectorizer"):
-            gv.vectorize_in_table(DummyDataset())
+        with pytest.raises(ValueError, match="was not created by"):
+            gv.vectorize_in_table(identified(DummyDataset()))
 
     def test_table_input_identity_allows_version_change(self):
         schema = {"idx": pxt.Required[pxt.Int]}
@@ -691,7 +696,7 @@ class TestGoldVectorizer:
             allow_existing=False,
         )
 
-        out_table = gv.vectorize_in_table(MultiLabelDataset())
+        out_table = gv.vectorize_in_table(identified(MultiLabelDataset()))
 
         labels_by_idx = defaultdict(set)
         for row in out_table.collect():
@@ -717,7 +722,7 @@ class TestGoldVectorizer:
             allow_existing=False,
         )
 
-        table = gv.vectorize_in_table(dataset)
+        table = gv.vectorize_in_table(identified(dataset))
 
         # each sample has 2 vectors (first dim), dataset_len=2 => total 4 rows
         assert table.count() == 8 * 8 * 2
@@ -771,7 +776,7 @@ class TestGoldVectorizer:
         )
 
         out_table = gv.vectorize_in_table(
-            DummyDataset(dataset_len=6), restrict_to={1, 4}
+            identified(DummyDataset(dataset_len=6)), restrict_to={1, 4}
         )
 
         assert out_table.count() == 128
@@ -1063,7 +1068,7 @@ class TestGoldVectorizer:
         )
 
         table = gv.vectorize_in_table(
-            DummyDataset(dataset_len=2),
+            identified(DummyDataset(dataset_len=2)),
         )
         assert table.count() == 128
         idx_vector = set()
@@ -1089,7 +1094,7 @@ class TestGoldVectorizer:
             allow_existing=False,
         )
         with pytest.raises(ValueError, match="Sample must be a dictionary"):
-            gv.vectorize_in_table(DummyDataset())
+            gv.vectorize_in_table(identified(DummyDataset()))
 
     def test_vectorize_in_table_with_missing_data_key(
         self,
@@ -1105,7 +1110,7 @@ class TestGoldVectorizer:
             allow_existing=False,
         )
         with pytest.raises(ValueError, match="Sample is missing expected keys"):
-            gv.vectorize_in_table(DummyDataset())
+            gv.vectorize_in_table(identified(DummyDataset()))
 
     def test_vectorize_in_table_with_max_batches(
         self,
@@ -1122,7 +1127,7 @@ class TestGoldVectorizer:
             max_batches=2,
         )
         table = gv.vectorize_in_table(
-            DummyDataset(dataset_len=3),
+            identified(DummyDataset(dataset_len=3)),
         )
 
         assert table.count() == 128
@@ -1146,7 +1151,7 @@ class TestGoldVectorizer:
             drop_table=True,
         )
 
-        vectorized_dataset = gv.vectorize_in_dataset(dataset)
+        vectorized_dataset = gv.vectorize_in_dataset(identified(dataset))
 
         count = 0
         for sample in vectorized_dataset:
@@ -1203,14 +1208,14 @@ class TestGoldVectorizer:
             max_batches=2,
         )
         dataset = DummyDataset(dataset_len=10)
-        vectorized_table = gv.vectorize_in_table(dataset)
+        vectorized_table = gv.vectorize_in_table(identified(dataset))
 
         assert vectorized_table.count() == 128
         for i, row in enumerate(vectorized_table.collect()):
             assert row["idx_vector"] == i
 
         gv.max_batches = None
-        vectorized_table = gv.vectorize_in_table(dataset)
+        vectorized_table = gv.vectorize_in_table(identified(dataset))
 
         assert vectorized_table.count() == 640
         for i, row in enumerate(vectorized_table.collect()):
@@ -1232,12 +1237,12 @@ class TestGoldVectorizer:
             max_batches=2,
         )
         dataset = DummyDataset(dataset_len=10)
-        gv.vectorize_in_table(dataset)
+        gv.vectorize_in_table(identified(dataset))
 
         with pytest.raises(
             ValueError, match="already exists and allow_existing is set to False"
         ):
-            gv.vectorize_in_table(dataset)
+            gv.vectorize_in_table(identified(dataset))
 
 
 @pytest.fixture
@@ -1448,7 +1453,7 @@ class TestEstimateComputationTime:
             max_batches=max_batches,
         )
         if max_batches is not None:
-            gv.vectorize_in_dataset(DummyDataset(dataset_len=10))
+            gv.vectorize_in_dataset(identified(DummyDataset(dataset_len=10)))
 
         ticks = iter([0.0, 1.0])
         monkeypatch.setattr(

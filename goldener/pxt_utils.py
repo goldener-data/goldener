@@ -381,23 +381,43 @@ def count_computed_elements(table: Table, col_expr: Expr, idx_col: Expr) -> int:
     )
 
 
-def get_input_identity(data: Any) -> tuple[str | None, str]:
-    """Return the identifier and type used for an input in table metadata.
-
-    `UniqueDataset` uses the supplied identifier, and Pixeltable tables use
-    their table id and version. Other datasets have no identifier.
+def get_table_identity(data: Table) -> tuple[str, str]:
+    """Return the identifier and type used for a Pixeltable table input.
 
     Args:
-        data: The input passed to a doer.
+        data: The Pixeltable table passed to a doer.
 
     Returns:
-        The identifier, or `None`, and the input type name.
+        The table id with its version, and the input type name.
+    """
+    version = data.get_metadata()["version"]
+    return f"{data._id}_{version}", "Table"
+
+
+def get_unique_dataset_identity(data: UniqueDataset) -> tuple[str, str]:
+    """Return the identifier and type used for an identified dataset input.
+
+    Args:
+        data: The identified dataset passed to a doer.
+
+    Returns:
+        The supplied dataset identifier and the wrapped dataset type name.
+    """
+    return data.dataset_id, type(data.dataset).__name__
+
+
+def get_input_identity(data: UniqueDataset | Table) -> tuple[str, str]:
+    """Return the identifier and type used for an input in table metadata.
+
+    Args:
+        data: The identified dataset or Pixeltable table passed to a doer.
+
+    Returns:
+        The input identifier and type name.
     """
     if isinstance(data, UniqueDataset):
-        return data.dataset_id, type(data.dataset).__name__
-    if isinstance(data, Table):
-        return f"{data._id}_{data.get_metadata()['version']}", "Table"
-    return None, type(data).__name__
+        return get_unique_dataset_identity(data)
+    return get_table_identity(data)
 
 
 def make_goldener_metadata(
@@ -449,14 +469,21 @@ def validate_goldener_metadata(
     """
     metadata = table.get_metadata().get("custom_metadata")
     entries = metadata.get("goldener") if isinstance(metadata, dict) else None
-    entry = entries.get(doer_id) if isinstance(entries, dict) else None
+    if not isinstance(entries, dict):
+        raise ValueError(f"Table at {table_path} has no Goldener metadata.")
+    entry = entries.get(doer_id)
     if not isinstance(entry, dict):
-        raise ValueError(
-            f"Table at {table_path} was not created by {doer_id}, or has no "
-            "Goldener input metadata."
-        )
+        raise ValueError(f"Table at {table_path} was not created by {doer_id}.")
     stored_id = entry.get("input_id")
     stored_type = entry.get("input_type")
+    if not isinstance(stored_id, str) or not stored_id:
+        raise ValueError(
+            f"Table at {table_path} has no stored input identifier for {doer_id}."
+        )
+    if not isinstance(stored_type, str) or not stored_type:
+        raise ValueError(
+            f"Table at {table_path} has no stored input type for {doer_id}."
+        )
     if input_id is not None and (
         stored_type != input_type or not _same_input_id(stored_id, input_id, input_type)
     ):

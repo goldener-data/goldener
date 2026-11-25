@@ -23,6 +23,7 @@ from goldener.pxt_utils import (
     check_pxt_table_has_primary_key,
     get_max_value_in_column,
     count_computed_elements,
+    validate_goldener_metadata,
 )
 
 
@@ -484,6 +485,42 @@ class TestGetMaxValueInColumn:
             get_max_value_in_column(table, col_expr)
 
         pxt.drop_dir("test_max_value", force=True)
+
+
+class TestValidateGoldenerMetadata:
+    def setup_method(self):
+        pxt.drop_dir("unit_test", force=True)
+        pxt.create_dir("unit_test", if_exists="ignore")
+
+    def teardown_method(self):
+        pxt.drop_dir("unit_test", force=True)
+
+    @pytest.mark.parametrize(
+        ("custom_metadata", "match"),
+        [
+            (None, "has no Goldener metadata"),
+            ({"goldener": {}}, "was not created by doer-a"),
+            (
+                {"goldener": {"doer-a": {"input_id": None, "input_type": "Dataset"}}},
+                "has no stored input identifier",
+            ),
+            (
+                {"goldener": {"doer-a": {"input_id": "dataset-a", "input_type": None}}},
+                "has no stored input type",
+            ),
+        ],
+    )
+    def test_rejects_invalid_metadata(self, custom_metadata, match):
+        table = pxt.create_table(
+            "unit_test.table",
+            schema={"idx": pxt.Int},
+            custom_metadata=custom_metadata,
+        )
+
+        with pytest.raises(ValueError, match=match):
+            validate_goldener_metadata(
+                table, "unit_test.table", "doer-a", "dataset-a", "Dataset"
+            )
 
 
 class TestCountComputedElements:

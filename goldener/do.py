@@ -1,5 +1,6 @@
 from collections import defaultdict
 from typing import Callable
+from uuid import NAMESPACE_URL, uuid5
 
 import pixeltable as pxt
 
@@ -13,6 +14,7 @@ class GoldDoer:
         This is the base class for features instantiating data orchestration.
 
     Attributes:
+        doer_id: Stable identifier of the doer type, used in intermediate table metadata.
         allow_existing: Whether to allow using existing tables. Defaults to True.
         drop_table: Whether to drop intermediate tables. Defaults to False.
         max_batches: Optional maximum number of batches to process.
@@ -31,14 +33,17 @@ class GoldDoer:
             drop_table: Whether to drop intermediate tables. Defaults to False.
             max_batches: Optional maximum number of batches to process.
         """
+        self._doer_id = str(
+            uuid5(NAMESPACE_URL, f"{type(self).__module__}.{type(self).__qualname__}")
+        )
         self.allow_existing = allow_existing
         self.drop_table = drop_table
         self.max_batches = max_batches
 
     @property
-    def _doer_id(self) -> str:
-        """Return the stable class name used to identify this doer in table metadata."""
-        return type(self).__name__
+    def doer_id(self) -> str:
+        """Return the stable identifier used in intermediate table metadata."""
+        return self._doer_id
 
 
 class GoldDoerWithTable(GoldDoer):
@@ -55,6 +60,7 @@ class GoldDoerWithTable(GoldDoer):
 
     Attributes:
         table_path: Path to the PixelTable table where results are stored.
+        doer_id: Stable identifier of the doer type, used in intermediate table metadata.
         allow_existing: Whether to allow using existing tables. Defaults to True.
         drop_table: Whether to drop intermediate tables. Defaults to False.
         max_batches: Optional maximum number of batches to process.

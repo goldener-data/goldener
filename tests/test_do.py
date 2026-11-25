@@ -183,6 +183,17 @@ def test_plain_doer_accepts_index_names():
     assert not hasattr(GoldDoer, "_validate_key_attributes")
 
 
+def test_doer_id_is_unique_per_type_stable_and_read_only():
+    first = GoldDoer()
+    second = GoldDoer()
+    other = GoldDoerWithTable(table_path="unit_test.doer")
+    assert first.doer_id
+    assert first.doer_id == second.doer_id
+    assert first.doer_id != other.doer_id
+    with pytest.raises(AttributeError):
+        first.doer_id = "other"
+
+
 def test_table_doer_merges_reserved_keys_with_schema():
     assert GoldDoerWithTable._RESERVED_KEYS == frozenset({"idx", "idx_vector"})
     doer = GoldDoerWithTable(table_path="unit_test.doer")

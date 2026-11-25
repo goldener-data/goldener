@@ -13,11 +13,12 @@ from typing import Sequence
 from typing import Iterator
 
 import torch
+from pixeltable.catalog import Table
 from torch.utils.data import Dataset, Sampler, Subset
 from torch import Generator
 from goldener.describe import GoldDescriptor
 from goldener.clusterize import GoldClusterizer
-from goldener.torch_utils import shuffle_list
+from goldener.torch_utils import UniqueDataset, shuffle_list
 from goldener.utils import validate_positive_integer
 from goldener.vectorize import GoldVectorizer
 
@@ -147,13 +148,28 @@ class GoldClusterizedBatchSampler(Sampler):
 
         # clusterize the dataset
         logger.info("Computing the clusters for the GoldClusterizedBatchSampler")
-        description = (
-            dataset if descriptor is None else descriptor.describe_in_table(dataset)
-        )
+        description: Dataset | Table
+        if descriptor is not None:
+            description = descriptor.describe_in_table(
+                UniqueDataset(dataset, descriptor.table_path)
+            )
+        else:
+            description = dataset
+
+        vectorized_table: Dataset | Table
+        if vectorizer is not None:
+            vectorized_input = (
+                description
+                if isinstance(description, Table)
+                else UniqueDataset(description, vectorizer.table_path)
+            )
+            vectorized_table = vectorizer.vectorize_in_table(vectorized_input)
+        else:
+            vectorized_table = description
         vectorized = (
-            description
-            if vectorizer is None
-            else vectorizer.vectorize_in_table(description)
+            vectorized_table.dataset
+            if isinstance(vectorized_table, UniqueDataset)
+            else vectorized_table
         )
         if n_clusters is None:
             n_clusters = batch_size
