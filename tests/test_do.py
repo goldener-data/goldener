@@ -10,7 +10,6 @@ from goldener.do import GoldDoer, GoldDoerWithTable
 from goldener.embed import GoldTorchEmbeddingTool, GoldTorchEmbeddingToolConfig
 from goldener.novelty import GoldNearestNeighborNoveltyScoringTool, GoldNoveltyScorer
 from goldener.select import GoldGreedyKCenterSelectionTool, GoldSelector
-from goldener.novelty import GoldNoveltyScorer
 from goldener.torch_utils import collate_keeping_sequences_as_sequences
 from goldener.vectorize import GoldTensorVectorizationTool, GoldVectorizer
 from goldener.weigh import GoldDensityWeigher
