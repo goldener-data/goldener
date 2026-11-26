@@ -137,26 +137,26 @@ Suppose you receive a new batch of product photos labeled “damaged” and need
 the photos to your training set. Use previously reviewed photos with the same label as a reference and prioritize
 new photos that look least like those examples.
 
-`GoldNoveltyScorer` compares the new and reviewed photos using their embeddings. By default, each vector's score
-is its cosine distance to the closest reference vector. If a photo has multiple vectors, retrieving scores by `idx`
-uses the highest vector score for that photo.
+`GoldNoveltyScorer` compares the new and reviewed photos using their embeddings. If a photo has multiple vectors, retrieving scores by `idx` returns the highest vector score for that photo.
 
 ```python
-from goldener import GoldNoveltyScorer
+from goldener import GoldNearestNeighborNoveltyScoringTool, GoldNoveltyScorer
 
-# reviewed_vectors and new_vectors are PixelTable tables of photos labeled "damaged",
+# reviewed_embeddings is a 2D tensor and new_vectors is a PixelTable table,
 # produced with the same embedding model and GoldVectorizer settings.
-scorer = GoldNoveltyScorer(table_path="damage_annotation_scores", chunk=256)
-score_table = scorer.score_in_table(new_vectors, reference=reviewed_vectors)
-sample_scores = scorer.get_novelty_scores(score_table, idx_key="idx")
-
+tool = GoldNearestNeighborNoveltyScoringTool()
+# Fit the tool on a 2D tensor of reviewed embeddings before creating the scorer.
+tool.fit(reviewed_embeddings)
+scorer = GoldNoveltyScorer(
+    table_path="damage_annotation_scores", scorer=tool, chunk=256
+)
+score_table = scorer.score_in_table(new_vectors)
 # Review up to 50 new photos, starting with the most unusual.
-review_ids = sorted(sample_scores, key=lambda idx: sample_scores[idx], reverse=True)[:50]
+sample_scores = scorer.get_novelty_scores_per_idx(
+    score_table, idx_key="idx", k=50, best=True
+)
+review_ids = list(sample_scores)
 ```
-
-Use `review_ids` to open the flagged photos and compare their annotations with reviewed examples. A high score
-can surface a labeling mistake or a valid example of damage missing from the reference set. Correct the mistakes
-and keep valid examples that expand your training set's coverage.
 
 ## Splitting annotated data in train and validation sets
 

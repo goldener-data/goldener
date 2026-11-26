@@ -8,9 +8,8 @@ from goldener.clusterize import GoldClusterizer, GoldRandomClusteringTool
 from goldener.describe import GoldDescriptor
 from goldener.do import GoldDoer, GoldDoerWithTable
 from goldener.embed import GoldTorchEmbeddingTool, GoldTorchEmbeddingToolConfig
-from goldener.novelty import GoldNoveltyScorer
+from goldener.novelty import GoldNearestNeighborNoveltyScoringTool, GoldNoveltyScorer
 from goldener.select import GoldGreedyKCenterSelectionTool, GoldSelector
-from goldener.novelty import GoldNoveltyScorer
 from goldener.torch_utils import collate_keeping_sequences_as_sequences
 from goldener.vectorize import GoldTensorVectorizationTool, GoldVectorizer
 from goldener.weigh import GoldDensityWeigher
@@ -46,6 +45,8 @@ def _table_doer(cls):
         kwargs["clustering_tool"] = GoldRandomClusteringTool()
     elif cls is GoldVectorizer:
         kwargs["vectorizer"] = GoldTensorVectorizationTool()
+    elif cls is GoldNoveltyScorer:
+        kwargs["scorer"] = GoldNearestNeighborNoveltyScoringTool()
     elif cls is GoldSelector:
         kwargs["selection_tool"] = GoldGreedyKCenterSelectionTool(device="cpu")
     return partial(cls, **kwargs)

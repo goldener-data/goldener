@@ -1,3 +1,5 @@
+from statistics import mean
+
 import pytest
 import torch
 import numpy as np
@@ -108,7 +110,11 @@ def test_tool_validates_fit_and_query_contract():
 )
 def test_scorer_rejects_invalid_configuration(kwargs):
     with pytest.raises(ValueError):
-        GoldNoveltyScorer(table_path="unused.output", **kwargs)
+        GoldNoveltyScorer(
+            scorer=GoldNearestNeighborNoveltyScoringTool(),
+            table_path="unused.output",
+            **kwargs,
+        )
 
 
 class VectorDataset(Dataset):
@@ -135,17 +141,6 @@ class CountingNearestScorer(GoldNearestNeighborNoveltyScoringTool):
 def test_table_scoring_resumes_pending_rows_and_preserves_vector_ids(
     clean_unit_test, monkeypatch
 ):
-    reference = pxt.create_table(
-        "unit_test.novelty_reference",
-        source=[
-            {
-                "idx": 10,
-                "idx_vector": 50,
-                "features": np.array([1.0, 0.0], dtype=np.float32),
-            }
-        ],
-        if_exists="replace_force",
-    )
     source = pxt.create_table(
         "unit_test.novelty_source",
         source=[
@@ -171,6 +166,7 @@ def test_table_scoring_resumes_pending_rows_and_preserves_vector_ids(
         if_exists="replace_force",
     )
     tensor_scorer = CountingNearestScorer()
+    tensor_scorer.fit(torch.tensor([[1.0, 0.0]]))
     scorer = GoldNoveltyScorer(
         table_path="unit_test.novelty_output",
         scorer=tensor_scorer,
@@ -182,10 +178,13 @@ def test_table_scoring_resumes_pending_rows_and_preserves_vector_ids(
         max_batches=1,
     )
 
-    result = scorer.score_in_table(source, reference)
-    assert GoldNoveltyScorer.get_novelty_scores(result, "novelty_score") == {100: 0.0}
+    result = scorer.score_in_table(source)
+    assert GoldNoveltyScorer.get_novelty_scores_per_idx(result, "novelty_score") == {
+        100: 0.0
+    }
     assert tensor_scorer.calls == 1
     restarted_tool = CountingNearestScorer()
+    restarted_tool.fit(torch.tensor([[1.0, 0.0]]))
     restarted_scorer = GoldNoveltyScorer(
         table_path="unit_test.novelty_output",
         scorer=restarted_tool,
@@ -207,19 +206,21 @@ def test_table_scoring_resumes_pending_rows_and_preserves_vector_ids(
     with monkeypatch.context() as patch:
         patch.setattr(restarted_tool, "score", interrupt_after_one_chunk)
         with pytest.raises(RuntimeError, match="interrupted"):
-            restarted_scorer.score_in_table(source, reference)
+            restarted_scorer.score_in_table(source)
     assert restarted_tool.calls == 1
-    partially_scored = GoldNoveltyScorer.get_novelty_scores(result, "novelty_score")
+    partially_scored = GoldNoveltyScorer.get_novelty_scores_per_idx(
+        result, "novelty_score"
+    )
     assert len(partially_scored) == 2
     assert partially_scored[100] == 0.0
 
     restarted_scorer.max_batches = 1
     result = restarted_scorer.score_in_table(source)
     assert restarted_tool.calls == 2
-    assert GoldNoveltyScorer.get_novelty_scores(
+    assert GoldNoveltyScorer.get_novelty_scores_per_idx(
         result, "novelty_score"
     ) == pytest.approx({100: 0.0, 105: 1.0, 111: 2.0})
-    assert GoldNoveltyScorer.get_novelty_scores(
+    assert GoldNoveltyScorer.get_novelty_scores_per_idx(
         result, "novelty_score", idx_key="idx"
     ) == pytest.approx({1: 1.0, 2: 2.0})
     result = restarted_scorer.score_in_table(source)
@@ -258,11 +259,13 @@ def test_table_scoring_resumes_pending_rows_and_preserves_vector_ids(
         if_not_exists="insert",
     )
     result = restarted_scorer.score_in_table(source)
-    assert 999 in GoldNoveltyScorer.get_novelty_scores(result, "novelty_score")
+    assert 999 in GoldNoveltyScorer.get_novelty_scores_per_idx(result, "novelty_score")
     with pytest.raises(ValueError, match="allow_existing"):
         GoldNoveltyScorer(
-            table_path="unit_test.novelty_output", allow_existing=False
-        ).score_in_table(source, reference)
+            scorer=GoldNearestNeighborNoveltyScoringTool(),
+            table_path="unit_test.novelty_output",
+            allow_existing=False,
+        ).score_in_table(source)
 
 
 class OffsetReducer(GoldReductionToolWithFit):
@@ -282,16 +285,14 @@ class OffsetReducer(GoldReductionToolWithFit):
         return self.transform(x)
 
 
-def test_reducer_is_fitted_once_on_reference_and_used_for_query_chunks(
+def test_external_tool_state_is_preserved_when_scoring_query_chunks(
     clean_unit_test,
 ):
     reducer = OffsetReducer()
-    reference = VectorDataset(
-        [
-            {"vectorized": torch.tensor([0.0, 0.0]), "idx": 0},
-            {"vectorized": torch.tensor([2.0, 0.0]), "idx": 1},
-        ]
-    )
+    vectors = torch.tensor([[0.0, 0.0], [2.0, 0.0]])
+    reducer.fit(vectors)
+    tool = GoldNearestNeighborNoveltyScoringTool()
+    tool.fit(reducer.transform(vectors))
     queries = VectorDataset(
         [
             {"vectorized": torch.tensor([1.0, 0.0]), "idx": 2},
@@ -300,36 +301,35 @@ def test_reducer_is_fitted_once_on_reference_and_used_for_query_chunks(
     )
     scorer = GoldNoveltyScorer(
         table_path="unit_test.novelty_reduced",
+        scorer=tool,
         reducer=reducer,
         chunk=1,
     )
 
-    result = scorer.score_in_table(queries, reference)
+    result = scorer.score_in_table(queries)
 
     assert reducer.fit_calls == 1
     assert reducer.offset.tolist() == [1.0, 0.0]
-    assert GoldNoveltyScorer.get_novelty_scores(result) == pytest.approx(
+    assert GoldNoveltyScorer.get_novelty_scores_per_idx(result) == pytest.approx(
         {0: 1.0, 1: 0.0}
     )
-    with pytest.raises(ValueError, match="Cannot refit"):
-        scorer.fit_scorer(reference)
+    scorer.score_in_table(queries)
     assert reducer.fit_calls == 1
 
 
-def test_reducer_without_transform_is_rejected_before_fitting(clean_unit_test):
+def test_reducer_without_transform_is_rejected(clean_unit_test):
     from sklearn.manifold import TSNE
 
     from goldener.reduce import GoldSKLearnReductionTool
 
     scorer = GoldNoveltyScorer(
+        scorer=GoldNearestNeighborNoveltyScoringTool(),
         table_path="unit_test.novelty_tsne",
         reducer=GoldSKLearnReductionTool(TSNE(n_components=2, perplexity=2)),
     )
     reference = VectorDataset([{"vectorized": torch.tensor([1.0, 0.0]), "idx": 0}])
 
-    with pytest.raises(ValueError, match="supports transform"):
-        scorer.fit_scorer(reference)
-    scorer.scorer.fit(torch.ones((1, 2)))
+    scorer.scorer["all_labels"].fit(torch.ones((1, 2)))
     with pytest.raises(ValueError, match="supports transform"):
         scorer.score_in_table(reference)
 
@@ -339,9 +339,8 @@ def test_reducer_without_transform_is_rejected_before_fitting(clean_unit_test):
 def test_dataset_scoring_uses_index_fallbacks_and_drop_table_snapshot(
     clean_unit_test, dtype, batch_size, insert_size
 ):
-    reference = VectorDataset(
-        [{"vectorized": torch.tensor([1.0, 0.0], dtype=dtype), "idx": 8}]
-    )
+    tool = GoldNearestNeighborNoveltyScoringTool()
+    tool.fit(torch.tensor([[1.0, 0.0]], dtype=dtype))
     queries = VectorDataset(
         [
             {
@@ -358,13 +357,14 @@ def test_dataset_scoring_uses_index_fallbacks_and_drop_table_snapshot(
     )
     scorer = GoldNoveltyScorer(
         table_path="unit_test.novelty_dataset",
+        scorer=tool,
         batch_size=batch_size,
         min_pxt_insert_size=insert_size,
         to_keep_schema={"labels": pxt.Json, "attrs": pxt.Array[(1,), pxt.Float]},
         drop_table=True,
     )
 
-    result = scorer.score_in_dataset(queries, reference)
+    result = scorer.score_in_dataset(queries)
 
     assert len(result) == 2
     samples = list(result)
@@ -401,19 +401,20 @@ def test_table_scoring_can_omit_original_vectors(clean_unit_test):
         ],
         if_exists="replace_force",
     )
-    reference = VectorDataset([{"vectorized": torch.tensor([1.0, 0.0]), "idx": 0}])
+    tool = GoldNearestNeighborNoveltyScoringTool()
+    tool.fit(torch.tensor([[1.0, 0.0]]))
     scorer = GoldNoveltyScorer(
-        table_path="unit_test.novelty_scores_only", max_batches=0
+        table_path="unit_test.novelty_scores_only", scorer=tool, max_batches=0
     )
 
-    result = scorer.score_in_table(source, reference)
+    result = scorer.score_in_table(source)
     assert result.count() == 2
-    assert GoldNoveltyScorer.get_novelty_scores(result) == {}
+    assert GoldNoveltyScorer.get_novelty_scores_per_idx(result) == {}
     scorer.max_batches = None
     result = scorer.score_in_table(source)
 
     assert "vectorized" not in result.columns()
-    assert GoldNoveltyScorer.get_novelty_scores(result) == pytest.approx(
+    assert GoldNoveltyScorer.get_novelty_scores_per_idx(result) == pytest.approx(
         {90: 0.0, 95: 1.0}
     )
     result.insert([{"idx": 9, "idx_vector": 999, "novelty": None}])
@@ -445,13 +446,13 @@ def test_existing_scalar_vector_column_is_rejected(clean_unit_test):
         if_exists="replace_force",
     )
     scorer = GoldNoveltyScorer(
+        scorer=GoldNearestNeighborNoveltyScoringTool(),
         table_path="unit_test.novelty_vector_schema_output",
         include_vectorized_in_table=True,
     )
-    reference = VectorDataset([{"vectorized": torch.tensor([1.0, 0.0]), "idx": 0}])
 
     with pytest.raises(ValueError, match="vector column has an incompatible shape"):
-        scorer.score_in_table(source, reference)
+        scorer.score_in_table(source)
 
 
 @pytest.mark.parametrize(
@@ -467,13 +468,19 @@ def test_existing_scalar_vector_column_is_rejected(clean_unit_test):
     ],
 )
 def test_source_vector_validation(clean_unit_test, sample, message):
-    scorer = GoldNoveltyScorer(table_path="unit_test.invalid_source")
+    scorer = GoldNoveltyScorer(
+        scorer=GoldNearestNeighborNoveltyScoringTool(),
+        table_path="unit_test.invalid_source",
+    )
     with pytest.raises(ValueError, match=message):
         scorer.setup_scoring_table(VectorDataset([sample]))
 
 
 def test_source_rejects_duplicate_vector_ids(clean_unit_test):
-    scorer = GoldNoveltyScorer(table_path="unit_test.duplicate_source")
+    scorer = GoldNoveltyScorer(
+        scorer=GoldNearestNeighborNoveltyScoringTool(),
+        table_path="unit_test.duplicate_source",
+    )
     source = VectorDataset(
         [
             {"vectorized": torch.tensor([1.0, 0.0]), "idx_vector": 5},
@@ -533,3 +540,160 @@ def test_invalid_scorer_output_is_rejected(clean_unit_test, output):
 
     with pytest.raises(ValueError, match="one finite score per query"):
         scorer.score_in_table(source)
+
+
+@pytest.mark.parametrize("source_kind", ["dataset", "table"])
+@pytest.mark.parametrize(
+    "per_label", [False, True], ids=["shared-tool", "per-label-tools"]
+)
+def test_label_scoring_resumes_with_call_wide_batch_limit(
+    clean_unit_test, source_kind, per_label
+):
+    samples = [
+        {
+            "idx": 9,
+            "idx_vector": 20,
+            "vectorized": np.array([1.0, 0.0], dtype=np.float32),
+            "label": "a",
+        },
+        {
+            "idx": 9,
+            "idx_vector": 30,
+            "vectorized": np.array([1.0, 0.0], dtype=np.float32),
+            "label": "all_labels",
+        },
+    ]
+    source = (
+        pxt.create_table("unit_test.label_source", source=samples)
+        if source_kind == "table"
+        else VectorDataset(samples)
+    )
+    first = CountingNearestScorer()
+    first.fit(torch.tensor([[1.0, 0.0]]))
+    second = CountingNearestScorer()
+    second.fit(torch.tensor([[0.0, 1.0]]))
+    scorer = GoldNoveltyScorer(
+        table_path="unit_test.label_scores",
+        scorer={"a": first, "all_labels": second} if per_label else first,
+        label_key="label",
+        chunk=1,
+        batch_size=2,
+        max_batches=1,
+    )
+    if per_label:
+        del scorer.scorer["all_labels"]
+        with pytest.raises(ValueError, match="No novelty scorer configured"):
+            scorer.score_in_table(source)
+        assert first.calls == 0
+        scorer.scorer["all_labels"] = second
+    result = scorer.score_in_table(source)
+    assert scorer.get_novelty_scores_per_idx(result) == {20: 0.0}
+    assert first.calls == 1
+    assert second.calls == 0
+    assert (
+        scorer.get_novelty_scores_per_idx(
+            result, label_key="label", label_value="all_labels"
+        )
+        == {}
+    )
+    result = scorer.score_in_table(source)
+    assert scorer.get_novelty_scores_per_idx(result) == pytest.approx(
+        {20: 0.0, 30: 1.0 if per_label else 0.0}
+    )
+    for idx_key, expected in [("idx_vector", {20: 0.0}), ("idx", {9: 0.0})]:
+        assert (
+            scorer.get_novelty_scores_per_idx(
+                result, idx_key=idx_key, label_key="label", label_value="a"
+            )
+            == expected
+        )
+    assert (
+        scorer.get_novelty_scores_per_idx(
+            result, label_key="label", label_value="absent"
+        )
+        == {}
+    )
+    with pytest.raises(ValueError, match="label_value must also be provided"):
+        scorer.get_novelty_scores_per_idx(result, label_key="label")
+    assert first.calls == (1 if per_label else 2)
+    assert second.calls == (1 if per_label else 0)
+    scorer.score_in_table(source)
+    assert first.calls + second.calls == 2
+    assert {row["label"] for row in result.select(result.label).collect()} == {
+        "a",
+        "all_labels",
+    }
+
+
+def test_retrieve_novelty_scores_with_threshold_and_ranking(clean_unit_test):
+    result = pxt.create_table(
+        "unit_test.retrieval_scores",
+        schema={"idx": pxt.Int, "idx_vector": pxt.Int, "novelty_score": pxt.Float},
+    )
+    result.insert(
+        [
+            {"idx": 1, "idx_vector": 100, "novelty_score": 0.0},
+            {"idx": 1, "idx_vector": 105, "novelty_score": 1.0},
+            {"idx": 2, "idx_vector": 111, "novelty_score": 2.0},
+            {"idx": 3, "idx_vector": 120, "novelty_score": None},
+        ]
+    )
+    for idx_key, expected in [
+        ("idx_vector", {105: 1.0, 111: 2.0}),
+        ("idx", {1: 1.0, 2: 2.0}),
+    ]:
+        assert (
+            GoldNoveltyScorer.get_novelty_scores_per_idx(
+                result, "novelty_score", idx_key=idx_key, threshold=0.0
+            )
+            == expected
+        )
+        assert list(
+            GoldNoveltyScorer.get_novelty_scores_per_idx(
+                result, "novelty_score", idx_key=idx_key, k=10
+            ).values()
+        ) == sorted(
+            GoldNoveltyScorer.get_novelty_scores_per_idx(
+                result, "novelty_score", idx_key=idx_key
+            ).values(),
+            reverse=True,
+        )
+        assert GoldNoveltyScorer.get_novelty_scores_per_idx(
+            result, "novelty_score", idx_key=idx_key, threshold=1.0, k=1, best=False
+        ) == ({100: 0.0} if idx_key == "idx_vector" else {})
+        assert GoldNoveltyScorer.get_novelty_scores_per_idx(
+            result, "novelty_score", idx_key=idx_key, threshold=1.0, best=False
+        ) == ({100: 0.0} if idx_key == "idx_vector" else {})
+        assert GoldNoveltyScorer.get_novelty_scores_per_idx(
+            result, "novelty_score", idx_key=idx_key, k=1, best=False
+        ) == ({100: 0.0} if idx_key == "idx_vector" else {1: 1.0})
+        assert GoldNoveltyScorer.get_novelty_scores_per_idx(
+            result, "novelty_score", idx_key=idx_key, k=1
+        ) == {111 if idx_key == "idx_vector" else 2: 2.0}
+    assert GoldNoveltyScorer.get_novelty_scores_per_idx(
+        result, "novelty_score", idx_key="idx", aggregation=mean
+    ) == {1: 0.5, 2: 2.0}
+    assert GoldNoveltyScorer.get_novelty_scores_per_idx(
+        result,
+        "novelty_score",
+        idx_key="idx",
+        aggregation=mean,
+        threshold=1.0,
+        k=1,
+        best=False,
+    ) == {1: 0.5}
+    assert GoldNoveltyScorer.get_novelty_scores_per_idx(
+        result, "novelty_score", aggregation=lambda values: -1.0
+    ) == {100: 0.0, 105: 1.0, 111: 2.0}
+    for options in ({"k": 0}, {"threshold": 2.0}):
+        assert (
+            GoldNoveltyScorer.get_novelty_scores_per_idx(
+                result, "novelty_score", **options
+            )
+            == {}
+        )
+    for invalid_k in (-1, 1.5, True):
+        with pytest.raises(ValueError, match="k must be a nonnegative integer"):
+            GoldNoveltyScorer.get_novelty_scores_per_idx(
+                result, "novelty_score", k=invalid_k
+            )
