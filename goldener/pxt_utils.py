@@ -530,13 +530,13 @@ def get_max_value_in_column(
 def get_chunk_view(
     table: Table,
 ) -> Table:
-    """Get a view of the PixelTable table with only the chunk and idx_vector columns.
+    """Get a view of the PixelTable table with only the chunk column added.
 
     Args:
         table: The PixelTable table to add a view from
 
     Returns:
-        A PixelTable view containing an addition chunk column.
+        A PixelTable view containing an additional chunk column.
     """
 
     chunks_view = pxt.create_view(

@@ -40,6 +40,7 @@ from goldener.utils import (
     filter_batch_from_indices,
     validate_positive_integer,
     validate_vectorized_input,
+    validate_floating_tensor,
 )
 
 logger = getLogger(__name__)
@@ -49,7 +50,7 @@ class GoldNoveltyScoringTool(ABC):
     """Score vectors for novelty using a tool fitted on reference data.
 
     Inputs have shape `(num_vectors, feature_dim)` and scores have shape
-    `(num_vectors,)`. Higher scores indicate greater novelty. I
+    `(num_vectors,)`. Higher scores indicate greater novelty.
 
     Implementations define the meaning and scale of their scores, such as nearest-reference
     distance or predicted probability of novelty.
@@ -205,6 +206,10 @@ class GoldNearestNeighborNoveltyScoringTool(GoldNoveltyScoringTool):
             score_batches.append(nearest)
 
         result = torch.cat(score_batches).to(x.device)
+        if not torch.isfinite(result).all():
+            raise ValueError(
+                "Computed novelty scores are not finite in the input dtype."
+            )
         return result
 
 
@@ -414,23 +419,35 @@ class GoldNoveltyScorer(GoldDoerWithTable):
         return scoring_table
 
     def score_in_dataset(self, to_score: Dataset | Table) -> GoldPxtTorchDataset:
-        """Score vectorized samples and return results as a GoldPxtTorchDataset.
+        """Score the novelty of vectorized samples and return a GoldPxtTorchDataset.
 
-        This is a convenience wrapper that runs `score_in_table` to populate or
-        resume the scoring table, then wraps the results in a GoldPxtTorchDataset.
-        If `drop_table` is True, the table is removed after the dataset is created.
-        The cached dataset remains usable after deletion and contains raw per-vector
-        scores. Use `get_novelty_scores` to retrieve scores by vector or sample ID.
+        The fitted scoring tool evaluates query vectors and stores the results in
+        the PixelTable table at `table_path`. When `chunk` is set, vectors are scored
+        in chunks. An optional reducer transforms the vectors before scoring.
+
+        This method calls `score_in_table` to populate or resume the scoring table,
+        then wraps the results in a `GoldPxtTorchDataset`. If `drop_table` is True,
+        the method removes the table after creating the dataset. The cached dataset
+        remains usable after deletion. It contains raw per-vector scores. Use
+        `get_novelty_scores_per_idx` on the scoring table to aggregate scores by sample.
 
         Args:
-            to_score: Dataset or table of already-vectorized query rows.
+            to_score: Dataset or Table to score. Each Dataset item must provide a
+                1D floating tensor under `vectorized_key`, and collation must
+                produce a 2D tensor of shape `(batch_size, feature_dim)`. Missing
+                `idx_vector` values default to row positions, and missing `idx`
+                values default to vector IDs. A Table must contain the
+                `vectorized_key`, `idx`, and `idx_vector` columns. Vector IDs must be
+                unique, and multiple vectors may share a sample ID.
 
         Returns:
-            Snapshot-backed dataset with IDs and novelty scores.
+            A `GoldPxtTorchDataset` containing novelty scores under `score_key`,
+            sample IDs under `idx`, vector IDs under `idx_vector`, and any
+            configured retained columns.
 
         Raises:
-            ValueError: If input/table schema validation fails or the reducer
-                does not support transformation.
+            ValueError: If a scorer is unfitted or validation in
+                `score_in_table` fails.
         """
         scored_table = self.score_in_table(to_score)
 
@@ -514,7 +531,7 @@ class GoldNoveltyScorer(GoldDoerWithTable):
 
         if self.vectorized_key not in score_from.columns():
             raise ValueError(
-                f"Table at path {self.table_path} does not contain "
+                f"Source table does not contain "
                 f"the required column {self.vectorized_key}."
             )
 
@@ -611,8 +628,7 @@ class GoldNoveltyScorer(GoldDoerWithTable):
             Dataset inputs always retain their vectors in the result table.
 
         Raises:
-            ValueError: If the dataset is empty, its vectors or identities are
-                invalid, or the result table has an incompatible schema.
+            ValueError: If the result table has an incompatible schema.
         """
         minimal_schema = self._MINIMAL_SCHEMA.copy()
         if self.to_keep_schema is not None:
@@ -903,7 +919,9 @@ class GoldNoveltyScorer(GoldDoerWithTable):
         if self.reducer is not None:
             vectors = self.reducer.transform(vectors)
 
-        return scorer.score(vectors)
+        scores = scorer.score(vectors)
+        validate_floating_tensor(scores, 1, len(vectors), "GoldNoveltyScorer")
+        return scores
 
     @staticmethod
     def get_novelty_scores_per_idx(

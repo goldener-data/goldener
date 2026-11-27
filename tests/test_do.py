@@ -78,7 +78,6 @@ def test_custom_settings(make_doer):
 
     schema = {"label": pxt.String}
     kwargs = {"allow_existing": False, "drop_table": True, "max_batches": 3}
-    label_key = None
     if make_doer is not GoldDoer:
         kwargs.update(
             collate_fn=collate_fn,
@@ -86,10 +85,8 @@ def test_custom_settings(make_doer):
             min_pxt_insert_size=10,
             batch_size=4,
             num_workers=2,
+            label_key="labels",
         )
-        if make_doer.func is not GoldNoveltyScorer:
-            label_key = "labels"
-            kwargs["label_key"] = label_key
 
     doer = make_doer(**kwargs)
 
@@ -103,7 +100,7 @@ def test_custom_settings(make_doer):
         assert doer.batch_size == 4
         assert doer.num_workers == 2
         assert doer.table_path == "unit_test.doer"
-        assert doer.label_key == label_key
+        assert doer.label_key == "labels"
 
 
 class _DoerWithKeys(GoldDoerWithTable):
@@ -211,6 +208,7 @@ _IDENTITY_IDX_VECTOR = (
         pytest.param(GoldSelector, id="GoldSelector"),
         pytest.param(GoldClusterizer, id="GoldClusterizer"),
         pytest.param(GoldVectorizer, id="GoldVectorizer"),
+        pytest.param(GoldNoveltyScorer, id="GoldNoveltyScorer"),
         pytest.param(GoldDensityWeigher, id="GoldDensityWeigher"),
     ],
 )
