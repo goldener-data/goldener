@@ -319,9 +319,9 @@ class GoldNoveltyScorer(GoldDoerWithTable):
                 Defaults to None, which scores all pending batches.
 
         Raises:
-            ValueError: If a numeric option is outside its allowed range or is not an
-                integer, two column keys share a name, a column key uses an identity
-                name, or `to_keep_schema` redefines an identity, vector, or score column.
+            ValueError: If a scorer dictionary is supplied without `label_key`,
+                two column keys share a name, a column key uses an identity name,
+                or `to_keep_schema` redefines an identity column.
             NotImplementedError: If `distribute` is True.
         """
         if isinstance(scorer, dict) and label_key is None:

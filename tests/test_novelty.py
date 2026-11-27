@@ -130,11 +130,6 @@ class TestGoldNearestNeighborNoveltyScoringTool:
 @pytest.mark.parametrize(
     "kwargs, match",
     [
-        pytest.param({"chunk": 0}, "chunk", id="zero-chunk"),
-        pytest.param({"chunk": True}, "chunk", id="boolean-chunk"),
-        pytest.param({"batch_size": 0}, "batch_size", id="zero-batch-size"),
-        pytest.param({"num_workers": -1}, "num_workers", id="negative-workers"),
-        pytest.param({"max_batches": -1}, "max_batches", id="negative-batch-limit"),
         pytest.param(
             {"score_key": "idx"},
             "score_key='idx' collides with the identity column 'idx'",
@@ -154,11 +149,6 @@ class TestGoldNearestNeighborNoveltyScoringTool:
             {"to_keep_schema": {"idx": pxt.Int}},
             r"to_keep_schema cannot redefine the identity columns \['idx'\]",
             id="retained-identity-column",
-        ),
-        pytest.param(
-            {"vectorized_key": "features", "to_keep_schema": {"features": pxt.Float}},
-            r"to_keep_schema cannot redefine the vector or score columns \['features'\]",
-            id="retained-vector-column",
         ),
     ],
 )
