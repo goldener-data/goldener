@@ -964,6 +964,7 @@ def test_validate_integer_tensor_rejects_invalid_values(
     "scores, match",
     [
         pytest.param(None, "scores is required", id="missing"),
+        pytest.param(torch.ones(3, 1), "one entry per row", id="row-count"),
         pytest.param([[0.0], [1.0]], "2D floating tensor", id="list"),
         pytest.param(torch.ones(2), "2D floating tensor", id="wrong-rank"),
         pytest.param(

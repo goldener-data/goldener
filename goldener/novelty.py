@@ -428,8 +428,9 @@ class GoldNoveltyScorer(GoldDoerWithTable):
         This method calls `score_in_table` to populate or resume the scoring table,
         then wraps the results in a `GoldPxtTorchDataset`. If `drop_table` is True,
         the method removes the table after creating the dataset. The cached dataset
-        remains usable after deletion. It contains raw per-vector scores. Use
-        `get_novelty_scores_per_idx` on the scoring table to aggregate scores by sample.
+        remains usable after deletion. It contains raw per-vector scores.
+        When the scoring table is retained, use `get_novelty_scores_per_idx(..., idx_key="idx")`
+        to aggregate scores by sample.
 
         Args:
             to_score: Dataset or Table to score. Each Dataset item must provide a

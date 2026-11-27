@@ -136,8 +136,28 @@ class TestGoldNearestNeighborNoveltyScoringTool:
         pytest.param({"num_workers": -1}, "num_workers", id="negative-workers"),
         pytest.param({"max_batches": -1}, "max_batches", id="negative-batch-limit"),
         pytest.param(
-            {"to_keep_schema": {"vectorized": pxt.Float}},
-            "to_keep_schema",
+            {"score_key": "idx"},
+            "score_key='idx' collides with the identity column 'idx'",
+            id="score-key-is-identity",
+        ),
+        pytest.param(
+            {"vectorized_key": "idx_vector"},
+            "vectorized_key='idx_vector' collides with the identity column 'idx_vector'",
+            id="vector-key-is-identity",
+        ),
+        pytest.param(
+            {"vectorized_key": "features", "score_key": "features"},
+            "share the same column name: 'features'",
+            id="shared-vector-and-score-key",
+        ),
+        pytest.param(
+            {"to_keep_schema": {"idx": pxt.Int}},
+            r"to_keep_schema cannot redefine the identity columns \['idx'\]",
+            id="retained-identity-column",
+        ),
+        pytest.param(
+            {"vectorized_key": "features", "to_keep_schema": {"features": pxt.Float}},
+            r"to_keep_schema cannot redefine the vector or score columns \['features'\]",
             id="retained-vector-column",
         ),
     ],
