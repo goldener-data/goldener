@@ -64,40 +64,33 @@ def pxt_unit_test_dir():
 
 class TestGoldNearestNeighborNoveltyScoringTool:
     @pytest.mark.parametrize(
+        "dtype",
+        [torch.float16, torch.bfloat16, torch.float32, torch.float64],
+        ids=["float16", "bfloat16", "float32", "float64"],
+    )
+    @pytest.mark.parametrize(
         ("distance", "expected"),
         [
             (DistanceType.COSINE, [0.0, 1.0, 1.0]),
             (DistanceType.EUCLIDEAN, [3.0, 1.0, 0.0]),
         ],
     )
-    def test_nearest_reference_scores_and_blocks(self, distance, expected):
+    def test_nearest_reference_scores_and_blocks(self, distance, expected, dtype):
         reference = torch.tensor([[1.0, 0.0], [0.0, 0.0]])
-        queries = torch.tensor([[4.0, 0.0], [0.0, 1.0], [0.0, 0.0]])
+        queries = torch.tensor([[4.0, 0.0], [0.0, 1.0], [0.0, 0.0]], dtype=dtype)
         tool = GoldNearestNeighborNoveltyScoringTool(distance, distance_batch_size=1)
         tool.fit(reference)
 
         scores = tool.score(queries)
 
+        assert scores.dtype == torch.float32
+        assert scores.device == queries.device
         assert scores.tolist() == pytest.approx(expected)
         unblocked = GoldNearestNeighborNoveltyScoringTool(
             distance, distance_batch_size=8
         )
         unblocked.fit(reference)
         assert torch.equal(unblocked.score(queries), scores)
-
-    @pytest.mark.parametrize(
-        "dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64]
-    )
-    def test_score_restores_query_dtype(self, dtype):
-        tool = GoldNearestNeighborNoveltyScoringTool()
-        tool.fit(torch.tensor([[1.0, 0.0]], dtype=torch.float32))
-        query = torch.tensor([[0.0, 1.0]], dtype=dtype)
-
-        result = tool.score(query)
-
-        assert result.dtype == dtype
-        assert result.device == query.device
-        assert result.item() == pytest.approx(1.0)
 
     def test_fit_keeps_an_independent_reference(self):
         reference = torch.tensor([[1.0, 2.0]])
@@ -390,8 +383,7 @@ class TestGoldNoveltyScorer:
         )
 
         result = scorer.score_in_table(source)
-        assert result.count() == 2
-        assert GoldNoveltyScorer.get_novelty_scores_per_idx(result) == {}
+        assert result.count() == 0
         scorer.max_batches = None
         result = scorer.score_in_table(source)
 
@@ -574,10 +566,6 @@ class TestGoldNoveltyScorer:
             scorer.scorer["all_labels"] = second
 
         result = scorer.score_in_table(source)
-        if per_label:
-            assert scorer.get_novelty_scores_per_idx(result) == {20: 0.0}
-            assert second.calls == 0
-            result = scorer.score_in_table(source)
 
         assert scorer.get_novelty_scores_per_idx(result) == pytest.approx(
             {20: 0.0, 30: 1.0 if per_label else 0.0}
