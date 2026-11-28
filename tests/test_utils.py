@@ -5,6 +5,7 @@ from goldener.utils import (
     validate_positive_number,
     validate_positive_integer,
     validate_integer_tensor,
+    validate_floating_tensor,
     validate_vectorized_input,
     check_x_and_y_shapes,
     get_size_and_sampling_count_per_chunk,
@@ -957,6 +958,30 @@ def test_validate_integer_tensor_rejects_invalid_values(
         validate_integer_tensor(
             tensor, dim, batch_size, "sample_idx", allow_none=allow_none
         )
+
+
+@pytest.mark.parametrize(
+    "scores, match",
+    [
+        pytest.param(None, "scores is required", id="missing"),
+        pytest.param(torch.ones(3, 1), "one entry per row", id="row-count"),
+        pytest.param([[0.0], [1.0]], "2D floating tensor", id="list"),
+        pytest.param(torch.ones(2), "2D floating tensor", id="wrong-rank"),
+        pytest.param(
+            torch.ones(2, 1, dtype=torch.int64), "2D floating tensor", id="integer"
+        ),
+        pytest.param(torch.tensor([[0.0], [float("nan")]]), "finite", id="nan"),
+        pytest.param(
+            torch.tensor([[0.0], [float("inf")]]), "finite", id="positive-infinity"
+        ),
+        pytest.param(
+            torch.tensor([[0.0], [-float("inf")]]), "finite", id="negative-infinity"
+        ),
+    ],
+)
+def test_validate_floating_tensor_rejects_invalid_values(scores, match):
+    with pytest.raises(ValueError, match=match):
+        validate_floating_tensor(scores, 2, 2, "scores")
 
 
 @pytest.mark.parametrize(

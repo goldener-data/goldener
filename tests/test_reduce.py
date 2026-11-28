@@ -47,6 +47,7 @@ class TestGoldSKLearnReductionTool:
         data = torch.randn(10, 5, dtype=torch.float32)
         reducer = PCA(n_components=3)
         rd = GoldSKLearnReductionTool(reducer)
+        assert rd.supports_transform is True
         rd.fit(data)
         out = rd.transform(data)
         assert isinstance(out, torch.Tensor)
@@ -59,6 +60,7 @@ class TestGoldSKLearnReductionTool:
         data = torch.randn(10, 5, dtype=torch.float32)
         reducer = TSNE(n_components=2, perplexity=3)
         rd = GoldSKLearnReductionTool(reducer)
+        assert rd.supports_transform is False
         rd.fit(data)
         out = rd.transform(data)
         assert isinstance(out, torch.Tensor)

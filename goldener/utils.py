@@ -156,6 +156,57 @@ def validate_integer_tensor(
     return tensor
 
 
+def validate_floating_tensor(
+    tensor: torch.Tensor | None,
+    dim: int,
+    batch_size: int,
+    name: str,
+    *,
+    allow_none: bool = False,
+) -> torch.Tensor | None:
+    """Validate a finite floating tensor with a fixed rank and leading size.
+
+    Args:
+        tensor: Tensor to validate. Booleans are not floating tensors.
+        dim: Required number of dimensions.
+        batch_size: Required size of dimension 0.
+        name: Argument name included in the error message.
+        allow_none: Whether `None` is returned unchanged. Defaults to `False`.
+
+    Returns:
+        The validated tensor, or `None` when `tensor` is `None` and `allow_none`
+        is true.
+
+    Raises:
+        ValueError: If the value is missing when `None` is not allowed, is not
+            a floating tensor of rank `dim` whose first dimension equals
+            `batch_size`, or contains nonfinite values.
+    """
+    if tensor is None:
+        if allow_none:
+            return None
+        raise ValueError(f"{name} is required.")
+    if (
+        not isinstance(tensor, torch.Tensor)
+        or tensor.ndim != dim
+        or not tensor.is_floating_point()
+    ):
+        shape = getattr(tensor, "shape", None)
+        dtype = getattr(tensor, "dtype", type(tensor).__name__)
+        raise ValueError(
+            f"{name} must be a {dim}D floating tensor with one entry per row; "
+            f"got shape {shape} and dtype {dtype}."
+        )
+    if tensor.shape[0] != batch_size:
+        raise ValueError(
+            f"{name} must contain one entry per row; "
+            f"got {tensor.shape[0]} entries for {batch_size} rows."
+        )
+    if not torch.isfinite(tensor).all():
+        raise ValueError(f"{name} must contain only finite values.")
+    return tensor
+
+
 def check_x_and_y_shapes(x_shape: tuple[int, ...], y_shape: tuple[int, ...]) -> None:
     """Check compatibility of shapes of x and y tensors.
 

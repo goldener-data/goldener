@@ -131,6 +131,33 @@ gs = GoldSelector(
 )
 ```
 
+## Scoring novel vectors against a reference
+
+Suppose you receive a new batch of product photos labeled “damaged” and need to check the labels before adding
+the photos to your training set. Use previously reviewed photos with the same label as a reference and prioritize
+new photos that look least like those examples.
+
+`GoldNoveltyScorer` compares the new and reviewed photos using their embeddings. If a photo has multiple vectors, retrieving scores by `idx` returns the highest vector score for that photo.
+
+```python
+from goldener import GoldNearestNeighborNoveltyScoringTool, GoldNoveltyScorer
+
+# reviewed_embeddings is a 2D tensor and new_vectors is a PixelTable table,
+# produced with the same embedding model and GoldVectorizer settings.
+tool = GoldNearestNeighborNoveltyScoringTool()
+# Fit the tool on a 2D tensor of reviewed embeddings before creating the scorer.
+tool.fit(reviewed_embeddings)
+scorer = GoldNoveltyScorer(
+    table_path="damage_annotation_scores", scorer=tool, chunk=256
+)
+score_table = scorer.score_in_table(new_vectors)
+# Review up to 50 new photos, starting with the most unusual.
+sample_scores = scorer.get_novelty_scores_per_idx(
+    score_table, idx_key="idx", k=50, best=True
+)
+review_ids = list(sample_scores)
+```
+
 ## Splitting annotated data in train and validation sets
 
 Goldener can split data between the train and validation sets ensuring that the training set is containing

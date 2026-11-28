@@ -8,6 +8,7 @@ from goldener.clusterize import GoldClusterizer, GoldRandomClusteringTool
 from goldener.describe import GoldDescriptor
 from goldener.do import GoldDoer, GoldDoerWithTable
 from goldener.embed import GoldTorchEmbeddingTool, GoldTorchEmbeddingToolConfig
+from goldener.novelty import GoldNearestNeighborNoveltyScoringTool, GoldNoveltyScorer
 from goldener.select import GoldGreedyKCenterSelectionTool, GoldSelector
 from goldener.torch_utils import collate_keeping_sequences_as_sequences
 from goldener.vectorize import GoldTensorVectorizationTool, GoldVectorizer
@@ -22,6 +23,7 @@ from goldener.weigh import GoldDensityWeigher
         GoldSelector,
         GoldClusterizer,
         GoldVectorizer,
+        GoldNoveltyScorer,
         GoldDensityWeigher,
     ],
     ids=lambda cls: cls.__name__,
@@ -43,6 +45,8 @@ def _table_doer(cls):
         kwargs["clustering_tool"] = GoldRandomClusteringTool()
     elif cls is GoldVectorizer:
         kwargs["vectorizer"] = GoldTensorVectorizationTool()
+    elif cls is GoldNoveltyScorer:
+        kwargs["scorer"] = GoldNearestNeighborNoveltyScoringTool()
     elif cls is GoldSelector:
         kwargs["selection_tool"] = GoldGreedyKCenterSelectionTool(device="cpu")
     return partial(cls, **kwargs)
@@ -55,7 +59,7 @@ def test_defaults(make_doer):
     assert doer.allow_existing is True
     assert doer.drop_table is False
     assert doer.max_batches is None
-    if isinstance(doer, (GoldSelector, GoldDensityWeigher)):
+    if isinstance(doer, (GoldSelector, GoldDensityWeigher, GoldNoveltyScorer)):
         assert doer.include_vectorized_in_table is False
     if isinstance(doer, GoldDoerWithTable):
         assert doer.collate_fn is collate_keeping_sequences_as_sequences
@@ -204,6 +208,7 @@ _IDENTITY_IDX_VECTOR = (
         pytest.param(GoldSelector, id="GoldSelector"),
         pytest.param(GoldClusterizer, id="GoldClusterizer"),
         pytest.param(GoldVectorizer, id="GoldVectorizer"),
+        pytest.param(GoldNoveltyScorer, id="GoldNoveltyScorer"),
         pytest.param(GoldDensityWeigher, id="GoldDensityWeigher"),
     ],
 )

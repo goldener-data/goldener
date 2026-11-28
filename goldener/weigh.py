@@ -1325,9 +1325,10 @@ class GoldDensityWeigher(GoldDoerWithTable):
             for row in rows:
                 scores_per_index[int(row["idx"])].append(float(row[weight_key]))
 
-            scores = {}
-            for idx, index_scores in scores_per_index.items():
-                scores[idx] = aggregation(index_scores)
+            scores = {
+                idx: aggregation(index_scores)
+                for idx, index_scores in scores_per_index.items()
+            }
 
         if not scores:
             raise RuntimeError(
